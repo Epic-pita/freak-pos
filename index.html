@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c0a09">
+<title>FREAK POS</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon-192.png">
+
+<!--
+  Design note: the only colours in this UI are status colours (green = synced,
+  amber = queued, red = problem). Everything else is black on near-white. In
+  direct sun on a phone at full brightness, that's the difference between
+  glancing at the screen and squinting at it — and it means the queue pill is
+  never competing with decoration for attention.
+
+  No web fonts, no CSS framework, no CDN. Everything in this folder is served
+  from this folder. Every external file is one more thing that isn't there when
+  reception dies.
+-->
+
+<style>
+  :root {
+    --ink:      #0c0a09;
+    --muted:    #57534e;
+    --line:     #d6d3d1;
+    --bg:       #f5f5f4;
+    --surface:  #ffffff;
+    --ok:       #15803d;
+    --queued:   #b45309;
+    --danger:   #b91c1c;
+    --tap:      56px;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Rubik, Arial, sans-serif;
+    font-size: 17px; line-height: 1.4;
+    overscroll-behavior: none;
+  }
+
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; border: none; background: none; }
+  :focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+
+  .hide { display: none !important; }
+
+  #app { max-width: 560px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; }
+
+  header {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--surface); border-bottom: 1px solid var(--line);
+    padding: 10px 14px; display: flex; align-items: center; gap: 10px;
+  }
+  header .who { flex: 1; min-width: 0; }
+  header .who b { display: block; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header .who span { font-size: 13px; color: var(--muted); }
+
+  .pill {
+    font-size: 13px; font-weight: 700; padding: 7px 12px; border-radius: 999px;
+    white-space: nowrap; border: 2px solid currentColor;
+  }
+  .pill.ok     { color: var(--ok); }
+  .pill.queued { color: var(--queued); }
+  .pill.bad    { color: var(--danger); }
+
+  main { flex: 1; padding: 14px; padding-bottom: 140px; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  label { display: block; font-size: 14px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+  input[type=text], input[type=number], input[type=search] {
+    width: 100%; min-height: var(--tap); padding: 0 14px;
+    border: 2px solid var(--line); border-radius: 10px; background: var(--surface);
+  }
+  input:focus { border-color: var(--ink); outline: none; }
+
+  .btn {
+    min-height: var(--tap); width: 100%; border-radius: 10px; font-weight: 700;
+    background: var(--ink); color: #fff; padding: 0 16px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn[disabled] { opacity: .35; }
+  .btn.ghost { background: var(--surface); color: var(--ink); border: 2px solid var(--line); }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+
+  #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; }
+  #reader video { width: 100% !important; display: block; }
+
+  .hint { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+
+  .line { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .line:last-child { border-bottom: none; }
+  .line .info { flex: 1; min-width: 0; }
+  .line .info b { display: block; font-size: 16px; }
+  .line .info small { color: var(--muted); font-size: 13px; }
+  .line .amt { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .line .x { width: 44px; height: 44px; border-radius: 8px; color: var(--danger); font-size: 22px; font-weight: 700; }
+  .flag { color: var(--queued); font-weight: 700; }
+
+  .empty { text-align: center; color: var(--muted); padding: 28px 10px; }
+
+  #totalbar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
+    background: var(--surface); border-top: 2px solid var(--ink);
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+  }
+  #totalbar .inner { max-width: 560px; margin: 0 auto; }
+  #totalbar .sum { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+  #totalbar .sum span { font-size: 14px; color: var(--muted); font-weight: 600; }
+  #totalbar .sum b { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -1px; }
+
+  .sheet { position: fixed; inset: 0; z-index: 40; background: rgba(12,10,9,.55); display: flex; align-items: flex-end; }
+  .sheet .panel {
+    background: var(--surface); width: 100%; max-width: 560px; margin: 0 auto;
+    border-radius: 18px 18px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+    max-height: 92dvh; overflow-y: auto;
+  }
+  .sheet h2 { margin: 0 0 4px; font-size: 20px; }
+  .sheet .sub { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+
+  .tender { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 10px; }
+  .tender .f { flex: 1; }
+  .tender .fill { min-height: var(--tap); padding: 0 14px; border: 2px solid var(--line); border-radius: 10px; font-weight: 700; white-space: nowrap; }
+
+  #remain { text-align: center; font-weight: 800; font-size: 18px; padding: 12px; border-radius: 10px; margin: 4px 0 14px; }
+  #remain.ok  { color: var(--ok);     background: #f0fdf4; }
+  #remain.bad { color: var(--danger); background: #fef2f2; }
+
+  .toast {
+    position: fixed; bottom: 150px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: #fff; padding: 12px 20px; border-radius: 999px;
+    font-weight: 700; z-index: 50; max-width: 90vw; text-align: center;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .toast { animation: pop .18s ease-out; }
+    @keyframes pop { from { transform: translate(-50%, 8px); opacity: 0; } }
+  }
+</style>
+</head>
+
+<body>
+<div id="app">
+
+  <!-- ============ GATE ============ -->
+  <div id="gate">
+    <main>
+      <div class="card">
+        <h2 style="margin:0 0 14px;font-size:22px;">דוכן FREAK</h2>
+        <label for="g-staff">שם עובד</label>
+        <input id="g-staff" type="text" autocomplete="off">
+        <div style="height:12px"></div>
+        <label for="g-event">אירוע</label>
+        <input id="g-event" type="text" autocomplete="off" placeholder="לדוגמה: PTCon 2026">
+        <div style="height:16px"></div>
+        <button class="btn" id="g-go">התחל מכירה</button>
+      </div>
+      <p class="empty" id="g-status">טוען קטלוג…</p>
+    </main>
+  </div>
+
+  <!-- ============ MAIN ============ -->
+  <div id="main" class="hide">
+    <header>
+      <div class="who">
+        <b id="h-event">—</b>
+        <span id="h-staff">—</span>
+      </div>
+      <button class="pill ok" id="h-pill" title="מצב סנכרון">מסונכרן</button>
+    </header>
+
+    <main>
+      <div class="card">
+        <label for="q">סרוק או חפש</label>
+        <input id="q" type="search" placeholder="ברקוד, שם פריט או קטגוריה" autocomplete="off" enterkeyhint="search">
+        <p class="hint">אקדח ברקוד: לחץ כאן פעם אחת, אחר כך פשוט סרוק. השדה נשאר פעיל.</p>
+        <div id="results"></div>
+        <div style="height:10px"></div>
+        <button class="btn ghost" id="cam-btn">הפעל מצלמה</button>
+        <div style="height:10px"></div>
+        <div id="reader"></div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <b>סל</b>
+          <button id="cart-clear" style="color:var(--danger);font-size:14px;font-weight:700">רוקן סל</button>
+        </div>
+        <div id="cart"></div>
+      </div>
+
+      <button class="btn ghost hide" id="stuck-btn" style="margin-bottom:12px">מכירות תקועות (<span id="stuck-n">0</span>)</button>
+    </main>
+
+    <div id="totalbar">
+      <div class="inner">
+        <div class="sum"><span>סה״כ</span><b id="t-total">₪0</b></div>
+        <button class="btn" id="pay-btn" disabled>לתשלום</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============ ITEM SHEET ============ -->
+<div class="sheet hide" id="sh-item">
+  <div class="panel">
+    <h2 id="i-name">—</h2>
+    <p class="sub" id="i-meta">—</p>
+    <div class="row">
+      <div>
+        <label for="i-qty">כמות</label>
+        <input id="i-qty" type="number" inputmode="numeric" min="1" step="1" value="1">
+      </div>
+      <div>
+        <label for="i-price">מחיר ליחידה</label>
+        <input id="i-price" type="number" inputmode="decimal" min="0" step="0.5">
+      </div>
+    </div>
+    <p class="sub" id="i-list" style="margin:8px 0 14px"></p>
+    <button class="btn" id="i-add">הוסף לסל</button>
+    <div style="height:10px"></div>
+    <button class="btn ghost" id="i-cancel">ביטול</button>
+  </div>
+</div>
+
+<!-- ============ PAY SHEET ============ -->
+<div class="sheet hide" id="sh-pay">
+  <div class="panel">
+    <h2>תשלום</h2>
+    <p class="sub" id="p-sum">—</p>
+
+    <div class="tender">
+      <div class="f"><label for="p-cash">מזומן</label>
+        <input id="p-cash" type="number" inputmode="decimal" min="0" step="0.5" value="0"></div>
+      <button class="fill" data-fill="p-cash">השלם</button>
+    </div>
+    <div class="tender">
+      <div class="f"><label for="p-card">אשראי</label>
+        <input id="p-card" type="number" inputmode="decimal" min="0" step="0.5" value="0"></div>
+      <button class="fill" data-fill="p-card">השלם</button>
+    </div>
+    <div class="tender">
+      <div class="f"><label for="p-other">אחר</label>
+        <input id="p-other" type="number" inputmode="decimal" min="0" step="0.5" value="0"></div>
+      <button class="fill" data-fill="p-other">השלם</button>
+    </div>
+
+    <div id="p-note-wrap" class="hide" style="margin-bottom:10px">
+      <label for="p-note">פירוט ״אחר״ (חובה)</label>
+      <input id="p-note" type="text" placeholder="ביט / העברה / החלפה / זיכוי…" autocomplete="off">
+    </div>
+
+    <div id="remain" class="bad">—</div>
+    <button class="btn" id="p-done" disabled>סיים מכירה</button>
+    <div style="height:10px"></div>
+    <button class="btn ghost" id="p-cancel">חזור לסל</button>
+  </div>
+</div>
+
+<!-- ============ STUCK SHEET ============ -->
+<div class="sheet hide" id="sh-stuck">
+  <div class="panel">
+    <h2>מכירות תקועות</h2>
+    <p class="sub">מכירות שהשרת דחה. הן לא נספרות בהכנסות. תקן בגיליון או מחק.</p>
+    <div id="stuck-list"></div>
+    <div style="height:14px"></div>
+    <button class="btn ghost" id="s-close">סגור</button>
+  </div>
+</div>
+
+<script src="./html5-qrcode.min.js"></script>
+<script>
+/* ==================================================================
+   CONFIG — the two lines you edit
+   ================================================================== */
+const API_URL = 'https://script.google.com/macros/s/AKfycbyF8jMXKLcZLDL1aPKtGrF3QnWh3zrjAFSl3IZdacerKHFFDWAtdQLZ9lo0nU6zW2Yn/exec';
+const TOKEN   = 'freak-hRBEJJ1eYTVmbs_JJq0tRczl';   // must match POS_CONFIG.TOKEN
+
+/* ==================================================================
+   State
+   ================================================================== */
+const LS = {
+  session: 'pos_session_v1', catalog: 'pos_catalog_v1',
+  cart: 'pos_cart_v1', queue: 'pos_queue_v1', stuck: 'pos_stuck_v1'
+};
+
+let session = load(LS.session, null);
+let catalog = load(LS.catalog, null);
+let cart    = load(LS.cart, []);
+let queue   = load(LS.queue, []);
+let stuck   = load(LS.stuck, []);
+
+let byBarcode = new Map();
+let flat = [];
+let scanner = null, scanning = false, lastScan = { code: '', at: 0 };
+let pending = null;
+let flushing = false;
+
+function load(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } }
+function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { toast('אחסון מלא'); } }
+const $ = id => document.getElementById(id);
+const money = n => '₪' + (Math.round(n * 100) / 100).toLocaleString('he-IL', { maximumFractionDigits: 2 });
+const r2 = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* ==================================================================
+   Transport
+   POST goes out as text/plain deliberately. application/json triggers a CORS
+   preflight OPTIONS, and Apps Script cannot answer OPTIONS — every sale would
+   fail before reaching the sheet. The body is still JSON; only the header lies.
+   ================================================================== */
+async function apiGet(action) {
+  const res = await fetch(`${API_URL}?action=${encodeURIComponent(action)}&token=${encodeURIComponent(TOKEN)}`);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+async function apiPost(sales) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ token: TOKEN, sales })
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+/* ==================================================================
+   Barcode normalization
+   Scanners hand back UPC-A (12) where the sheet stores EAN-13 with a leading
+   zero, and vice versa. Index every plausible form so a real product never
+   reads as "unknown" in front of a customer.
+   ================================================================== */
+function keysFor(raw) {
+  const s = String(raw || '').trim().replace(/\s/g, '');
+  if (!s) return [];
+  const out = new Set([s]);          // exact first — lookup() relies on this order
+  if (/^\d+$/.test(s)) {
+    out.add(s.replace(/^0+/, ''));
+    if (s.length === 12) out.add('0' + s);
+    if (s.length === 13 && s[0] === '0') out.add(s.slice(1));
+  }
+  return [...out].filter(Boolean);
+}
+
+/**
+ * Two passes on purpose. Seven barcodes in the catalog normalize into each
+ * other ("Alien frontiers" vs "Alien frontiers 5th edition", the Ultra Pro D20
+ * bags). Indexing exact barcodes first means a variant of one item can never
+ * squat the real barcode of another — whatever gets added to the catalog later.
+ */
+function indexCatalog() {
+  byBarcode = new Map();
+  flat = (catalog?.rows || []).map(r => ({
+    barcode: r[0], item_id: r[1], name: r[2], category: r[3], price: Number(r[4]) || 0
+  }));
+  for (const item of flat) {
+    const s = String(item.barcode || '').trim();
+    if (s && !byBarcode.has(s)) byBarcode.set(s, item);
+  }
+  for (const item of flat) {
+    for (const k of keysFor(item.barcode)) if (!byBarcode.has(k)) byBarcode.set(k, item);
+  }
+}
+
+function lookup(raw) {
+  for (const k of keysFor(raw)) if (byBarcode.has(k)) return byBarcode.get(k);
+  return null;
+}
+
+/* ==================================================================
+   Sound — generated, not fetched. A missing beep.mp3 offline is silent failure.
+   ================================================================== */
+let ac = null;
+function beep(freq, ms) {
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.connect(g); g.connect(ac.destination);
+    o.frequency.value = freq; o.type = 'square';
+    g.gain.setValueAtTime(0.08, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + ms / 1000);
+    o.start(); o.stop(ac.currentTime + ms / 1000);
+  } catch (e) {}
+}
+const beepHit = () => beep(880, 90);
+const beepMiss = () => beep(220, 220);
+
+function toast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1900);
+}
+
+/* ==================================================================
+   Boot
+   ================================================================== */
+window.addEventListener('load', async () => {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+
+  if (catalog) indexCatalog();
+
+  try {
+    const res = await apiGet('catalog');
+    if (!res.ok) throw new Error(res.error || 'API error');
+    catalog = { version: res.version, rows: res.rows };
+    save(LS.catalog, catalog);
+    indexCatalog();
+    $('g-status').textContent = flat.length.toLocaleString('he-IL') + ' פריטים נטענו';
+  } catch (err) {
+    $('g-status').textContent = flat.length
+      ? 'אין רשת — קטלוג שמור (' + flat.length.toLocaleString('he-IL') + ' פריטים)'
+      : 'טעינה נכשלה: ' + err.message + ' — בדוק API_URL ו-TOKEN';
+  }
+
+  if (session) { $('g-staff').value = session.staff; $('g-event').value = session.event; enterMain(); }
+  renderPill(); renderStuck();
+  setInterval(flush, 20000);
+  window.addEventListener('online', flush);
+  window.addEventListener('offline', renderPill);
+  flush();
+});
+
+$('g-go').onclick = () => {
+  const staff = $('g-staff').value.trim(), event = $('g-event').value.trim();
+  if (!staff || !event) return toast('מלא שם ואירוע');
+  session = { staff, event }; save(LS.session, session);
+  enterMain();
+};
+
+function enterMain() {
+  $('h-event').textContent = session.event;
+  $('h-staff').textContent = session.staff;
+  $('gate').classList.add('hide');
+  $('main').classList.remove('hide');
+  renderCart();
+}
+
+/* ==================================================================
+   Camera
+   ================================================================== */
+$('cam-btn').onclick = async () => {
+  if (scanning) return stopCam();
+  try {
+    scanner = scanner || new Html5Qrcode('reader', {
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,  Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39
+      ]
+    });
+    await scanner.start({ facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 260, height: 140 } }, onScan, () => {});
+    scanning = true;
+    $('cam-btn').textContent = 'כבה מצלמה';
+  } catch (e) {
+    toast('אין גישה למצלמה — השתמש בחיפוש');
+  }
+};
+
+async function stopCam() {
+  try { await scanner.stop(); } catch (e) {}
+  scanning = false;
+  $('cam-btn').textContent = 'הפעל מצלמה';
+}
+
+function onScan(code) {
+  const now = Date.now();
+  if (code === lastScan.code && now - lastScan.at < 1200) return;  // one barcode, one hit
+  lastScan = { code, at: now };
+  handleCode(code);
+}
+
+/* ==================================================================
+   Search + scanner gun
+   A bluetooth barcode gun pairs as a keyboard: it types the digits and presses
+   Enter. That lands in this box for free — no driver, no permission, no camera.
+   ================================================================== */
+$('q').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const v = $('q').value.trim();
+  if (!v) return;
+  $('q').value = ''; $('results').innerHTML = '';
+  handleCode(v);
+});
+
+$('q').addEventListener('input', e => {
+  const q = e.target.value.trim().toLowerCase();
+  const box = $('results');
+  if (q.length < 2) return box.innerHTML = '';
+
+  const hits = [];
+  for (let n = 0; n < flat.length && hits.length < 12; n++) {
+    const i = flat[n];
+    if (i.name.toLowerCase().includes(q) || String(i.barcode).includes(q) || i.category.toLowerCase().includes(q)) {
+      hits.push({ i, n });
+    }
+  }
+  box.innerHTML = hits.length
+    ? hits.map(({ i, n }) => `<div class="line" data-hit="${n}">
+         <div class="info"><b>${esc(i.name)}</b><small>${esc(i.category)} · ${money(i.price)}</small></div>
+       </div>`).join('')
+    : `<div class="line"><div class="info"><b>לא נמצא</b><small>לחץ Enter כדי להוסיף ידנית</small></div></div>`;
+
+  box.querySelectorAll('[data-hit]').forEach(el => {
+    el.onclick = () => { $('q').value = ''; box.innerHTML = ''; openItem(flat[+el.dataset.hit]); };
+  });
+});
+
+function handleCode(code) {
+  const item = lookup(code);
+  if (item) { beepHit(); openItem(item); }
+  else { beepMiss(); openItem({ barcode: code, item_id: '', name: '', category: '', price: 0 }); }
+}
+
+/* ==================================================================
+   Item sheet
+   ================================================================== */
+function openItem(item) {
+  pending = { ...item };
+  const unknown = !item.name;
+  const unpriced = !unknown && !(item.price > 0);   // 1,687 catalog rows sit at ₪0
+
+  $('i-name').textContent = unknown ? 'פריט לא מזוהה' : item.name;
+  $('i-meta').textContent = unknown
+    ? 'ברקוד ' + item.barcode + ' — יירשם כהזנה ידנית ויסומן לניקוי אחרי האירוע'
+    : [item.category, item.barcode].filter(Boolean).join(' · ');
+  $('i-qty').value = 1;
+
+  // Empty on purpose when there's no price. A pre-filled 0 is a free item one
+  // careless tap away, and 1,687 rows would be exactly one tap away.
+  $('i-price').value = item.price > 0 ? item.price : '';
+  $('i-list').textContent = unknown ? 'הקלד מחיר'
+    : unpriced ? 'אין מחיר במחירון — הקלד מחיר'
+    : 'מחירון: ' + money(item.price);
+
+  $('sh-item').classList.remove('hide');
+  if (unknown || unpriced) setTimeout(() => $('i-price').focus(), 120);
+}
+
+function closeItem() {
+  $('sh-item').classList.add('hide');
+  pending = null;
+  $('q').focus();   // hand the gun back its input
+}
+
+$('i-cancel').onclick = closeItem;
+
+$('i-add').onclick = () => {
+  const qty = parseInt($('i-qty').value, 10);
+  const unit = parseFloat($('i-price').value);
+  if (!(qty > 0)) return toast('כמות לא תקינה');
+  if (!(unit >= 0) || isNaN(unit)) return toast('מחיר לא תקין');
+
+  cart.push({
+    barcode: pending.barcode, item_id: pending.item_id,
+    name: pending.name || ('לא מזוהה ' + pending.barcode),
+    category: pending.category, qty, unit_price: r2(unit),
+    list_price: r2(pending.price || 0),
+    manual_entry: !pending.name
+  });
+  save(LS.cart, cart);
+  closeItem();
+  renderCart();
+  beepHit();
+};
+
+/* ==================================================================
+   Cart
+   ================================================================== */
+const cartTotal = () => r2(cart.reduce((s, l) => s + l.qty * l.unit_price, 0));
+
+function renderCart() {
+  const box = $('cart');
+  if (!cart.length) {
+    box.innerHTML = '<div class="empty">סרוק פריט כדי להתחיל</div>';
+  } else {
+    box.innerHTML = cart.map((l, i) => `
+      <div class="line">
+        <div class="info">
+          <b>${esc(l.name)}</b>
+          <small>${l.qty} × ${money(l.unit_price)}
+          ${Math.abs(l.unit_price - l.list_price) > 0.001 && l.list_price ? `<span class="flag">· שונה ממחירון ${money(l.list_price)}</span>` : ''}
+          </small>
+        </div>
+        <div class="amt">${money(l.qty * l.unit_price)}</div>
+        <button class="x" data-rm="${i}" aria-label="בטל שורה">×</button>
+      </div>`).join('');
+    box.querySelectorAll('[data-rm]').forEach(b => {
+      b.onclick = () => { cart.splice(+b.dataset.rm, 1); save(LS.cart, cart); renderCart(); };
+    });
+  }
+  $('t-total').textContent = money(cartTotal());
+  $('pay-btn').disabled = !cart.length;
+}
+
+$('cart-clear').onclick = () => {
+  if (!cart.length) return;
+  if (!confirm('לרוקן את כל הסל?')) return;
+  cart = []; save(LS.cart, cart); renderCart();
+};
+
+/* ==================================================================
+   Payment — split tender
+   ================================================================== */
+$('pay-btn').onclick = () => {
+  $('p-cash').value = 0; $('p-card').value = 0; $('p-other').value = 0; $('p-note').value = '';
+  $('p-sum').textContent = cart.length + ' שורות · ' + money(cartTotal());
+  $('sh-pay').classList.remove('hide');
+  recalcTender();
+};
+$('p-cancel').onclick = () => { $('sh-pay').classList.add('hide'); $('q').focus(); };
+
+document.querySelectorAll('.fill').forEach(b => {
+  b.onclick = () => {
+    const cur = tenderSum() - (parseFloat($(b.dataset.fill).value) || 0);
+    $(b.dataset.fill).value = r2(Math.max(cartTotal() - cur, 0));
+    recalcTender();
+  };
+});
+['p-cash', 'p-card', 'p-other'].forEach(id => $(id).addEventListener('input', recalcTender));
+$('p-note').addEventListener('input', recalcTender);
+
+const tenderSum = () => r2(['p-cash', 'p-card', 'p-other'].reduce((s, id) => s + (parseFloat($(id).value) || 0), 0));
+
+function recalcTender() {
+  const total = cartTotal(), paid = tenderSum(), diff = r2(total - paid);
+  const other = parseFloat($('p-other').value) || 0;
+  $('p-note-wrap').classList.toggle('hide', other <= 0);
+
+  const noteOk = other <= 0 || $('p-note').value.trim().length > 0;
+  const balanced = Math.abs(diff) < 0.01;
+  const el = $('remain');
+
+  if (balanced)      { el.className = 'ok';  el.textContent = 'מאוזן'; }
+  else if (diff > 0) { el.className = 'bad'; el.textContent = 'נותר לשלם ' + money(diff); }
+  else               { el.className = 'bad'; el.textContent = 'עודף ' + money(-diff); }
+  if (balanced && !noteOk) { el.className = 'bad'; el.textContent = 'חסר פירוט ל״אחר״'; }
+
+  $('p-done').disabled = !(balanced && noteOk);
+}
+
+$('p-done').onclick = () => {
+  const sale = {
+    sale_id: uuid(),
+    event: session.event, staff: session.staff,
+    sold_at_local: new Date().toISOString(),
+    pay_cash: r2(parseFloat($('p-cash').value) || 0),
+    pay_card: r2(parseFloat($('p-card').value) || 0),
+    pay_other: r2(parseFloat($('p-other').value) || 0),
+    pay_other_note: $('p-note').value.trim(),
+    lines: cart.slice()
+  };
+
+  queue.push(sale); save(LS.queue, queue);
+  cart = []; save(LS.cart, cart);
+  $('sh-pay').classList.add('hide');
+  renderCart(); renderPill();
+  toast('מכירה נשמרה · ' + money(sale.pay_cash + sale.pay_card + sale.pay_other));
+  beepHit();
+  $('q').focus();
+  flush();
+};
+
+function uuid() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return 'sid-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+
+/* ==================================================================
+   Queue + flush
+   Every sale lands in localStorage first and only leaves when the server
+   confirms it. sale_id makes the commit idempotent, so a retry after a dropped
+   connection can't double-count the day's totals.
+   ================================================================== */
+async function flush() {
+  renderPill();
+  if (flushing || !queue.length || !navigator.onLine) return;
+  flushing = true; renderPill();
+
+  try {
+    const batch = queue.slice(0, 25);
+    const res = await apiPost(batch);
+    if (!res || !res.ok) { flushing = false; renderPill(); return; }
+
+    const done = new Set([...(res.committed || []), ...(res.duplicates || [])]);
+    const bad = new Map((res.failed || []).map(f => [f.sale_id, f.error]));
+
+    queue = queue.filter(s => {
+      if (bad.has(s.sale_id)) { stuck.push({ ...s, error: bad.get(s.sale_id) }); return false; }
+      return !done.has(s.sale_id);
+    });
+    save(LS.queue, queue); save(LS.stuck, stuck);
+    flushing = false;
+    renderPill(); renderStuck();
+    if (queue.length) flush();   // more batches waiting
+  } catch (err) {
+    flushing = false; renderPill();
+  }
+}
+
+function renderPill() {
+  const p = $('h-pill');
+  if (!navigator.onLine && queue.length) { p.className = 'pill queued'; p.textContent = 'לא מקוון · ' + queue.length; }
+  else if (queue.length)                 { p.className = 'pill queued'; p.textContent = (flushing ? 'שולח · ' : 'ממתין · ') + queue.length; }
+  else if (!navigator.onLine)            { p.className = 'pill queued'; p.textContent = 'לא מקוון'; }
+  else                                   { p.className = 'pill ok'; p.textContent = 'מסונכרן'; }
+  if (stuck.length) { p.className = 'pill bad'; p.textContent = 'תקוע · ' + stuck.length; }
+}
+$('h-pill').onclick = flush;
+
+/* ==================================================================
+   Stuck sales
+   ================================================================== */
+function renderStuck() {
+  $('stuck-n').textContent = stuck.length;
+  $('stuck-btn').classList.toggle('hide', !stuck.length);
+  $('stuck-list').innerHTML = stuck.length ? stuck.map((s, i) => `
+    <div class="line">
+      <div class="info">
+        <b>${money(s.pay_cash + s.pay_card + s.pay_other)} · ${s.lines.length} שורות</b>
+        <small style="color:var(--danger)">${esc(s.error)}</small>
+      </div>
+      <button class="x" data-del="${i}">×</button>
+    </div>`).join('') : '<div class="empty">אין</div>';
+  $('stuck-list').querySelectorAll('[data-del]').forEach(b => {
+    b.onclick = () => { stuck.splice(+b.dataset.del, 1); save(LS.stuck, stuck); renderStuck(); renderPill(); };
+  });
+}
+$('stuck-btn').onclick = () => $('sh-stuck').classList.remove('hide');
+$('s-close').onclick = () => $('sh-stuck').classList.add('hide');
+
+/* Last line of defence: don't let someone close the tab on unsent money. */
+window.addEventListener('beforeunload', e => {
+  if (queue.length) { e.preventDefault(); e.returnValue = ''; }
+});
+</script>
+</body>
+</html>
