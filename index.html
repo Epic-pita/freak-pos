@@ -91,6 +91,13 @@
   #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; }
   #reader video { width: 100% !important; display: block; }
 
+  #cam-pick {
+    width: 100%; min-height: var(--tap); padding: 0 12px;
+    border: 2px solid var(--line); border-radius: 10px; background: var(--surface);
+  }
+  #zoom { width: 100%; height: 44px; accent-color: var(--ink); }
+  #zoom-val { font-variant-numeric: tabular-nums; color: var(--ink); }
+
   .hint { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
 
   .line { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
@@ -181,8 +188,19 @@
         <div id="results"></div>
         <div style="height:10px"></div>
         <button class="btn ghost" id="cam-btn">הפעל מצלמה</button>
-        <div style="height:10px"></div>
-        <div id="reader"></div>
+        <div id="cam-wrap" class="hide">
+          <div style="height:10px"></div>
+          <select id="cam-pick" class="hide"></select>
+          <div style="height:10px"></div>
+          <div id="reader"></div>
+          <div id="zoom-wrap" class="hide">
+            <label for="zoom" style="margin-top:12px">זום <span id="zoom-val">1.0×</span></label>
+            <input id="zoom" type="range" min="1" max="5" step="0.1" value="1">
+          </div>
+          <div style="height:10px"></div>
+          <button class="btn ghost hide" id="torch-btn">🔦 פנס</button>
+          <p class="hint" id="cam-hint">ברקוד קטן? אל תתקרב — הישאר 20 ס״מ ותזום. מתחת ל-10 ס״מ המצלמה לא מצליחה למקד.</p>
+        </div>
       </div>
 
       <div class="card">
@@ -446,30 +464,153 @@ function enterMain() {
 
 /* ==================================================================
    Camera
+
+   Three things fight small barcodes, and only one is obvious:
+
+   1. MIN FOCUS DISTANCE. A phone's main lens can't focus below ~10cm. Small
+      barcode makes you lean in, you cross that line, it blurs permanently.
+      Zoom is the fix, not proximity — hence the slider, defaulted to 2x.
+   2. LENS CHOICE. facingMode:'environment' lets the browser pick, and it often
+      picks the ultra-wide, which on most phones is FIXED FOCUS and can never
+      sharpen up close. So we enumerate and pick deliberately, and remember it.
+   3. RESOLUTION. Default getUserMedia hands back 640x480. A booster barcode at
+      that size is a few pixels per bar — unreadable even when perfectly sharp.
+      We ask for 1080p.
    ================================================================== */
+const CAM_KEY = 'pos_camera_v1';
+const ZOOM_KEY = 'pos_zoom_v1';
+let cams = [], zoomFeat = null, torchFeat = null, torchOn = false;
+
+async function listCams() {
+  try { cams = await Html5Qrcode.getCameras(); } catch (e) { cams = []; }
+  const sel = $('cam-pick');
+  if (cams.length < 2) { sel.classList.add('hide'); return; }
+
+  const saved = localStorage.getItem(CAM_KEY);
+  sel.innerHTML = cams.map(c =>
+    `<option value="${esc(c.id)}"${c.id === saved ? ' selected' : ''}>${esc(c.label || 'מצלמה')}</option>`
+  ).join('');
+  sel.classList.remove('hide');
+  sel.onchange = async () => {
+    localStorage.setItem(CAM_KEY, sel.value);
+    if (scanning) { await stopCam(); await startCam(); }
+  };
+}
+
+function pickCamId() {
+  const saved = localStorage.getItem(CAM_KEY);
+  if (saved && cams.some(c => c.id === saved)) return saved;
+  if (!cams.length) return null;
+  // Prefer a back camera that isn't the ultra-wide. Labels are the only signal
+  // the browser gives us, and they're inconsistent — so this is a hint, not a
+  // guarantee. The picker exists because this will sometimes guess wrong.
+  const back = cams.filter(c => /back|rear|environment|אחורית/i.test(c.label || ''));
+  const pool = back.length ? back : cams;
+  const notWide = pool.find(c => !/wide|ultra|0\.5/i.test(c.label || ''));
+  return (notWide || pool[0]).id;
+}
+
+async function startCam() {
+  scanner = scanner || new Html5Qrcode('reader', {
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,  Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39
+    ]
+  });
+
+  const id = pickCamId();
+  const source = id ? { deviceId: { exact: id } } : { facingMode: 'environment' };
+
+  // Must be visible BEFORE start(): html5-qrcode measures #reader to size the
+  // viewfinder, and a display:none element measures zero.
+  $('cam-wrap').classList.remove('hide');
+
+  await scanner.start(
+    source,
+    {
+      fps: 10,
+      // Wide and short: a retail barcode is a letterbox, and a square box wastes
+      // half the decoder's pixels on packaging.
+      qrbox: { width: 300, height: 170 },
+      aspectRatio: 1.777,
+      videoConstraints: {
+        ...source,
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      }
+    },
+    onScan, () => {}
+  );
+
+  scanning = true;
+  $('cam-btn').textContent = 'כבה מצלמה';
+  wireCamFeatures();
+}
+
+function wireCamFeatures() {
+  zoomFeat = torchFeat = null;
+  try {
+    const caps = scanner.getRunningTrackCameraCapabilities();
+    zoomFeat = caps.zoomFeature();
+    torchFeat = caps.torchFeature();
+  } catch (e) {}
+
+  // Zoom
+  const zw = $('zoom-wrap'), z = $('zoom');
+  if (zoomFeat && zoomFeat.isSupported()) {
+    z.min = zoomFeat.min(); z.max = zoomFeat.max(); z.step = zoomFeat.step() || 0.1;
+    // 2x by default: far enough back to focus, close enough to decode.
+    const want = Number(localStorage.getItem(ZOOM_KEY)) || Math.min(2, zoomFeat.max());
+    z.value = want;
+    applyZoom(want);
+    z.oninput = () => applyZoom(Number(z.value));
+    zw.classList.remove('hide');
+  } else {
+    zw.classList.add('hide');
+    $('cam-hint').textContent = 'הטלפון לא תומך בזום. ברקוד קטן? נסה מצלמה אחרת ברשימה, או אקדח ברקוד.';
+  }
+
+  // Torch
+  const tb = $('torch-btn');
+  if (torchFeat && torchFeat.isSupported()) {
+    torchOn = false;
+    tb.textContent = '🔦 פנס';
+    tb.classList.remove('hide');
+    tb.onclick = async () => {
+      torchOn = !torchOn;
+      try { await torchFeat.apply(torchOn); tb.textContent = torchOn ? '🔦 פנס דולק' : '🔦 פנס'; }
+      catch (e) { toast('פנס לא זמין'); }
+    };
+  } else {
+    tb.classList.add('hide');
+  }
+}
+
+function applyZoom(v) {
+  $('zoom-val').textContent = v.toFixed(1) + '×';
+  localStorage.setItem(ZOOM_KEY, v);
+  try { zoomFeat.apply(v); } catch (e) {}
+}
+
 $('cam-btn').onclick = async () => {
   if (scanning) return stopCam();
   try {
-    scanner = scanner || new Html5Qrcode('reader', {
-      formatsToSupport: [
-        Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,  Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39
-      ]
-    });
-    await scanner.start({ facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 260, height: 140 } }, onScan, () => {});
-    scanning = true;
-    $('cam-btn').textContent = 'כבה מצלמה';
+    if (!cams.length) await listCams();
+    await startCam();
   } catch (e) {
+    $('cam-wrap').classList.add('hide');
     toast('אין גישה למצלמה — השתמש בחיפוש');
   }
 };
 
 async function stopCam() {
+  try { if (torchOn && torchFeat) await torchFeat.apply(false); } catch (e) {}
   try { await scanner.stop(); } catch (e) {}
+  torchOn = false;
   scanning = false;
   $('cam-btn').textContent = 'הפעל מצלמה';
+  $('cam-wrap').classList.add('hide');
 }
 
 function onScan(code) {

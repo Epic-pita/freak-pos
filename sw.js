@@ -8,7 +8,7 @@
  *
  * Bump CACHE after editing any shell file, or phones keep the old copy.
  */
-const CACHE = 'freak-pos-v1';
+const CACHE = 'freak-pos-v2';   // bumped: camera picker + zoom + torch
 
 const SHELL = [
   './',
