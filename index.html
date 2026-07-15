@@ -7,6 +7,7 @@
 <title>FREAK POS</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./icon-192.png">
+<link rel="icon" href="./icon-192.png">
 
 <!--
   Design note: the only colours in this UI are status colours (green = synced,
@@ -289,7 +290,7 @@
 <div class="sheet hide" id="sh-stuck">
   <div class="panel">
     <h2>מכירות תקועות</h2>
-    <p class="sub">מכירות שהשרת דחה. הן לא נספרות בהכנסות. תקן בגיליון או מחק.</p>
+    <p class="sub">מכירות שהשרת דחה — הן לא נרשמו בגיליון ולא נספרות בהכנסות. העתק את הפרטים לפני מחיקה; מחיקה היא סופית.</p>
     <div id="stuck-list"></div>
     <div style="height:14px"></div>
     <button class="btn ghost" id="s-close">סגור</button>
@@ -337,18 +338,30 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
    preflight OPTIONS, and Apps Script cannot answer OPTIONS — every sale would
    fail before reaching the sheet. The body is still JSON; only the header lies.
    ================================================================== */
+/* Every request carries a fuse. Zombie wifi — connected, no internet — hangs a
+   fetch for 30-60s before the OS gives up. Untimed, the catalog GET held the
+   gate on "טוען…" with a perfectly good cached catalog sitting in localStorage,
+   and a hung POST left `flushing` true forever, after which nothing synced
+   again until someone thought to reload the app. */
+function fetchT(url, opts, ms) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  return fetch(url, { ...opts, signal: ctl.signal }).finally(() => clearTimeout(t));
+}
+
 async function apiGet(action) {
-  const res = await fetch(`${API_URL}?action=${encodeURIComponent(action)}&token=${encodeURIComponent(TOKEN)}`);
+  const res = await fetchT(`${API_URL}?action=${encodeURIComponent(action)}&token=${encodeURIComponent(TOKEN)}`, {}, 8000);
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
 }
 
 async function apiPost(sales) {
-  const res = await fetch(API_URL, {
+  // Generous: Apps Script cold-starts in 1-5s and the sheet write isn't free.
+  const res = await fetchT(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ token: TOKEN, sales })
-  });
+  }, 25000);
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
 }
@@ -400,9 +413,22 @@ function lookup(raw) {
    Sound — generated, not fetched. A missing beep.mp3 offline is silent failure.
    ================================================================== */
 let ac = null;
+
+/* Browsers gate audio behind a user gesture. An AudioContext born inside a
+   scan callback starts "suspended", and the first beep of the day — the one
+   confirming the very first scan worked — plays silence. Warm it up on a real
+   tap instead. */
+function unlockAudio() {
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+  } catch (e) {}
+}
+
 function beep(freq, ms) {
   try {
     ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
     const o = ac.createOscillator(), g = ac.createGain();
     o.connect(g); g.connect(ac.destination);
     o.frequency.value = freq; o.type = 'square';
@@ -424,7 +450,7 @@ function toast(msg) {
 /* ==================================================================
    Boot
    ================================================================== */
-const BUILD = 'v3';
+const BUILD = 'v4';
 
 window.addEventListener('load', async () => {
   if ('serviceWorker' in navigator) {
@@ -443,7 +469,33 @@ window.addEventListener('load', async () => {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
 
+  // Queued sales are money. Ask the browser not to evict this origin's storage
+  // under pressure. Best-effort; a denial changes nothing.
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
   if (catalog) indexCatalog();
+
+  // Session first, network second. The catalog refresh used to sit between the
+  // saved session and enterMain(), so zombie wifi held the whole app on
+  // "טוען קטלוג…" while a day-old catalog sat right there in localStorage.
+  if (session) { $('g-staff').value = session.staff; $('g-event').value = session.event; enterMain(); }
+  renderPill(); renderStuck();
+  setInterval(flush, 20000);
+  window.addEventListener('online', flush);
+  window.addEventListener('offline', renderPill);
+
+  // A second tab (PWA + browser tab happens by accident) drains or grows the
+  // queue behind our back; without this, whichever tab saved last silently
+  // overwrote the other's queued sales. Never touch `cart` from here — yanking
+  // the cart out from under a sale in progress is worse than any staleness.
+  window.addEventListener('storage', e => {
+    if (e.key === LS.queue || e.key === LS.stuck) {
+      queue = load(LS.queue, []);
+      stuck = load(LS.stuck, []);
+      renderPill(); renderStuck();
+    }
+  });
+  flush();
 
   try {
     const res = await apiGet('catalog');
@@ -457,16 +509,10 @@ window.addEventListener('load', async () => {
       ? 'אין רשת — קטלוג שמור (' + flat.length.toLocaleString('he-IL') + ' פריטים)'
       : 'טעינה נכשלה: ' + err.message + ' — בדוק API_URL ו-TOKEN') + ' · ' + BUILD;
   }
-
-  if (session) { $('g-staff').value = session.staff; $('g-event').value = session.event; enterMain(); }
-  renderPill(); renderStuck();
-  setInterval(flush, 20000);
-  window.addEventListener('online', flush);
-  window.addEventListener('offline', renderPill);
-  flush();
 });
 
 $('g-go').onclick = () => {
+  unlockAudio();
   const staff = $('g-staff').value.trim(), event = $('g-event').value.trim();
   if (!staff || !event) return toast('מלא שם ואירוע');
   session = { staff, event }; save(LS.session, session);
@@ -562,8 +608,13 @@ async function startCam() {
     {
       fps: 10,
       // Wide and short: a retail barcode is a letterbox, and a square box wastes
-      // half the decoder's pixels on packaging.
-      qrbox: { width: 300, height: 170 },
+      // half the decoder's pixels on packaging. Function form because a fixed
+      // 300px box is wider than the whole video on a narrow phone — and the
+      // library THROWS on a qrbox bigger than its viewfinder.
+      qrbox: (w, h) => ({
+        width: Math.min(300, Math.floor(w * 0.9)),
+        height: Math.min(170, Math.floor(h * 0.8))
+      }),
       aspectRatio: 1.777,
       videoConstraints: {
         ...source,
@@ -591,8 +642,12 @@ function wireCamFeatures() {
   const zw = $('zoom-wrap'), z = $('zoom');
   if (zoomFeat && zoomFeat.isSupported()) {
     z.min = zoomFeat.min(); z.max = zoomFeat.max(); z.step = zoomFeat.step() || 0.1;
-    // 2x by default: far enough back to focus, close enough to decode.
-    const want = Number(localStorage.getItem(ZOOM_KEY)) || Math.min(2, zoomFeat.max());
+    // 2x by default: far enough back to focus, close enough to decode. The
+    // saved zoom came from whichever camera ran last — clamp it to THIS
+    // camera's range, or the label, the slider and the actual zoom go three
+    // separate ways (apply() throws out of range, and silently).
+    const saved = Number(localStorage.getItem(ZOOM_KEY)) || Math.min(2, zoomFeat.max());
+    const want = Math.min(Math.max(saved, zoomFeat.min()), zoomFeat.max());
     z.value = want;
     applyZoom(want);
     z.oninput = () => applyZoom(Number(z.value));
@@ -625,6 +680,7 @@ function applyZoom(v) {
 }
 
 $('cam-btn').onclick = async () => {
+  unlockAudio();
   if (scanning) return stopCam();
   try {
     if (!cams.length) await listCams();
@@ -689,6 +745,11 @@ $('q').addEventListener('input', e => {
 });
 
 function handleCode(code) {
+  // An open sheet means someone is mid-decision. The camera keeps decoding
+  // behind the overlay (the phone is still pointed at the table), and without
+  // this guard a re-scan reset the qty/price being typed — or opened the item
+  // sheet UNDER the pay sheet, leaving a ghost item waiting after checkout.
+  if (document.querySelector('.sheet:not(.hide)')) return;
   const item = lookup(code);
   if (item) { beepHit(); openItem(item); }
   else { beepMiss(); openItem({ barcode: code, item_id: '', name: '', category: '', price: 0 }); }
@@ -719,10 +780,16 @@ function openItem(item) {
   if (unknown || unpriced) setTimeout(() => $('i-price').focus(), 120);
 }
 
+/* Hand the gun back its input — but not while the camera runs: a programmatic
+   focus() pops the software keyboard over half the viewfinder on every add. */
+function focusSearch() {
+  if (!scanning) $('q').focus();
+}
+
 function closeItem() {
   $('sh-item').classList.add('hide');
   pending = null;
-  $('q').focus();   // hand the gun back its input
+  focusSearch();
 }
 
 $('i-cancel').onclick = closeItem;
@@ -790,7 +857,7 @@ $('pay-btn').onclick = () => {
   $('sh-pay').classList.remove('hide');
   recalcTender();
 };
-$('p-cancel').onclick = () => { $('sh-pay').classList.add('hide'); $('q').focus(); };
+$('p-cancel').onclick = () => { $('sh-pay').classList.add('hide'); focusSearch(); };
 
 document.querySelectorAll('.fill').forEach(b => {
   b.onclick = () => {
@@ -822,6 +889,7 @@ function recalcTender() {
 }
 
 $('p-done').onclick = () => {
+  if (!cart.length) return;   // a double-fire here queued a zero-line sale — a fake "stuck" scare
   const sale = {
     sale_id: uuid(),
     event: session.event, staff: session.staff,
@@ -833,13 +901,14 @@ $('p-done').onclick = () => {
     lines: cart.slice()
   };
 
+  queue = load(LS.queue, queue);   // pick up anything a second tab queued meanwhile
   queue.push(sale); save(LS.queue, queue);
   cart = []; save(LS.cart, cart);
   $('sh-pay').classList.add('hide');
   renderCart(); renderPill();
   toast('מכירה נשמרה · ' + money(sale.pay_cash + sale.pay_card + sale.pay_other));
   beepHit();
-  $('q').focus();
+  focusSearch();
   flush();
 };
 
@@ -854,6 +923,8 @@ function uuid() {
    confirms it. sale_id makes the commit idempotent, so a retry after a dropped
    connection can't double-count the day's totals.
    ================================================================== */
+let lastFlushErr = '';
+
 async function flush() {
   renderPill();
   if (flushing || !queue.length || !navigator.onLine) return;
@@ -862,11 +933,23 @@ async function flush() {
   try {
     const batch = queue.slice(0, 25);
     const res = await apiPost(batch);
-    if (!res || !res.ok) { flushing = false; renderPill(); return; }
+    if (!res || !res.ok) {
+      // BUSY (lock contention) is transient — stay amber, retry in 20s.
+      // BAD_TOKEN is not: the server token rotated under an old client, and
+      // silence here meant a phone that queued all day and never synced.
+      lastFlushErr = (res && res.error) || 'NO_RESPONSE';
+      if (lastFlushErr === 'BAD_TOKEN') toast('השרת דחה את הטוקן — עדכן את האפליקציה');
+      flushing = false; renderPill(); return;
+    }
+    lastFlushErr = '';
 
     const done = new Set([...(res.committed || []), ...(res.duplicates || [])]);
     const bad = new Map((res.failed || []).map(f => [f.sale_id, f.error]));
 
+    // Re-read before filtering: a second tab may have queued a sale while the
+    // POST was in flight, and filtering our stale copy would silently drop it.
+    queue = load(LS.queue, queue);
+    stuck = load(LS.stuck, stuck);
     queue = queue.filter(s => {
       if (bad.has(s.sale_id)) { stuck.push({ ...s, error: bad.get(s.sale_id) }); return false; }
       return !done.has(s.sale_id);
@@ -876,6 +959,7 @@ async function flush() {
     renderPill(); renderStuck();
     if (queue.length) flush();   // more batches waiting
   } catch (err) {
+    lastFlushErr = (err && err.name === 'AbortError') ? 'TIMEOUT' : String(err);
     flushing = false; renderPill();
   }
 }
@@ -887,6 +971,9 @@ function renderPill() {
   else if (!navigator.onLine)            { p.className = 'pill queued'; p.textContent = 'לא מקוון'; }
   else                                   { p.className = 'pill ok'; p.textContent = 'מסונכרן'; }
   if (stuck.length) { p.className = 'pill bad'; p.textContent = 'תקוע · ' + stuck.length; }
+  // Token death outranks everything: nothing will sync until the app updates.
+  if (lastFlushErr === 'BAD_TOKEN') { p.className = 'pill bad'; p.textContent = 'טוקן שגוי · ' + queue.length; }
+  p.title = lastFlushErr;   // last transport error, for whoever debugs at the stall
 }
 $('h-pill').onclick = flush;
 
@@ -900,12 +987,25 @@ function renderStuck() {
     <div class="line">
       <div class="info">
         <b>${money(s.pay_cash + s.pay_card + s.pay_other)} · ${s.lines.length} שורות</b>
-        <small style="color:var(--danger)">${esc(s.error)}</small>
+        <small style="display:block">${esc(s.lines.map(l => l.qty + '× ' + l.name).join(' · '))}</small>
+        <small style="display:block;color:var(--danger)">${esc(s.error)}</small>
       </div>
-      <button class="x" data-del="${i}">×</button>
+      <button class="x" data-copy="${i}" aria-label="העתק פרטים" style="color:var(--ink);font-size:17px">⧉</button>
+      <button class="x" data-del="${i}" aria-label="מחק">×</button>
     </div>`).join('') : '<div class="empty">אין</div>';
+  $('stuck-list').querySelectorAll('[data-copy]').forEach(b => {
+    b.onclick = async () => {
+      try { await navigator.clipboard.writeText(JSON.stringify(stuck[+b.dataset.copy], null, 2)); toast('הועתק'); }
+      catch (e) { toast('העתקה נכשלה'); }
+    };
+  });
   $('stuck-list').querySelectorAll('[data-del]').forEach(b => {
-    b.onclick = () => { stuck.splice(+b.dataset.del, 1); save(LS.stuck, stuck); renderStuck(); renderPill(); };
+    b.onclick = () => {
+      // The queue never got this sale onto the sheet — this row is the only
+      // copy of that money anywhere. Deletion has to be deliberate.
+      if (!confirm('למחוק? המכירה הזו לא נרשמה בשום מקום אחר.')) return;
+      stuck.splice(+b.dataset.del, 1); save(LS.stuck, stuck); renderStuck(); renderPill();
+    };
   });
 }
 $('stuck-btn').onclick = () => $('sh-stuck').classList.remove('hide');

@@ -8,11 +8,14 @@
  *
  * STRATEGY — two rules, and the split matters:
  *
- *   index.html  → NETWORK FIRST. It carries the app's code. If there's signal,
- *                 the newest copy wins, always. Cache is the offline fallback
- *                 only. (v1 and v2 got this wrong: cache-first meant a phone
- *                 preferred its stale copy of the app over the one just
- *                 deployed, and no amount of closing and reopening fixed it.)
+ *   index.html  → NETWORK FIRST, 3.5s fuse. It carries the app's code. If
+ *                 there's signal, the newest copy wins, always. Cache is the
+ *                 offline fallback. (v1 and v2 got this wrong: cache-first
+ *                 meant a phone preferred its stale copy of the app over the
+ *                 one just deployed, and no amount of reopening fixed it.)
+ *                 The fuse exists because zombie wifi — connected, no
+ *                 internet — hangs a fetch for 30s+ before the OS gives up,
+ *                 which read as "the app won't open" at the stall.
  *
  *   everything  → CACHE FIRST. The scanner library and icons don't change
  *   else         except at release, and re-downloading 375KB per open on stall
@@ -20,7 +23,7 @@
  *
  * Bump CACHE on every release. The name is the invalidation.
  */
-const CACHE = 'freak-pos-v3';
+const CACHE = 'freak-pos-v4';
 
 const SHELL = [
   './',
@@ -63,15 +66,31 @@ self.addEventListener('fetch', e => {
               || url.pathname.endsWith('/');
 
   if (isHTML) {
-    e.respondWith(
-      fetch(e.request)
-        .then(res => {
+    e.respondWith((async () => {
+      const fetched = fetch(e.request).then(res => {
+        // Cache only clean, direct 200s. A captive portal answering 200 for
+        // our URL, or a 404 from a broken deploy, must never overwrite the
+        // known-good shell — offline would then boot into the portal page.
+        if (res.ok && !res.redirected) {
           const copy = res.clone();
           caches.open(CACHE).then(c => c.put(e.request, copy));
-          return res;
-        })
-        .catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
-    );
+        }
+        return res;
+      });
+
+      // Race the network against a short fuse. If the fuse wins, serve cache;
+      // the fetch keeps running and still refreshes the cache for next open.
+      const winner = await Promise.race([
+        fetched.catch(() => null),
+        new Promise(r => setTimeout(() => r(null), 3500))
+      ]);
+      if (winner) return winner;
+
+      const cached = await caches.match(e.request) || await caches.match('./index.html');
+      // Nothing cached (first-ever visit on a slow link): the network, however
+      // long it takes, is all there is.
+      return cached || fetched;
+    })());
     return;
   }
 
