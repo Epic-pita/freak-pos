@@ -56,9 +56,14 @@
     background: var(--surface); border-bottom: 1px solid var(--line);
     padding: 10px 14px; display: flex; align-items: center; gap: 10px;
   }
-  header .who { flex: 1; min-width: 0; }
+  header .who {
+    flex: 1; min-width: 0; text-align: start;
+    padding: 4px 8px; margin: -4px -8px; border-radius: 8px;
+  }
+  header .who:active { background: var(--bg); }
   header .who b { display: block; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   header .who span { font-size: 13px; color: var(--muted); }
+  header .who span::after { content: ' ⌄'; }
 
   .pill {
     font-size: 13px; font-weight: 700; padding: 7px 12px; border-radius: 999px;
@@ -173,10 +178,10 @@
   <!-- ============ MAIN ============ -->
   <div id="main" class="hide">
     <header>
-      <div class="who">
+      <button class="who" id="who-btn" title="החלף עובד או אירוע">
         <b id="h-event">—</b>
         <span id="h-staff">—</span>
-      </div>
+      </button>
       <button class="pill ok" id="h-pill" title="מצב סנכרון">מסונכרן</button>
     </header>
 
@@ -419,8 +424,22 @@ function toast(msg) {
 /* ==================================================================
    Boot
    ================================================================== */
+const BUILD = 'v3';
+
 window.addEventListener('load', async () => {
   if ('serviceWorker' in navigator) {
+    // Was this page already under a worker? If so, a controller change means an
+    // UPDATE landed, not a first install — and the running page is now stale.
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloading) return;
+      reloading = true;
+      // Never yank the page out from under a sale in progress. Cart and queue
+      // both survive in localStorage, but a reload mid-checkout is alarming.
+      if (cart.length) { toast('עדכון מוכן — סגור ופתח את האפליקציה'); return; }
+      location.reload();
+    });
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
 
@@ -432,11 +451,11 @@ window.addEventListener('load', async () => {
     catalog = { version: res.version, rows: res.rows };
     save(LS.catalog, catalog);
     indexCatalog();
-    $('g-status').textContent = flat.length.toLocaleString('he-IL') + ' פריטים נטענו';
+    $('g-status').textContent = flat.length.toLocaleString('he-IL') + ' פריטים נטענו · ' + BUILD;
   } catch (err) {
-    $('g-status').textContent = flat.length
+    $('g-status').textContent = (flat.length
       ? 'אין רשת — קטלוג שמור (' + flat.length.toLocaleString('he-IL') + ' פריטים)'
-      : 'טעינה נכשלה: ' + err.message + ' — בדוק API_URL ו-TOKEN';
+      : 'טעינה נכשלה: ' + err.message + ' — בדוק API_URL ו-TOKEN') + ' · ' + BUILD;
   }
 
   if (session) { $('g-staff').value = session.staff; $('g-event').value = session.event; enterMain(); }
@@ -461,6 +480,18 @@ function enterMain() {
   $('main').classList.remove('hide');
   renderCart();
 }
+
+/* Tap the header to get back. Without this there was no way to change staff or
+   event once saved — the gate only ever showed on a phone's very first open,
+   which read as the app "jumping straight to scanning". */
+$('who-btn').onclick = async () => {
+  if (cart.length) return toast('סיים או רוקן את הסל קודם');
+  if (scanning) await stopCam();
+  $('g-staff').value = session.staff;
+  $('g-event').value = session.event;
+  $('main').classList.add('hide');
+  $('gate').classList.remove('hide');
+};
 
 /* ==================================================================
    Camera
