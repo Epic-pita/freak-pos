@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0f1a20">
+<title>FREAK — ספירת מלאי</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1a20; --surface:#16262e; --surface2:#1d323c; --line:#2a4450;
+    --teal:#3d7a94; --green:#2E7D32; --green-hi:#43a047; --amber:#c77f14;
+    --red:#c0392b; --ink:#e8eef1; --dim:#8fa6b0; --mono:'Roboto Mono',monospace;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  body{margin:0; background:var(--bg); color:var(--ink);
+       font-family:-apple-system,'Segoe UI',Roboto,'Heebo',Arial,sans-serif; font-size:16px}
+  button{font-family:inherit; font-size:16px; border:none; border-radius:10px; cursor:pointer; color:var(--ink)}
+  input,select,textarea{font-family:inherit; font-size:16px; color:var(--ink); background:var(--surface2);
+       border:1px solid var(--line); border-radius:10px; padding:12px; width:100%}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--teal)}
+  label{font-size:13px; color:var(--dim); display:block; margin:14px 0 5px}
+
+  /* top bar */
+  #topbar{position:sticky; top:0; z-index:50; background:var(--surface); border-bottom:1px solid var(--line);
+          display:flex; align-items:center; gap:10px; padding:9px 12px}
+  #dot{width:10px; height:10px; border-radius:50%; background:var(--red); flex:none}
+  #dot.on{background:var(--green-hi)}
+  #userTag{font-size:14px; color:var(--dim)}
+  #progress{margin-inline-start:auto; font-family:var(--mono); font-size:14px; color:var(--ink)}
+  #queueBadge{background:var(--amber); color:#000; font-size:12px; font-weight:700;
+              border-radius:9px; padding:2px 8px; display:none}
+  .iconbtn{background:var(--surface2); padding:8px 12px; font-size:14px}
+
+  .screen{display:none; padding:14px; max-width:560px; margin:0 auto}
+  .screen.active{display:block}
+
+  /* scan screen */
+  #reader{border-radius:14px; overflow:hidden; border:1px solid var(--line)}
+  #scanHint{text-align:center; color:var(--dim); font-size:14px; margin:10px 0}
+  .row{display:flex; gap:8px}
+  .row > *{flex:1}
+  .btn-secondary{background:var(--surface2); padding:13px}
+  .btn-primary{background:var(--green); padding:15px; font-size:18px; font-weight:700; width:100%}
+  .btn-primary:disabled{opacity:.45}
+
+  /* item card */
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px}
+  #itemName{font-size:20px; font-weight:700; margin:0 0 6px}
+  .meta{display:flex; flex-wrap:wrap; gap:6px 14px; color:var(--dim); font-size:14px}
+  .meta b{color:var(--ink); font-family:var(--mono)}
+  #sysQtyBox{display:flex; align-items:center; justify-content:space-between; background:var(--surface2);
+             border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-top:12px}
+  #sysQtyBox .n{font-family:var(--mono); font-size:30px; font-weight:700; color:var(--teal)}
+  .banner{border-radius:10px; padding:10px 12px; font-size:14px; margin-top:10px; display:none}
+  .banner.warn{background:#3a2c10; color:#ffd479; display:block}
+  .banner.info{background:#10303a; color:#9fd8ea; display:block}
+
+  #countedInput{font-family:var(--mono); font-size:30px; font-weight:700; text-align:center; padding:10px}
+  #eqBtn{background:var(--surface2); border:1px dashed var(--teal); padding:0 14px; font-size:15px; white-space:nowrap}
+
+  .locrow{display:flex; gap:6px; margin-top:6px; align-items:center}
+  .locrow select{flex:2} .locrow input{flex:1; text-align:center; font-family:var(--mono)}
+  .locrow .x{background:none; color:var(--red); font-size:20px; padding:4px 8px; flex:none}
+
+  .flagline{display:flex; align-items:center; gap:10px; padding:11px 0; border-top:1px solid var(--line)}
+  .flagline input[type=checkbox]{width:22px; height:22px; accent-color:var(--amber); flex:none}
+  .flagline span{font-size:15px}
+  .flagextra{display:none; margin:0 0 10px}
+
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:6px}
+  .chip{background:var(--surface2); border:1px solid var(--line); border-radius:20px; padding:8px 14px; font-size:14px}
+  .chip.onc{background:var(--green); border-color:var(--green)}
+  .chip.add{border-style:dashed; color:var(--dim)}
+
+  .selrow{display:flex; gap:6px}
+  .selrow select{flex:1}
+  .selrow .plus{background:var(--surface2); border:1px dashed var(--line); padding:0 15px; font-size:20px; flex:none}
+
+  #photoBtn{background:var(--surface2); border:1px solid var(--line); width:100%; padding:14px; font-size:16px}
+  #photoBtn.done{border-color:var(--green-hi); color:var(--green-hi)}
+  #photoThumb{width:100%; max-height:150px; object-fit:cover; border-radius:10px; margin-top:8px; display:none}
+
+  details{border-top:1px solid var(--line); margin-top:8px}
+  summary{padding:12px 0; font-size:15px; color:var(--teal); cursor:pointer; list-style:none}
+  summary::before{content:'▸ '} details[open] summary::before{content:'▾ '}
+
+  #scannedInfo{display:none; background:#10301c; color:#9fe0b0; border-radius:10px; padding:10px 12px; font-size:14px; margin-top:10px}
+
+  /* search overlay */
+  #searchOverlay{position:fixed; inset:0; background:var(--bg); z-index:100; display:none; padding:12px; overflow-y:auto}
+  #searchList .sr{padding:12px; border-bottom:1px solid var(--line)}
+  #searchList .sr .nm{font-size:16px}
+  #searchList .sr .sub{font-size:13px; color:var(--dim); font-family:var(--mono)}
+
+  /* toast */
+  #toast{position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:var(--green);
+         color:#fff; padding:13px 22px; border-radius:12px; font-size:16px; font-weight:700;
+         z-index:200; display:none; box-shadow:0 4px 20px rgba(0,0,0,.5); white-space:nowrap}
+  #toast.err{background:var(--red)} #toast.warn{background:var(--amber); color:#000}
+
+  /* name gate */
+  #nameGate{position:fixed; inset:0; background:var(--bg); z-index:300; display:none;
+            flex-direction:column; justify-content:center; padding:28px; gap:14px}
+  #nameGate h1{color:var(--teal); font-size:26px; margin:0}
+
+  .backbtn{background:none; color:var(--dim); font-size:15px; padding:10px 0}
+  h2.sect{font-size:17px; color:var(--teal); margin:4px 0 10px}
+  #failedBox{display:none; background:#3a1512; border:1px solid var(--red); border-radius:10px;
+             padding:10px; font-size:13px; margin-top:10px; color:#f0b4ac}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div id="dot"></div>
+  <span id="userTag"></span>
+  <span id="queueBadge">0</span>
+  <span id="progress">—</span>
+  <button class="iconbtn" onclick="openSearch()">🔎</button>
+  <button class="iconbtn" onclick="refreshCatalog()">⟳</button>
+</div>
+
+<!-- ============ SCAN ============ -->
+<div id="screen-scan" class="screen active">
+  <div id="reader"></div>
+  <div id="scanHint">מכוונים את המצלמה לברקוד</div>
+  <div class="row" style="margin-top:6px">
+    <input id="manualBc" inputmode="numeric" placeholder="ברקוד ידני / קוד פריט">
+    <button class="btn-secondary" style="flex:0 0 90px" onclick="manualGo()">חפש</button>
+  </div>
+  <div id="failedBox"></div>
+</div>
+
+<!-- ============ ITEM ============ -->
+<div id="screen-item" class="screen">
+  <button class="backbtn" onclick="backToScan()">→ חזרה לסריקה</button>
+  <div class="card">
+    <h3 id="itemName"></h3>
+    <div class="meta">
+      <span>ברקוד <b id="itemBc"></b></span>
+      <span>קוד <b id="itemCode"></b></span>
+      <span>מחלקה <b id="itemDept"></b></span>
+      <span>מחיר <b id="itemPrice"></b> ₪</span>
+    </div>
+    <div id="svcBanner" class="banner"></div>
+    <div id="scannedInfo"></div>
+    <div id="sysQtyBox"><span>כמות במערכת</span><span class="n" id="itemSysQty"></span></div>
+
+    <label>כמות בפועל</label>
+    <div class="row">
+      <input id="countedInput" type="number" inputmode="numeric" placeholder="0">
+      <button id="eqBtn" onclick="setEq()">= מערכת</button>
+    </div>
+
+    <details id="locDetails">
+      <summary>פירוט מיקומים</summary>
+      <div id="locRows"></div>
+      <button class="btn-secondary" style="width:100%; margin-top:8px" onclick="addLocRow('',null)">+ מיקום</button>
+    </details>
+
+    <label style="margin-top:16px">תמונה (חובה)</label>
+    <button id="photoBtn" onclick="photoFile.click()">📷 צלם את המוצר</button>
+    <input type="file" id="photoFile" accept="image/*" capture="environment" hidden>
+    <img id="photoThumb" alt="">
+  </div>
+
+  <div class="card">
+    <h2 class="sect">תיקונים לקופה</h2>
+    <div class="flagline">
+      <input type="checkbox" id="fRename"><span>לשנות שם בקופה</span>
+    </div>
+    <input id="newName" class="flagextra" placeholder="השם הנכון">
+    <div class="flagline">
+      <input type="checkbox" id="fDept"><span>מחלקה שגויה</span>
+    </div>
+    <div class="flagextra selrow" id="deptWrap">
+      <select id="correctDept"></select>
+      <button class="plus" onclick="addNewLookup('מחלקות','correctDept')">+</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>עוד פרטים (סוג, מותג, ספקים…)</summary>
+
+      <label>סוג מוצר</label>
+      <div class="selrow"><select id="selType"></select>
+        <button class="plus" onclick="addNewLookup('סוגי מוצר','selType')">+</button></div>
+
+      <label>מותג</label>
+      <div class="selrow"><select id="selBrand"></select>
+        <button class="plus" onclick="addNewLookup('מותגים','selBrand')">+</button></div>
+
+      <label>תת-מותג</label>
+      <div class="selrow"><select id="selSub"></select>
+        <button class="plus" onclick="addNewLookup('תתי-מותגים','selSub')">+</button></div>
+
+      <label>ספקים (אפשר כמה)</label>
+      <div class="chips" id="supChips"></div>
+
+      <label>מצב פריט</label>
+      <select id="selCond"></select>
+
+      <label>קישור למידע</label>
+      <input id="infoLink" type="url" placeholder="https://…">
+
+      <label>הערות</label>
+      <textarea id="notes" rows="2"></textarea>
+    </details>
+  </div>
+
+  <button class="btn-primary" id="saveBtn" onclick="saveItem()">שמור ✓</button>
+  <div style="height:30px"></div>
+</div>
+
+<!-- ============ PENDING ============ -->
+<div id="screen-pending" class="screen">
+  <button class="backbtn" onclick="backToScan()">→ חזרה לסריקה</button>
+  <div class="card">
+    <h2 class="sect">פריט לא נמצא במערכת</h2>
+    <div class="banner info" style="display:block">נפתחת רשומה לטיפול. חובה תמונה + שם מהאריזה.</div>
+
+    <label>ברקוד</label>
+    <input id="pBc" inputmode="numeric">
+    <label>שם (מהאריזה)</label>
+    <input id="pName">
+    <label>כמות שנספרה</label>
+    <input id="pQty" type="number" inputmode="numeric">
+    <label>מחיר על המדבקה</label>
+    <input id="pPrice" type="number" inputmode="decimal">
+    <label>מיקום</label>
+    <select id="pLoc"></select>
+    <label>הערות</label>
+    <textarea id="pNotes" rows="2"></textarea>
+
+    <label>תמונה (חובה)</label>
+    <button id="pPhotoBtn" onclick="pPhotoFile.click()">📷 צלם את המוצר</button>
+    <input type="file" id="pPhotoFile" accept="image/*" capture="environment" hidden>
+    <img id="pPhotoThumb" style="width:100%;max-height:150px;object-fit:cover;border-radius:10px;margin-top:8px;display:none">
+  </div>
+  <button class="btn-primary" onclick="savePending()">שמור לרשימת טיפול</button>
+  <div style="height:30px"></div>
+</div>
+
+<!-- ============ SEARCH ============ -->
+<div id="searchOverlay">
+  <div class="row">
+    <input id="searchInput" placeholder="שם / ברקוד / קוד פריט" oninput="runSearch()">
+    <button class="btn-secondary" style="flex:0 0 80px" onclick="closeSearch()">סגור</button>
+  </div>
+  <div id="searchList"></div>
+</div>
+
+<div id="nameGate">
+  <h1>FREAK — ספירת מלאי</h1>
+  <label>שם פרטי (פעם אחת)</label>
+  <input id="nameInput" placeholder="השם שלך">
+  <button class="btn-primary" onclick="setName()">התחל לספור</button>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ================= CONFIG ================= */
+const API = 'https://script.google.com/macros/s/AKfycbzeRCRfEt4-PidJRjuTqL7aP_KDV5UrBhGEvp4riHW6z9m_HFg-hJf5ijS_yJH8ckZQ/exec';
+const LS = { user:'fc_user', catalog:'fc_catalog', catTime:'fc_catTime', lookups:'fc_lookups', failed:'fc_failed' };
+const CACHE_HOURS = 12;
+
+/* ================= STATE ================= */
+let catalog = [];                 // array of items
+let byBarcode = new Map(), byBc0 = new Map(), byCode = new Map();
+let lookups = {};
+let user = localStorage.getItem(LS.user) || '';
+let currentItem = null, currentPhotoB64 = null, pendingPhotoB64 = null;
+let locRowsData = [];             // [{l,q}]
+let scanner = null, scanPaused = false, lastScan = '', lastScanTs = 0;
+let db = null, syncing = false;
+
+/* ================= UTIL ================= */
+const $ = id => document.getElementById(id);
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() :
+  'xxxxxxxxyxxxyxxxyxxxyxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&3|8)).toString(16)}));
+function toast(msg, cls='', ms=2200){
+  const t=$('toast'); t.textContent=msg; t.className=cls; t.style.display='block';
+  clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', ms);
+}
+const stripZ = s => String(s).replace(/^0+/,'');
+function vibrate(ms){ if(navigator.vibrate) navigator.vibrate(ms); }
+
+/* ================= INDEXEDDB QUEUE ================= */
+function idbOpen(){ return new Promise((res,rej)=>{
+  const r = indexedDB.open('freak-count',1);
+  r.onupgradeneeded = ()=> r.result.createObjectStore('q',{keyPath:'uuid'});
+  r.onsuccess = ()=>res(r.result); r.onerror = ()=>rej(r.error);
+});}
+function qAdd(job){ return new Promise((res,rej)=>{
+  const tx=db.transaction('q','readwrite'); tx.objectStore('q').put(job);
+  tx.oncomplete=res; tx.onerror=()=>rej(tx.error);
+});}
+function qAll(){ return new Promise((res,rej)=>{
+  const r=db.transaction('q').objectStore('q').getAll();
+  r.onsuccess=()=>res(r.result.sort((a,b)=>a.ts-b.ts)); r.onerror=()=>rej(r.error);
+});}
+function qDel(id){ return new Promise((res,rej)=>{
+  const tx=db.transaction('q','readwrite'); tx.objectStore('q').delete(id);
+  tx.oncomplete=res; tx.onerror=()=>rej(tx.error);
+});}
+async function enqueue(payload){
+  payload.uuid = uuid(); payload.user = user; payload.ts = Date.now(); payload.att = 0;
+  await qAdd(payload); updateQueueBadge(); sync();
+}
+async function updateQueueBadge(){
+  const n = (await qAll()).length;
+  const b=$('queueBadge'); b.textContent=n; b.style.display = n? 'inline-block':'none';
+}
+
+/* ================= SYNC ================= */
+async function sync(){
+  if(syncing || !navigator.onLine) return;
+  syncing = true;
+  try{
+    const jobs = await qAll();
+    for(const job of jobs){
+      const body = {...job}; delete body.ts; delete body.att;
+      let js;
+      try{
+        const r = await fetch(API, {method:'POST',
+          headers:{'Content-Type':'text/plain;charset=utf-8'},
+          body: JSON.stringify(body)});
+        js = await r.json();
+      }catch(netErr){ break; }                       // offline / network — retry later
+      if(js && js.ok){ await qDel(job.uuid); }
+      else{
+        job.att = (job.att||0)+1;
+        if(job.att >= 5){
+          const f = JSON.parse(localStorage.getItem(LS.failed)||'[]');
+          f.push({action:job.action, code:job.itemCode||job.barcode||'', err:(js&&js.error)||'?'});
+          localStorage.setItem(LS.failed, JSON.stringify(f));
+          await qDel(job.uuid); renderFailed();
+        } else await qAdd(job);
+      }
+    }
+  } finally { syncing=false; updateQueueBadge(); }
+}
+setInterval(sync, 4000);
+window.addEventListener('online', ()=>{ $('dot').classList.add('on'); sync(); });
+window.addEventListener('offline', ()=> $('dot').classList.remove('on'));
+function renderFailed(){
+  const f = JSON.parse(localStorage.getItem(LS.failed)||'[]');
+  const box=$('failedBox');
+  if(!f.length){ box.style.display='none'; return; }
+  box.style.display='block';
+  box.innerHTML = '<b>שגיאות שמירה ('+f.length+'):</b> ' +
+    f.map(x=>x.code+' — '+x.err).join(' · ') +
+    ' <button class="backbtn" onclick="clearFailed()">נקה</button>';
+}
+function clearFailed(){ localStorage.removeItem(LS.failed); renderFailed(); }
+
+/* ================= CATALOG ================= */
+function indexCatalog(){
+  byBarcode.clear(); byBc0.clear(); byCode.clear();
+  for(const it of catalog){
+    if(it.barcode){ byBarcode.set(it.barcode, it); byBc0.set(stripZ(it.barcode), it); }
+    byCode.set(it.code, it);
+  }
+  updateProgress();
+}
+function saveCatalogLS(){
+  try{ localStorage.setItem(LS.catalog, JSON.stringify(catalog)); }catch(e){}
+}
+async function fetchCatalog(showToast){
+  try{
+    const r = await fetch(API + '?action=catalog');
+    const js = await r.json();
+    if(!js.ok) throw new Error(js.error||'catalog error');
+    catalog = js.items;
+    localStorage.setItem(LS.catTime, Date.now());
+    saveCatalogLS(); indexCatalog();
+    const r2 = await fetch(API + '?action=lookups');
+    const js2 = await r2.json();
+    if(js2.ok){ lookups = js2.lookups; localStorage.setItem(LS.lookups, JSON.stringify(lookups)); }
+    fillLookupUIs();
+    if(showToast) toast('קטלוג עודכן — '+catalog.length+' פריטים');
+  }catch(e){
+    if(showToast) toast('שגיאה בטעינת קטלוג', 'err');
+  }
+}
+function refreshCatalog(){ toast('מרענן קטלוג…','warn',4000); fetchCatalog(true); }
+function updateProgress(){
+  let done=0, target=0;
+  for(const it of catalog){
+    if(it.rtype==='פיזי' && Number(it.sysQty)>0){ target++; if(it.scanned) done++; }
+  }
+  $('progress').textContent = done + ' / ' + target;
+}
+
+/* ================= LOOKUP UIs ================= */
+function fillSelect(id, listName, allowEmpty=true){
+  const sel=$(id); const cur=sel.value;
+  sel.innerHTML = (allowEmpty? '<option value=""></option>':'') +
+    (lookups[listName]||[]).map(v=>'<option>'+v.replace(/</g,'&lt;')+'</option>').join('');
+  sel.value = cur;
+}
+function fillLookupUIs(){
+  fillSelect('correctDept','מחלקות'); fillSelect('selType','סוגי מוצר');
+  fillSelect('selBrand','מותגים');   fillSelect('selSub','תתי-מותגים');
+  fillSelect('selCond','מצב פריט');  fillSelect('pLoc','מיקומים');
+  renderSupChips();
+  document.querySelectorAll('.locrow select').forEach(s=>{
+    const cur=s.value;
+    s.innerHTML = '<option value=""></option>' + (lookups['מיקומים']||[]).map(v=>'<option>'+v+'</option>').join('');
+    s.value=cur;
+  });
+}
+let supSelected = new Set();
+function renderSupChips(){
+  const wrap=$('supChips'); wrap.innerHTML='';
+  (lookups['ספקים']||[]).forEach(s=>{
+    const c=document.createElement('button');
+    c.className='chip'+(supSelected.has(s)?' onc':''); c.textContent=s;
+    c.onclick=()=>{ supSelected.has(s)? supSelected.delete(s): supSelected.add(s); renderSupChips(); };
+    wrap.appendChild(c);
+  });
+  const add=document.createElement('button');
+  add.className='chip add'; add.textContent='+ ספק חדש';
+  add.onclick=()=>addNewLookup('ספקים', null);
+  wrap.appendChild(add);
+}
+function addNewLookup(listName, selId){
+  const v = prompt('ערך חדש — ' + listName);
+  if(!v || !v.trim()) return;
+  const val=v.trim();
+  if(!lookups[listName]) lookups[listName]=[];
+  if(!lookups[listName].some(x=>x.toLowerCase()===val.toLowerCase())) lookups[listName].push(val);
+  localStorage.setItem(LS.lookups, JSON.stringify(lookups));
+  enqueue({action:'addLookup', column:listName, value:val});
+  fillLookupUIs();
+  if(selId) $(selId).value = val;
+  if(listName==='ספקים') { supSelected.add(val); renderSupChips(); }
+  toast('נוסף: '+val);
+}
+
+/* ================= SCANNER ================= */
+function startScanner(){
+  const formats = [
+    Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+    Html5QrcodeSupportedFormats.UPC_A,  Html5QrcodeSupportedFormats.UPC_E,
+    Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+    Html5QrcodeSupportedFormats.QR_CODE
+  ];
+  scanner = new Html5Qrcode('reader', {formatsToSupport: formats});
+  scanner.start({facingMode:'environment'},
+    {fps:10, qrbox:{width:260, height:150}},
+    onDecode, ()=>{}
+  ).catch(e=>{ $('scanHint').textContent='אין גישה למצלמה — אפשר להזין ברקוד ידנית'; });
+}
+function onDecode(text){
+  const now=Date.now();
+  if(text===lastScan && now-lastScanTs<2200) return;
+  lastScan=text; lastScanTs=now;
+  vibrate(60);
+  handleCode(text.trim());
+}
+function pauseScan(){ try{ if(scanner && !scanPaused){ scanner.pause(true); scanPaused=true; } }catch(e){} }
+function resumeScan(){ try{ if(scanner && scanPaused){ scanner.resume(); scanPaused=false; } }catch(e){} }
+
+function handleCode(code){
+  let it = byBarcode.get(code) || byBc0.get(stripZ(code)) || byCode.get(code);
+  if(it) openItem(it, code);
+  else openPending(code);
+}
+function manualGo(){
+  const v=$('manualBc').value.trim();
+  if(!v) return;
+  $('manualBc').value='';
+  handleCode(v);
+}
+
+/* ================= ITEM SCREEN ================= */
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  $(id).classList.add('active');
+  window.scrollTo(0,0);
+}
+function backToScan(){ show('screen-scan'); resumeScan(); }
+
+async function openItem(it, scannedCode){
+  pauseScan();
+  currentItem = it; currentPhotoB64=null; supSelected=new Set(); locRowsData=[];
+  $('itemName').textContent = it.name || '(ללא שם)';
+  $('itemBc').textContent   = it.barcode || '—';
+  $('itemCode').textContent = it.code;
+  $('itemDept').textContent = it.dept || '—';
+  $('itemPrice').textContent= it.price;
+  $('itemSysQty').textContent = it.sysQty;
+  $('eqBtn').textContent = '= מערכת ('+it.sysQty+')';
+  $('countedInput').value=''; $('countedInput').readOnly=false;
+  $('fRename').checked=false; $('newName').value=''; $('newName').style.display='none';
+  $('fDept').checked=false; $('deptWrap').style.display='none'; $('correctDept').value='';
+  $('selType').value=it.ptype||''; $('selBrand').value=it.brand||''; $('selSub').value=it.subbrand||'';
+  $('selCond').value=it.condition||''; $('infoLink').value=it.link||''; $('notes').value=it.notes||'';
+  (it.suppliers||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(s=>supSelected.add(s));
+  renderSupChips();
+  $('photoBtn').className=''; $('photoBtn').textContent='📷 צלם את המוצר';
+  $('photoThumb').style.display='none';
+  $('locRows').innerHTML=''; $('locDetails').open=false;
+
+  const svc=$('svcBanner');
+  if(it.rtype==='שירות'){ svc.className='banner warn'; svc.textContent='⚠ פריט שירות — בדרך כלל לא סופרים אותו'; }
+  else svc.className='banner';
+
+  const si=$('scannedInfo');
+  if(it.scanned){
+    si.style.display='block';
+    si.textContent='✓ נספר כבר — כמות: '+(it.counted??'?')+'. סופרים מיקום נוסף? מוסיפים לכמות.';
+  } else si.style.display='none';
+
+  show('screen-item');
+
+  // live check (multi-counter safety)
+  try{
+    const ctl=new AbortController(); setTimeout(()=>ctl.abort(),3500);
+    const r=await fetch(API+'?action=item&code='+encodeURIComponent(it.code), {signal:ctl.signal});
+    const js=await r.json();
+    if(js.ok && currentItem===it){
+      if(js.scanned){
+        si.style.display='block';
+        si.textContent='✓ נספר ע"י '+(js.countedBy||'?')+' — כמות: '+(js.counted??'?')+'. סופרים מיקום נוסף? מוסיפים לכמות.';
+        if(js.counted!=='' && js.counted!=null) $('countedInput').value=js.counted;
+      }
+      if(js.locations){
+        try{ JSON.parse(js.locations).forEach(x=>addLocRow(x.l, x.q)); $('locDetails').open=true; }catch(e){}
+      }
+    }
+  }catch(e){}
+}
+
+function setEq(){
+  if(locRowsData.length){ toast('יש פירוט מיקומים — הכמות מחושבת ממנו','warn'); return; }
+  $('countedInput').value = currentItem.sysQty;
+}
+
+/* locations */
+function addLocRow(l, q){
+  const idx = locRowsData.length;
+  locRowsData.push({l:l||'', q:(q==null?'':q)});
+  const row=document.createElement('div'); row.className='locrow'; row.dataset.i=idx;
+  const sel=document.createElement('select');
+  sel.innerHTML='<option value=""></option>'+(lookups['מיקומים']||[]).map(v=>'<option>'+v+'</option>').join('');
+  sel.value=l||'';
+  sel.onchange=()=>{ locRowsData[idx].l=sel.value; };
+  const inp=document.createElement('input'); inp.type='number'; inp.inputMode='numeric'; inp.value=(q==null?'':q);
+  inp.oninput=()=>{ locRowsData[idx].q=inp.value; recalcLoc(); };
+  const x=document.createElement('button'); x.className='x'; x.textContent='✕';
+  x.onclick=()=>{ locRowsData[idx]._del=true; row.remove(); recalcLoc(); };
+  row.append(sel,inp,x); $('locRows').appendChild(row);
+  recalcLoc();
+}
+function activeLocs(){ return locRowsData.filter(x=>!x._del && x.l && x.q!=='' && x.q!=null); }
+function recalcLoc(){
+  const act=activeLocs();
+  if(act.length){
+    const sum=act.reduce((a,x)=>a+Number(x.q||0),0);
+    $('countedInput').value=sum; $('countedInput').readOnly=true;
+  } else $('countedInput').readOnly=false;
+}
+
+/* flags */
+$('fRename').onchange = e => $('newName').style.display = e.target.checked?'block':'none';
+$('fDept').onchange   = e => $('deptWrap').style.display = e.target.checked?'flex':'none';
+
+/* photo */
+function compress(file){ return new Promise((res,rej)=>{
+  const img=new Image();
+  img.onload=()=>{
+    const max=1024, sc=Math.min(1, max/Math.max(img.width,img.height));
+    const cv=document.createElement('canvas');
+    cv.width=Math.round(img.width*sc); cv.height=Math.round(img.height*sc);
+    cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+    res(cv.toDataURL('image/jpeg',0.72));
+    URL.revokeObjectURL(img.src);
+  };
+  img.onerror=rej;
+  img.src=URL.createObjectURL(file);
+});}
+$('photoFile').onchange = async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  currentPhotoB64 = await compress(f);
+  $('photoBtn').className='done'; $('photoBtn').textContent='✓ תמונה צולמה — צלם שוב?';
+  $('photoThumb').src=currentPhotoB64; $('photoThumb').style.display='block';
+  e.target.value='';
+};
+$('pPhotoFile').onchange = async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  pendingPhotoB64 = await compress(f);
+  $('pPhotoBtn').style.borderColor='var(--green-hi)'; $('pPhotoBtn').textContent='✓ תמונה צולמה';
+  $('pPhotoThumb').src=pendingPhotoB64; $('pPhotoThumb').style.display='block';
+  e.target.value='';
+};
+
+/* save */
+async function saveItem(){
+  const counted = $('countedInput').value;
+  if(counted==='' || isNaN(Number(counted))){ toast('חסרה כמות בפועל','err'); return; }
+  if(!currentPhotoB64 && !currentItem.photo){
+    if(!confirm('אין תמונה. לשמור בכל זאת?')) return;
+  }
+  $('saveBtn').disabled=true;
+
+  const fields = {
+    counted: Number(counted),
+    renameFlag: $('fRename').checked,
+    deptFlag:   $('fDept').checked,
+    condition:  $('selCond').value,
+    ptype: $('selType').value, brand: $('selBrand').value, subbrand: $('selSub').value,
+    suppliers: [...supSelected].join(', '),
+    link: $('infoLink').value.trim(), notes: $('notes').value.trim(),
+    status: 'עודכן'
+  };
+  if(fields.renameFlag) fields.newName = $('newName').value.trim();
+  if(fields.deptFlag)   fields.correctDept = $('correctDept').value;
+  const act = activeLocs();
+  if(act.length) fields.locations = JSON.stringify(act.map(x=>({l:x.l, q:Number(x.q)})));
+
+  await enqueue({action:'saveItem', itemCode: currentItem.code, barcode: currentItem.barcode, fields});
+  if(currentPhotoB64)
+    await enqueue({action:'uploadPhoto', itemCode: currentItem.code, imageBase64: currentPhotoB64, mime:'image/jpeg'});
+
+  // optimistic local update
+  currentItem.scanned=true; currentItem.counted=Number(counted);
+  currentItem.ptype=fields.ptype; currentItem.brand=fields.brand; currentItem.subbrand=fields.subbrand;
+  currentItem.suppliers=fields.suppliers; currentItem.condition=fields.condition;
+  currentItem.link=fields.link; currentItem.notes=fields.notes;
+  if(currentPhotoB64) currentItem.photo='✓';
+  saveCatalogLS(); updateProgress();
+
+  const diff = Number(counted) - Number(currentItem.sysQty);
+  toast('נשמר ✓  פער: ' + (diff>0?'+':'') + diff, diff===0?'':'warn');
+  $('saveBtn').disabled=false;
+  backToScan();
+}
+
+/* ================= PENDING ================= */
+function openPending(code){
+  pauseScan(); pendingPhotoB64=null;
+  $('pBc').value=code||''; $('pName').value=''; $('pQty').value=''; $('pPrice').value='';
+  $('pNotes').value=''; $('pLoc').value='';
+  $('pPhotoBtn').style.borderColor='var(--line)'; $('pPhotoBtn').textContent='📷 צלם את המוצר';
+  $('pPhotoThumb').style.display='none';
+  show('screen-pending');
+}
+async function savePending(){
+  if(!$('pName').value.trim()){ toast('חסר שם מהאריזה','err'); return; }
+  if(!pendingPhotoB64){ toast('חובה תמונה לפריט חדש','err'); return; }
+  await enqueue({action:'addPending',
+    barcode: $('pBc').value.trim(), name: $('pName').value.trim(),
+    qty: $('pQty').value, priceOnSticker: $('pPrice').value,
+    location: $('pLoc').value, notes: $('pNotes').value.trim(),
+    imageBase64: pendingPhotoB64, mime:'image/jpeg'});
+  toast('נשמר לרשימת טיפול ✓');
+  backToScan();
+}
+
+/* ================= SEARCH ================= */
+function openSearch(){ pauseScan(); $('searchOverlay').style.display='block'; $('searchInput').value=''; $('searchList').innerHTML=''; $('searchInput').focus(); }
+function closeSearch(){ $('searchOverlay').style.display='none'; resumeScan(); }
+function runSearch(){
+  const q=$('searchInput').value.trim().toLowerCase();
+  const box=$('searchList'); box.innerHTML='';
+  if(q.length<2) return;
+  let hits=[];
+  for(const it of catalog){
+    if(it.rtype==='שירות') continue;
+    if((it.name && it.name.toLowerCase().includes(q)) || it.code===q || (it.barcode && it.barcode.startsWith(q)))
+      hits.push(it);
+    if(hits.length>=30) break;
+  }
+  for(const it of hits){
+    const d=document.createElement('div'); d.className='sr';
+    d.innerHTML='<div class="nm">'+(it.scanned?'✓ ':'')+(it.name||'(ללא שם)').replace(/</g,'&lt;')+'</div>'+
+                '<div class="sub">'+(it.barcode||'ללא ברקוד')+' · '+(it.dept||'')+' · מערכת: '+it.sysQty+'</div>';
+    d.onclick=()=>{ closeSearch(); openItem(it); };
+    box.appendChild(d);
+  }
+  if(!hits.length) box.innerHTML='<div class="sr" style="color:var(--dim)">לא נמצא. אפשר לסרוק ולפתוח פריט חדש.</div>';
+}
+
+/* ================= BOOT ================= */
+function setName(){
+  const v=$('nameInput').value.trim();
+  if(!v){ return; }
+  user=v; localStorage.setItem(LS.user, v);
+  $('nameGate').style.display='none'; $('userTag').textContent=v;
+}
+async function boot(){
+  db = await idbOpen();
+  if(navigator.onLine) $('dot').classList.add('on');
+  if(!user){ $('nameGate').style.display='flex'; } else $('userTag').textContent=user;
+
+  const cached = localStorage.getItem(LS.catalog);
+  const lkCached = localStorage.getItem(LS.lookups);
+  if(cached){ catalog=JSON.parse(cached); indexCatalog(); }
+  if(lkCached){ lookups=JSON.parse(lkCached); fillLookupUIs(); }
+
+  const age = Date.now() - Number(localStorage.getItem(LS.catTime)||0);
+  if(!cached || age > CACHE_HOURS*3600*1000) fetchCatalog(!cached);
+
+  // connection check
+  fetch(API+'?action=ping').then(r=>r.json()).then(js=>{
+    if(js.ok) $('dot').classList.add('on');
+  }).catch(()=>{});
+
+  startScanner();
+  updateQueueBadge(); renderFailed();
+}
+boot();
+</script>
+</body>
+</html>
