@@ -43,6 +43,10 @@
   .btn-secondary{background:var(--surface2); padding:13px}
   .btn-primary{background:var(--green); padding:15px; font-size:18px; font-weight:700; width:100%}
   .btn-primary:disabled{opacity:.45}
+  #camCtl{display:none; gap:10px; align-items:center; margin-top:8px}
+  #zoomSlider{flex:1; accent-color:var(--teal)}
+  #torchBtn{background:var(--surface2); padding:10px 14px; display:none}
+  #torchBtn.on{background:var(--amber); color:#000}
 
   /* item card */
   .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px}
@@ -124,7 +128,12 @@
 <!-- ============ SCAN ============ -->
 <div id="screen-scan" class="screen active">
   <div id="reader"></div>
-  <div id="scanHint">מכוונים את המצלמה לברקוד</div>
+  <div id="camCtl">
+    <span style="font-size:13px;color:var(--dim)">זום</span>
+    <input type="range" id="zoomSlider">
+    <button id="torchBtn" onclick="toggleTorch()">🔦</button>
+  </div>
+  <div id="scanHint">ברקוד קטן? לא מתקרבים — מגדילים זום</div>
   <div class="row" style="margin-top:6px">
     <input id="manualBc" inputmode="numeric" placeholder="ברקוד ידני / קוד פריט">
     <button class="btn-secondary" style="flex:0 0 90px" onclick="manualGo()">חפש</button>
@@ -449,11 +458,44 @@ function startScanner(){
     Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
     Html5QrcodeSupportedFormats.QR_CODE
   ];
-  scanner = new Html5Qrcode('reader', {formatsToSupport: formats});
+  scanner = new Html5Qrcode('reader', {
+    formatsToSupport: formats,
+    experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+  });
   scanner.start({facingMode:'environment'},
-    {fps:10, qrbox:{width:260, height:150}},
+    {fps:10, qrbox:{width:300, height:170},
+     videoConstraints:{ facingMode:'environment',
+       width:{ideal:1920}, height:{ideal:1080},
+       advanced:[{focusMode:'continuous'}] }},
     onDecode, ()=>{}
-  ).catch(e=>{ $('scanHint').textContent='אין גישה למצלמה — אפשר להזין ברקוד ידנית'; });
+  ).then(initCamControls)
+   .catch(e=>{ $('scanHint').textContent='אין גישה למצלמה — אפשר להזין ברקוד ידנית'; });
+}
+let torchOn = false;
+async function initCamControls(){
+  try{ await scanner.applyVideoConstraints({advanced:[{focusMode:'continuous'}]}); }catch(e){}
+  let caps = {};
+  try{ caps = scanner.getRunningTrackCapabilities() || {}; }catch(e){ return; }
+  const ctl = $('camCtl');
+  if(caps.zoom && caps.zoom.max > 1){
+    ctl.style.display = 'flex';
+    const s = $('zoomSlider');
+    s.min = caps.zoom.min || 1; s.max = Math.min(caps.zoom.max, 6); s.step = caps.zoom.step || 0.1;
+    const saved = Number(localStorage.getItem('fc_zoom')) || Math.min(2, Number(s.max));
+    s.value = Math.min(Math.max(saved, Number(s.min)), Number(s.max));
+    applyZoom(s.value);
+    s.oninput = () => applyZoom(s.value);
+  }
+  if(caps.torch){ ctl.style.display = 'flex'; $('torchBtn').style.display = 'block'; }
+}
+function applyZoom(v){
+  localStorage.setItem('fc_zoom', v);
+  scanner.applyVideoConstraints({advanced:[{zoom: Number(v)}]}).catch(()=>{});
+}
+function toggleTorch(){
+  torchOn = !torchOn;
+  $('torchBtn').classList.toggle('on', torchOn);
+  scanner.applyVideoConstraints({advanced:[{torch: torchOn}]}).catch(()=>{});
 }
 function onDecode(text){
   const now=Date.now();
