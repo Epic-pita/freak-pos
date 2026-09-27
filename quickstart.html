@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c0a09">
+<title>FREAK POS — התחלה מהירה</title>
+<link rel="icon" href="./icon-192.png">
+
+<!-- The one-page version of guide.html: what a new person needs before the first
+     sale. Prints on a single A4 for the stall table. Pictures are the same real
+     screenshots as the full guide (guide/). -->
+
+<style>
+  :root { --ink: #0c0a09; --muted: #57534e; --line: #d6d3d1; --bg: #f5f5f4; --surface: #ffffff;
+          --ok: #15803d; --queued: #b45309; --danger: #b91c1c; --mark: #dc2626; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Rubik, Arial, sans-serif; font-size: 17px; line-height: 1.45; }
+  #app { max-width: 720px; margin: 0 auto; }
+  header { position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--line);
+    padding: 10px 14px; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 18px; margin: 0; flex: 1; }
+  header a { color: var(--muted); font-size: 14px; white-space: nowrap; }
+  main { padding: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+  ol.steps { padding-inline-start: 0; margin: 0; list-style: none; counter-reset: s; }
+  ol.steps li { position: relative; padding-inline-start: 44px; margin: 10px 0; min-height: 32px; }
+  ol.steps li::before { counter-increment: s; content: counter(s); position: absolute; inset-inline-start: 0; top: 0;
+    width: 32px; height: 32px; border-radius: 50%; background: var(--ink); color: #fff; font-weight: 700; font-size: 17px;
+    display: flex; align-items: center; justify-content: center; }
+  ol.steps li > b:first-child { display: block; }
+  kbd { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; font-family: inherit; font-size: 15px; }
+  .pics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 6px 0 2px; }
+  .pics figure { margin: 0; }
+  .pics img { width: 100%; border: 1px solid var(--line); border-radius: 10px; display: block; }
+  .pics figcaption { font-size: 12px; color: var(--muted); text-align: center; margin-top: 4px; }
+  .pills { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; align-items: center; margin-top: 6px; }
+  .pills img { width: 100%; border: 1px solid var(--line); border-radius: 8px; display: block; }
+  .pills p { margin: 0; font-size: 14px; }
+  @media (max-width: 480px) { .pills { grid-template-columns: 1fr; } }
+  b.ok { color: var(--ok); } b.queued { color: var(--queued); } b.bad { color: var(--danger); }
+  .foot { color: var(--muted); font-size: 14px; text-align: center; margin: 8px 0 0; }
+  .foot a { color: var(--ink); }
+  @media print {
+    header { display: none; } body { background: #fff; font-size: 13px; }
+    .card { border: none; padding: 6px 0; margin: 0; break-inside: avoid; }
+    .pics img { max-height: 170px; object-fit: cover; object-position: top; }
+    ol.steps li { margin: 5px 0; }
+  }
+</style>
+</head>
+
+<body>
+<div id="app">
+  <header>
+    <h1>דוכן FREAK · התחלה מהירה</h1>
+    <a href="./guide.html">המדריך המלא</a>
+    <a href="./index.html">לקופה</a>
+  </header>
+
+  <main>
+    <div class="card">
+      <div class="pics">
+        <figure><img src="./guide/01-gate.jpg" alt="מסך הפתיחה"><figcaption>1 · שם ואירוע</figcaption></figure>
+        <figure><img src="./guide/04-item.jpg" alt="חלון הפריט"><figcaption>3 · כמות ומחיר</figcaption></figure>
+        <figure><img src="./guide/07-pay.jpg" alt="תשלום"><figcaption>5 · תשלום</figcaption></figure>
+      </div>
+    </div>
+
+    <div class="card">
+      <ol class="steps">
+        <li><b>מתחילים.</b> בוחרים את השם שלכם ואת האירוע → <kbd>התחל מכירה</kbd>. אין אתכם ברשימה? למנהל.</li>
+        <li><b>סורקים.</b> אקדח: לוחצים פעם אחת בשדה החיפוש, ומאז רק סורקים. מצלמה: <kbd>הפעל מצלמה</kbd>, הברקוד לרוחב בתוך המסגרת. מטושטש? <kbd>החלף מצלמה</kbd>. קטן? להתרחק ל-20 ס״מ ולזום. אפשר גם להקליד שם.</li>
+        <li><b>פריט.</b> כמות, מחיר אם צריך לשנות → <kbd>הוסף לסל</kbd>. "פריט לא מזוהה": חפשו לפי שם; אם אין, הקלידו את המחיר מהמדבקה ותוסיפו.</li>
+        <li><b>סל.</b> <b>×</b> מוחק שורה. <kbd>לתשלום</kbd> כשסיימתם.</li>
+        <li><b>תשלום.</b> <kbd>השלם</kbd> ליד מזומן או אשראי ממלא את היתרה. חייב להיות <b class="ok">מאוזן</b> → <kbd>סיים מכירה</kbd>. "אחר" (ביט, החלפה) מחייב פירוט. האשראי נסלק במסופון כרגיל.</li>
+        <li><b>הכפתור למעלה.</b> ראו למטה. כשיש עליו מספר: לא מוחקים את האפליקציה ולא מנקים את הדפדפן.</li>
+        <li><b>מחליפים משמרת?</b> לוחצים על שם האירוע למעלה ובוחרים שם מחדש.</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <div class="pills">
+        <img src="./guide/08-pill-synced.jpg" alt="מסונכרן"><p><b class="ok">מסונכרן</b> — הכל נשלח.</p>
+        <img src="./guide/08-pill-queued.jpg" alt="ממתין"><p><b class="queued">ממתין</b> — נשלח לבד תוך שניות. אפשר ללחוץ.</p>
+        <img src="./guide/08-pill-offline.jpg" alt="לא מקוון"><p><b class="queued">לא מקוון</b> — אין קליטה. ממשיכים למכור; יישלח כשתחזור.</p>
+        <img src="./guide/08-pill-stuck.jpg" alt="תקוע"><p><b class="bad">תקוע</b> — לחצו <kbd>מכירות תקועות</kbd> מתחת לסל, <kbd>⧉</kbd> להעתיק, ושלחו למנהל. לא למחוק.</p>
+      </div>
+    </div>
+
+    <p class="foot">כל השאר, כולל תקלות ופתרונות: <a href="./guide.html">המדריך המלא</a></p>
+  </main>
+</div>
+</body>
+</html>

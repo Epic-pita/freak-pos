@@ -24,7 +24,7 @@
   header { position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--line);
     padding: 10px 14px; display: flex; align-items: center; gap: 12px; }
   header h1 { font-size: 18px; margin: 0; flex: 1; }
-  header a { color: var(--muted); font-size: 14px; }
+  header a { color: var(--muted); font-size: 14px; white-space: nowrap; }
   main { padding: 14px; }
 
   nav.toc { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; }
@@ -40,7 +40,7 @@
   .lead { color: var(--muted); margin: 0 0 12px; }
   figure { margin: 0 0 14px; }
   figure img { display: block; width: 100%; max-width: 360px; border: 1px solid var(--line); border-radius: 14px; margin: 0 auto; }
-  figure.wide img { max-width: 100%; }
+  figure.wide img { max-width: 360px; }
   figcaption { font-size: 13px; color: var(--muted); text-align: center; margin-top: 6px; }
   ol.steps { padding-inline-start: 0; margin: 0; list-style: none; counter-reset: s; }
   ol.steps li { position: relative; padding-inline-start: 40px; margin: 8px 0; }
@@ -67,6 +67,7 @@
 <div id="app">
   <header>
     <h1>מדריך לצוות · דוכן FREAK</h1>
+    <a href="./quickstart.html">התחלה מהירה</a>
     <a href="./index.html">לקופה</a>
   </header>
 
@@ -91,7 +92,7 @@
 
     <section id="s1">
       <h2><span class="n">1</span>התקנה על הטלפון</h2>
-      <p class="lead">האפליקציה היא דף אינטרנט שמתקינים כאייקון. פעם אחת לכל טלפון.</p>
+      <p class="lead">האפליקציה היא דף אינטרנט שמתקינים כאייקון. פעם אחת לכל טלפון. ממהרים? יש גם <a href="./quickstart.html">התחלה מהירה</a> בעמוד אחד.</p>
       <ol class="steps">
         <li>פתחו בדפדפן את הכתובת: <b>epic-pita.github.io/freak-pos</b></li>
         <li><b>אנדרואיד (כרום):</b> תפריט ⋮ (למעלה מימין) → <kbd>הוסף למסך הבית</kbd> → <kbd>התקן</kbd>.</li>
@@ -108,7 +109,7 @@
         <li>בחרו את השם שלכם ברשימה.</li>
         <li>בחרו את האירוע. הרשימה מציגה את האירועים של הימים האלה.</li>
         <li>לחצו <kbd>התחל מכירה</kbd>.</li>
-        <li>הקישור למטה פותח את דוח האירוע (למנהלים, סעיף 11).</li>
+        <li>הקישורים למטה: התחלה מהירה, המדריך הזה, ודוח האירוע (למנהלים, סעיף 11).</li>
       </ol>
       <p class="tip">אם השם שלכם או האירוע לא ברשימה: תגידו למנהל. הוא מוסיף אותם בגיליון, ובפתיחה הבאה הם יופיעו.</p>
     </section>
@@ -131,9 +132,9 @@
 
     <section id="s4">
       <h2><span class="n">4</span>המצלמה</h2>
-      <figure><img src="./guide/10-camera.jpg" alt="חלון המצלמה עם החלפת מצלמה, זום ופנס"><figcaption>חלון המצלמה</figcaption></figure>
+      <figure><img src="./guide/10-camera.jpg" alt="חלון המצלמה עם החלפת מצלמה, זום ופנס"><figcaption>חלון המצלמה, בטלפון עם שתי עדשות אחוריות</figcaption></figure>
       <ol class="steps">
-        <li><kbd>הפעל מצלמה</kbd> פותח את חלון הסריקה. הברקוד צריך להיות בתוך המסגרת, לרוחב.</li>
+        <li><kbd>הפעל מצלמה</kbd> פותח את חלון הסריקה (כשהמצלמה פועלת הכפתור הופך ל<kbd>כבה מצלמה</kbd>). הברקוד צריך להיות בתוך המסגרת, לרוחב.</li>
         <li><b>תמונה מטושטשת?</b> לחצו <kbd>החלף מצלמה</kbd>. לרוב לטלפון יש כמה עדשות אחוריות ורק אחת מהן מצליחה למקד מקרוב. הבחירה נשמרת.</li>
         <li>אפשר גם לבחור עדשה מהרשימה.</li>
         <li><b>ברקוד קטן?</b> אל תתקרבו. הישארו כ-20 ס״מ והגבירו זום. מתחת ל-10 ס״מ העדשה לא מסוגלת למקד.</li>

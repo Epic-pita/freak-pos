@@ -41,7 +41,7 @@
   a.quiet { color: var(--muted); font-size: 14px; }
 
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; overflow-x: auto; }
-  html, body { overflow-x: hidden; }
+  body { overflow-x: hidden; }   /* body only: on both html and body, body becomes its own scroller and window scrolling breaks */
   .card h2 { margin: 0 0 10px; font-size: 17px; }
   .sub { color: var(--muted); font-size: 14px; margin: 0 0 10px; }
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
