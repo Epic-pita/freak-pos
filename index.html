@@ -108,6 +108,10 @@
     width: 100%; min-height: var(--tap); padding: 0 12px;
     border: 2px solid var(--line); border-radius: 10px; background: var(--surface);
   }
+  #cam-switch { flex: 0 0 auto; white-space: nowrap; }
+  #reader.hit { outline: 4px solid var(--ok); outline-offset: -4px; }
+  #cam-info { font-size: 12px; word-break: break-word; }
+  #cam-info button { color: var(--muted); text-decoration: underline; font-size: 12px; padding: 0; }
   #zoom { width: 100%; height: 44px; accent-color: var(--ink); }
   #zoom-val { font-variant-numeric: tabular-nums; color: var(--ink); }
 
@@ -205,7 +209,10 @@
         <button class="btn ghost" id="cam-btn">הפעל מצלמה</button>
         <div id="cam-wrap" class="hide">
           <div style="height:10px"></div>
-          <select id="cam-pick" class="hide"></select>
+          <div class="row">
+            <select id="cam-pick" class="hide" aria-label="בחירת מצלמה"></select>
+            <button class="btn ghost hide" id="cam-switch">🔄 החלף מצלמה</button>
+          </div>
           <div style="height:10px"></div>
           <div id="reader"></div>
           <div id="zoom-wrap" class="hide">
@@ -214,7 +221,8 @@
           </div>
           <div style="height:10px"></div>
           <button class="btn ghost hide" id="torch-btn">🔦 פנס</button>
-          <p class="hint" id="cam-hint">ברקוד קטן? אל תתקרב — הישאר 20 ס״מ ותזום. מתחת ל-10 ס״מ המצלמה לא מצליחה למקד.</p>
+          <p class="hint" id="cam-hint">ברקוד קטן? אל תתקרב — הישאר 20 ס״מ ותזום. מתחת ל-10 ס״מ המצלמה לא מצליחה למקד. תמונה מטושטשת? לחץ "החלף מצלמה".</p>
+          <p class="hint" id="cam-info"></p>
         </div>
       </div>
 
@@ -501,17 +509,17 @@ function beep(freq, ms) {
 const beepHit = () => beep(880, 90);
 const beepMiss = () => beep(220, 220);
 
-function toast(msg) {
+function toast(msg, ms) {
   const t = document.createElement('div');
   t.className = 'toast'; t.textContent = msg;
   document.body.appendChild(t);
-  setTimeout(() => t.remove(), 1900);
+  setTimeout(() => t.remove(), ms || 1900);
 }
 
 /* ==================================================================
    Boot
    ================================================================== */
-const BUILD = 'v5';
+const BUILD = 'v6';
 
 window.addEventListener('load', async () => {
   if ('serviceWorker' in navigator) {
@@ -611,88 +619,214 @@ $('who-btn').onclick = async () => {
 
    1. MIN FOCUS DISTANCE. A phone's main lens can't focus below ~10cm. Small
       barcode makes you lean in, you cross that line, it blurs permanently.
-      Zoom is the fix, not proximity — hence the slider, defaulted to 2x.
-   2. LENS CHOICE. facingMode:'environment' lets the browser pick, and it often
-      picks the ultra-wide, which on most phones is FIXED FOCUS and can never
-      sharpen up close. So we enumerate and pick deliberately, and remember it.
+      Zoom is the fix, not proximity — hence the slider, defaulted to 2x. We
+      also ask the lens for continuous autofocus; some phones default to a
+      single lock and never refocus once the table moves.
+   2. LENS CHOICE. facingMode:'environment' lets the browser pick, and it can
+      pick the ultra-wide, which on most phones is FIXED FOCUS and can never
+      sharpen up close. So we enumerate, prefer the main back lens, remember
+      the choice, and keep a one-tap "החלף מצלמה" for when the guess is wrong.
+      Camera LABELS only exist after a stream was granted, so the list is
+      rebuilt right after the camera starts — that was why the picker used to
+      stay hidden on the first open.
    3. RESOLUTION. Default getUserMedia hands back 640x480. A booster barcode at
-      that size is a few pixels per bar — unreadable even when perfectly sharp.
-      We ask for 1080p.
+      that size is a few pixels per bar. We ask for 1080p.
+
+   DECODER: where the phone has a built-in barcode detector (Chrome on
+   Android) the library uses it — faster and far better on small, curved or
+   glossy codes; elsewhere the bundled decoder runs. The "פרטי מצלמה" line
+   under the viewfinder says which one is active.
    ================================================================== */
 const CAM_KEY = 'pos_camera_v1';
 const ZOOM_KEY = 'pos_zoom_v1';
+const CAM_FORMATS = [
+  Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+  Html5QrcodeSupportedFormats.UPC_A,  Html5QrcodeSupportedFormats.UPC_E,
+  Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39
+];
 let cams = [], zoomFeat = null, torchFeat = null, torchOn = false;
+let wantScanning = false;       // the person's intent; survives the phone being locked
+let nativeDecoder = null;       // probed once: does this phone decode barcodes itself?
+let lastHit = { code: '', format: '', at: 0 };
 
+async function probeDecoder() {
+  if (nativeDecoder !== null) return nativeDecoder;
+  try {
+    nativeDecoder = ('BarcodeDetector' in window)
+      && (await window.BarcodeDetector.getSupportedFormats()).includes('ean_13');
+  } catch (e) { nativeDecoder = false; }
+  return nativeDecoder;
+}
+
+/* ---- camera list: friendly names, back cameras first ---- */
+function camBase(label) {
+  const l = (label || '').toLowerCase();
+  if (/front|user|קדמית|selfie|facetime/.test(l)) return 'קדמית';
+  if (/ultra|wide|0\.5/.test(l) && !/tele/.test(l)) return 'אחורית רחבה';
+  if (/tele|zoom/.test(l)) return 'אחורית טלה';
+  if (/back|rear|environment|אחורית|world/.test(l)) return 'אחורית';
+  return 'מצלמה';
+}
+const camRank = label => camBase(label) === 'קדמית' ? 2 : camBase(label) === 'מצלמה' ? 1 : 0;
+
+function setCamList(list) {
+  const sorted = list.slice().sort((a, b) => camRank(a.label) - camRank(b.label));
+  const totals = {}, seen = {};
+  sorted.forEach(c => { const b = camBase(c.label); totals[b] = (totals[b] || 0) + 1; });
+  cams = sorted.map(c => {
+    const b = camBase(c.label); seen[b] = (seen[b] || 0) + 1;
+    return { id: c.id, label: c.label || '', name: totals[b] > 1 ? b + ' ' + seen[b] : b };
+  });
+  renderCamPicker();
+}
+
+/** First enumeration — html5-qrcode asks for permission on the way, so labels arrive. */
 async function listCams() {
-  try { cams = await Html5Qrcode.getCameras(); } catch (e) { cams = []; }
-  const sel = $('cam-pick');
-  if (cams.length < 2) { sel.classList.add('hide'); return; }
+  let list = [];
+  try { list = await Html5Qrcode.getCameras(); } catch (e) { list = []; }
+  setCamList(list);
+}
 
-  const saved = localStorage.getItem(CAM_KEY);
+/** Re-enumerate while a stream is live: labels are guaranteed, and no second permission prompt. */
+async function refreshCams() {
+  try {
+    const all = await navigator.mediaDevices.enumerateDevices();
+    const vids = all.filter(d => d.kind === 'videoinput').map(d => ({ id: d.deviceId, label: d.label }));
+    if (vids.length) setCamList(vids);
+  } catch (e) {}
+}
+
+function activeTrack() {
+  try {
+    const v = document.querySelector('#reader video');
+    return v && v.srcObject ? v.srcObject.getVideoTracks()[0] || null : null;
+  } catch (e) { return null; }
+}
+function activeCamId() {
+  const t = activeTrack();
+  try { return t ? (t.getSettings().deviceId || '') : ''; } catch (e) { return ''; }
+}
+
+function renderCamPicker() {
+  const sel = $('cam-pick'), sw = $('cam-switch');
+  const active = activeCamId() || localStorage.getItem(CAM_KEY) || '';
   sel.innerHTML = cams.map(c =>
-    `<option value="${esc(c.id)}"${c.id === saved ? ' selected' : ''}>${esc(c.label || 'מצלמה')}</option>`
+    `<option value="${esc(c.id)}" title="${esc(c.label)}"${c.id === active ? ' selected' : ''}>${esc(c.name)}</option>`
   ).join('');
-  sel.classList.remove('hide');
-  sel.onchange = async () => {
-    localStorage.setItem(CAM_KEY, sel.value);
-    if (scanning) { await stopCam(); await startCam(); }
-  };
+  const multi = cams.length > 1;
+  sel.classList.toggle('hide', !multi);
+  sw.classList.toggle('hide', !multi);
+  sel.onchange = () => switchCam(sel.value);
 }
 
 function pickCamId() {
   const saved = localStorage.getItem(CAM_KEY);
   if (saved && cams.some(c => c.id === saved)) return saved;
   if (!cams.length) return null;
-  // Prefer a back camera that isn't the ultra-wide. Labels are the only signal
-  // the browser gives us, and they're inconsistent — so this is a hint, not a
-  // guarantee. The picker exists because this will sometimes guess wrong.
-  const back = cams.filter(c => /back|rear|environment|אחורית/i.test(c.label || ''));
+  const back = cams.filter(c => camBase(c.label) !== 'קדמית' && camBase(c.label) !== 'מצלמה');
   const pool = back.length ? back : cams;
-  const notWide = pool.find(c => !/wide|ultra|0\.5/i.test(c.label || ''));
-  return (notWide || pool[0]).id;
+  const main = pool.find(c => camBase(c.label) === 'אחורית');
+  return (main || pool[0]).id;
+}
+
+async function switchCam(id) {
+  if (!id) return;
+  localStorage.setItem(CAM_KEY, id);
+  const c = cams.find(x => x.id === id);
+  if (!scanning) return;
+  await stopCam(true);
+  try { await startCam(); toast('מצלמה: ' + (c ? c.name : '')); }
+  catch (e) { camFailed(e); }
+}
+
+$('cam-switch').onclick = async () => {
+  unlockAudio();
+  if (!cams.length) await listCams();
+  if (cams.length < 2) return toast('בטלפון הזה יש מצלמה אחת');
+  const cur = activeCamId() || pickCamId();
+  const i = Math.max(0, cams.findIndex(c => c.id === cur));
+  await switchCam(cams[(i + 1) % cams.length].id);
+};
+
+/* ---- start / stop ---- */
+function camConfig(source) {
+  return {
+    fps: 15,
+    // Wide and short: a retail barcode is a letterbox. Function form because a
+    // fixed box wider than the viewfinder makes the library throw.
+    qrbox: (w, h) => ({
+      width: Math.max(50, Math.min(320, Math.floor(w * 0.9))),
+      height: Math.max(50, Math.min(170, Math.floor(h * 0.8)))
+    }),
+    aspectRatio: 1.777,
+    disableFlip: true,   // barcodes are never mirrored; skipping the flipped pass doubles decode throughput
+    videoConstraints: { ...source, width: { ideal: 1920 }, height: { ideal: 1080 } }
+  };
 }
 
 async function startCam() {
   scanner = scanner || new Html5Qrcode('reader', {
-    formatsToSupport: [
-      Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
-      Html5QrcodeSupportedFormats.UPC_A,  Html5QrcodeSupportedFormats.UPC_E,
-      Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39
-    ]
+    formatsToSupport: CAM_FORMATS,
+    experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+    verbose: false
   });
 
   const id = pickCamId();
   const source = id ? { deviceId: { exact: id } } : { facingMode: 'environment' };
 
-  // Must be visible BEFORE start(): html5-qrcode measures #reader to size the
-  // viewfinder, and a display:none element measures zero.
+  // Must be visible BEFORE start(): the library measures #reader to size the viewfinder.
   $('cam-wrap').classList.remove('hide');
 
-  await scanner.start(
-    source,
-    {
-      fps: 10,
-      // Wide and short: a retail barcode is a letterbox, and a square box wastes
-      // half the decoder's pixels on packaging. Function form because a fixed
-      // 300px box is wider than the whole video on a narrow phone — and the
-      // library THROWS on a qrbox bigger than its viewfinder.
-      qrbox: (w, h) => ({
-        width: Math.min(300, Math.floor(w * 0.9)),
-        height: Math.min(170, Math.floor(h * 0.8))
-      }),
-      aspectRatio: 1.777,
-      videoConstraints: {
-        ...source,
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
-      }
-    },
-    onScan, () => {}
-  );
+  try {
+    await scanner.start(source, camConfig(source), onScan, () => {});
+  } catch (e) {
+    // A remembered camera can vanish (ids rotate when permission is reset, phones
+    // change). Forget it and let the phone pick its back camera — once.
+    const msg = String((e && (e.name || e.message)) || e);
+    if (id && /Overconstrained|NotFound|not found|Could not start|AbortError/i.test(msg)) {
+      localStorage.removeItem(CAM_KEY);
+      const fb = { facingMode: 'environment' };
+      await scanner.start(fb, camConfig(fb), onScan, () => {});
+    } else {
+      throw e;
+    }
+  }
 
-  scanning = true;
+  scanning = true; wantScanning = true;
   $('cam-btn').textContent = 'כבה מצלמה';
+  await tuneFocus();
   wireCamFeatures();
+  await refreshCams();      // labels are reliable now — the picker appears on the first open
+  renderCamInfo();
+  watchTrack();
+}
+
+/** Ask the lens for continuous autofocus. Phones that can't just ignore it. */
+async function tuneFocus() {
+  const t = activeTrack();
+  if (!t || !t.applyConstraints) return;
+  try {
+    const caps = t.getCapabilities ? t.getCapabilities() : {};
+    if (caps.focusMode && caps.focusMode.includes('continuous')) {
+      await t.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+    }
+  } catch (e) {}
+}
+
+/** If the phone kills the stream (lock screen, a call, another app), come back when we can. */
+let trackWatched = false;
+function watchTrack() {
+  const t = activeTrack();
+  if (t) t.onended = () => { scanning = false; if (wantScanning && !document.hidden) restartCam(); };
+  if (trackWatched) return;
+  trackWatched = true;
+  document.addEventListener('visibilitychange', async () => {
+    if (document.hidden) { if (scanning) await stopCam(true); }
+    else if (wantScanning && !scanning) restartCam();
+  });
+}
+async function restartCam() {
+  try { await startCam(); } catch (e) { camFailed(e); }
 }
 
 function wireCamFeatures() {
@@ -707,10 +841,8 @@ function wireCamFeatures() {
   const zw = $('zoom-wrap'), z = $('zoom');
   if (zoomFeat && zoomFeat.isSupported()) {
     z.min = zoomFeat.min(); z.max = zoomFeat.max(); z.step = zoomFeat.step() || 0.1;
-    // 2x by default: far enough back to focus, close enough to decode. The
-    // saved zoom came from whichever camera ran last — clamp it to THIS
-    // camera's range, or the label, the slider and the actual zoom go three
-    // separate ways (apply() throws out of range, and silently).
+    // 2x by default: far enough back to focus, close enough to decode. Clamp the
+    // saved zoom to THIS camera's range — it came from whichever lens ran last.
     const saved = Number(localStorage.getItem(ZOOM_KEY)) || Math.min(2, zoomFeat.max());
     const want = Math.min(Math.max(saved, zoomFeat.min()), zoomFeat.max());
     z.value = want;
@@ -719,7 +851,6 @@ function wireCamFeatures() {
     zw.classList.remove('hide');
   } else {
     zw.classList.add('hide');
-    $('cam-hint').textContent = 'הטלפון לא תומך בזום. ברקוד קטן? נסה מצלמה אחרת ברשימה, או אקדח ברקוד.';
   }
 
   // Torch
@@ -744,6 +875,57 @@ function applyZoom(v) {
   try { zoomFeat.apply(v); } catch (e) {}
 }
 
+const focusName = m => ({ continuous: 'רציף', manual: 'ידני', 'single-shot': 'חד-פעמי', none: 'קבוע' }[m] || (m ? m : 'אוטומטי'));
+
+/** The support line: which lens, what resolution, focus, zoom, torch, decoder, last scan. */
+async function renderCamInfo() {
+  const box = $('cam-info');
+  const t = activeTrack();
+  if (!t) { box.textContent = ''; return; }
+  let s = {}, caps = {};
+  try { s = t.getSettings() || {}; } catch (e) {}
+  try { caps = t.getCapabilities ? t.getCapabilities() || {} : {}; } catch (e) {}
+  const cam = cams.find(c => c.id === s.deviceId);
+  const native = await probeDecoder();
+  const parts = [
+    'מצלמה: ' + (cam ? cam.name : (t.label || '?')),
+    (s.width && s.height) ? s.width + '×' + s.height : '',
+    'פוקוס: ' + focusName(s.focusMode || (caps.focusMode && caps.focusMode[0]) || ''),
+    'זום: ' + (caps.zoom ? caps.zoom.min + '–' + caps.zoom.max + '×' : 'אין'),
+    'פנס: ' + (caps.torch ? 'יש' : 'אין'),
+    'מנוע: ' + (native ? 'מובנה בטלפון' : 'ספרייה'),
+    lastHit.code ? 'סריקה אחרונה: ' + lastHit.code + (lastHit.format ? ' (' + lastHit.format + ')' : '') : ''
+  ].filter(Boolean);
+  const detail = parts.join(' · ') + (t.label ? ' · ' + t.label : '');
+  box.innerHTML = esc(parts.join(' · ')) + ' <button type="button" id="cam-copy">העתק פרטים</button>';
+  $('cam-copy').onclick = async () => {
+    try { await navigator.clipboard.writeText('FREAK POS ' + BUILD + ' · ' + detail + ' · ' + navigator.userAgent); toast('הועתק'); }
+    catch (e) { toast('העתקה נכשלה'); }
+  };
+}
+
+function camFailed(e) {
+  const name = String((e && e.name) || '');
+  const msg = String((e && e.message) || e || '');
+  let text;
+  if (/NotAllowed|Permission|denied/i.test(name + msg)) {
+    text = 'אין הרשאה למצלמה. בכרום: לחץ על המנעול ליד הכתובת → הרשאות → מצלמה → אפשר, ואז נסה שוב.';
+  } else if (/NotFound|DevicesNotFound/i.test(name + msg)) {
+    text = 'לא נמצאה מצלמה. אפשר לסרוק עם אקדח ברקוד או לחפש לפי שם.';
+  } else if (/NotReadable|TrackStart|in use|Could not start/i.test(name + msg)) {
+    text = 'המצלמה תפוסה על ידי אפליקציה אחרת. סגור אותה (או הפעל מחדש את הטלפון) ונסה שוב.';
+  } else if (/NotSupported|Not supported|insecure|secure context/i.test(name + msg)) {
+    text = 'הדפדפן הזה לא מאפשר מצלמה בדף. פתח את הכתובת המלאה בכרום או בספארי מעודכנים.';
+  } else {
+    text = 'המצלמה לא נפתחה: ' + (msg || name || 'שגיאה') + '. נסה "החלף מצלמה" או חיפוש לפי שם.';
+  }
+  if (navigator.standalone === true) text += ' באייפון, אם זה לא עובד מהאייקון במסך הבית — פתח את הכתובת בספארי.';
+  scanning = false; wantScanning = false;
+  $('cam-wrap').classList.add('hide');
+  $('cam-btn').textContent = 'הפעל מצלמה';
+  toast(text, 5000);
+}
+
 $('cam-btn').onclick = async () => {
   unlockAudio();
   if (scanning) return stopCam();
@@ -751,24 +933,33 @@ $('cam-btn').onclick = async () => {
     if (!cams.length) await listCams();
     await startCam();
   } catch (e) {
-    $('cam-wrap').classList.add('hide');
-    toast('אין גישה למצלמה — השתמש בחיפוש');
+    camFailed(e);
   }
 };
 
-async function stopCam() {
+async function stopCam(keepPanel) {
   try { if (torchOn && torchFeat) await torchFeat.apply(false); } catch (e) {}
-  try { await scanner.stop(); } catch (e) {}
+  try { if (scanner && scanner.isScanning) await scanner.stop(); } catch (e) {}
   torchOn = false;
   scanning = false;
-  $('cam-btn').textContent = 'הפעל מצלמה';
-  $('cam-wrap').classList.add('hide');
+  if (!keepPanel) {
+    wantScanning = false;
+    $('cam-btn').textContent = 'הפעל מצלמה';
+    $('cam-wrap').classList.add('hide');
+  }
 }
 
-function onScan(code) {
+function onScan(code, result) {
   const now = Date.now();
-  if (code === lastScan.code && now - lastScan.at < 1200) return;  // one barcode, one hit
+  if (code === lastHit.code && now - lastHit.at < 1200) return;  // one barcode, one hit
+  let format = '';
+  try { format = result && result.result && result.result.format ? result.result.format.formatName : ''; } catch (e) {}
+  lastHit = { code, format, at: now };
   lastScan = { code, at: now };
+  // Feedback the eye and the hand notice without looking at the screen.
+  const r = $('reader'); r.classList.add('hit'); setTimeout(() => r.classList.remove('hit'), 250);
+  try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) {}
+  renderCamInfo();
   handleCode(code);
 }
 
