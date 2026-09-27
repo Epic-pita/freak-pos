@@ -1,0 +1,49 @@
+# FREAK Event POS — קופת הדוכן
+
+The till the shop takes to conventions. Three parts, one workbook.
+
+| Part | Where | Notes |
+|---|---|---|
+| Till (PWA) | `index.html`, `sw.js`, `manifest.webmanifest` → GitHub Pages https://epic-pita.github.io/freak-pos/ | Built from `main` of `Epic-pita/freak-pos`. **A push to `main` is a release to the team's phones.** Bump `BUILD` in index.html and `CACHE` in sw.js together. |
+| Event report + Caspit-fix checklist | `report.html` (same site) | Linked from the till's start screen. Prints the checklist only. |
+| Stock count page | `count.html` | Separate backend ("FREAK Count API" script); untouched by this project. |
+| Backend | `Code.gs` → Apps Script project "FREAK Event POS", bound to the workbook | `clasp push` updates HEAD only. The live address is a **versioned deployment**; after a push run `clasp redeploy <deploymentId> -d "..."` (or Deploy → Manage deployments → New version). `index.html` and `report.html` must point at that deployment's `/exec` URL. |
+| Data | Google Sheet `FREAK_Event_POS` (the address is in `Code.gs` and `tools/pos-sync.ts`, which stay out of this public repo) | Owner: the shop Gmail account. |
+| Morning catalog | `tools/pos-sync.ts` via Windows task **FREAK POS Catalog** (daily 06:30, `tools/pos-sync.cmd` through `pos-sync-hidden.vbs`) | Log: `tools/logs/<date>.log` + `last-run.txt`. Backups of the previous catalog: `tools/backup/` (last 10). |
+
+## Workbook tabs
+
+| Tab | Who writes | Columns |
+|---|---|---|
+| `קטלוג פריטים` | the morning job, every day | `קוד פריט · ברקוד · שם פריט · קטגוריה ראשית · מחיר לצרכן` — read **by header name**, so column order does not matter. One row per barcode (an item with two barcodes appears twice). |
+| `עובדים` | by hand | `שם · פעיל · הערות`. `פעיל = לא` hides a name from the till. Seeded once from the ERP's active floor staff + names already used at the stall. |
+| `אירועים` | by hand, before the event | `שם אירוע · התחלה · סיום · מקום · פעיל · הערות`. The till offers events from 3 days before `התחלה` to the day after `סיום`; when none is current it offers the upcoming ones. `פעיל = לא` hides an event. |
+| `Sales`, `Sale_Lines` | the till | **Column order is a contract** — the inventory sheet (`FREAK_Inventory_Live`) reads both tabs by position every hour. Never reorder. |
+| `תיקוני_כספיט` | the report page | one row per item ticked as keyed into Caspit: `event · item_key · item_id · barcode · name · qty · done_by · done_at`. Unticking deletes the row. |
+| `Live Dashboard` | formulas | untouched. |
+
+## Which items reach the phones
+
+Everything Caspit still lists: an item with a stock snapshot in the ERP in the last 3 days, or an active item with a barcode or a price. Rows with no barcode and no price (register plumbing) are left out. Names, categories and prices are the ERP's daily copy of Caspit. Safety: the job refuses to write fewer than 3,000 rows or fewer than 70 % of the previous count, backs the old tab up first, and writes the whole tab in one request.
+
+Run by hand (dry run first):
+
+```
+node "D:\Deasktop\FREAK TLV ERP\inventory\node_modules\tsx\dist\cli.mjs" tools\pos-sync.ts catalog --dry
+node "D:\Deasktop\FREAK TLV ERP\inventory\node_modules\tsx\dist\cli.mjs" tools\pos-sync.ts catalog
+```
+
+`tools\pos-sync.ts seed` creates the three hand-kept tabs if missing and seeds them only when empty.
+
+## API (Apps Script)
+
+`GET ?token=…&action=` `catalog` (rows + staff + events) · `ping` · `events` · `staff` · `report&event=` · `fixes&event=`
+`POST` text/plain JSON `{token, action:'commit', sales:[…]}` or `{token, action:'fix_tick', event, item_key, item_id, barcode, name, qty, done, by}`
+
+The token in `Code.gs`, `index.html` and `report.html` must match. It filters crawlers; it is not authentication (the page is public).
+
+## History
+
+- 2026-07-15 v4: till moved off Apps Script HtmlService (camera), service worker, split tender, idempotent queue.
+- 2026-09-06: catalog tab re-pasted with `שם` and `ברקוד` swapped → the till showed codes instead of names until v5.
+- 2026-09-27 v5: catalog columns by header name; daily catalog from the ERP; staff and event pickers; search by item code; `report.html` (event summary per day/hour, top items, categories, staff) with the Caspit-fix checklist; report fills unreadable sold names from today's catalog.

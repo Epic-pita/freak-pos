@@ -23,11 +23,12 @@
  *
  * Bump CACHE on every release. The name is the invalidation.
  */
-const CACHE = 'freak-pos-v4';
+const CACHE = 'freak-pos-v5';
 
 const SHELL = [
   './',
   './index.html',
+  './report.html',
   './html5-qrcode.min.js',
   './manifest.webmanifest',
   './icon-192.png',

@@ -1,0 +1,5 @@
+.clasp.json
+# The backend and the sync tool hold the workbook address; the repo is public, so they stay local (Apps Script is their source of truth).
+Code.gs
+appsscript.json
+tools/

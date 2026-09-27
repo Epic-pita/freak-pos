@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c0a09">
+<title>FREAK — סיכום אירוע</title>
+<link rel="icon" href="./icon-192.png">
+
+<!--
+  Event report + the Caspit-fix checklist. Same rules as the till: no web
+  fonts, no CDN, nothing that isn't in this folder. Every number on this page
+  comes from one call (?action=report) computed on the server from the Sales
+  and Sale_Lines tabs, so the page and the workbook can never disagree.
+-->
+
+<style>
+  :root {
+    --ink: #0c0a09; --muted: #57534e; --line: #d6d3d1; --bg: #f5f5f4; --surface: #ffffff;
+    --ok: #15803d; --queued: #b45309; --danger: #b91c1c; --tap: 48px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Rubik, Arial, sans-serif; font-size: 16px; line-height: 1.4; }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; border: none; background: none; }
+  .hide { display: none !important; }
+
+  #app { max-width: 980px; margin: 0 auto; min-height: 100dvh; }
+  header { position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--line);
+    padding: 10px 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; white-space: nowrap; }
+  header .grow { flex: 1; min-width: 200px; }
+  main { padding: 14px; }
+
+  .pick { width: 100%; min-height: var(--tap); padding: 0 12px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); }
+  .pick.small { width: auto; min-height: 40px; }
+  .btn { min-height: var(--tap); border-radius: 10px; font-weight: 700; background: var(--ink); color: #fff; padding: 0 16px; white-space: nowrap; }
+  .btn.ghost { background: var(--surface); color: var(--ink); border: 2px solid var(--line); }
+  .btn.small { min-height: 40px; padding: 0 12px; }
+  a.quiet { color: var(--muted); font-size: 14px; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  .card h2 { margin: 0 0 10px; font-size: 17px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 10px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 640px) { .row2 { grid-template-columns: 1fr; } }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  .tile span { display: block; font-size: 13px; color: var(--muted); font-weight: 600; }
+  .tile b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; letter-spacing: -0.5px; }
+
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: start; vertical-align: top; }
+  th { font-size: 13px; color: var(--muted); font-weight: 600; }
+  td.n, th.n { text-align: end; white-space: nowrap; }
+  tr.total td { font-weight: 700; border-top: 2px solid var(--ink); }
+  .muted { color: var(--muted); font-size: 13px; }
+  .flag { color: var(--queued); font-weight: 700; font-size: 13px; }
+
+  svg.bars { width: 100%; height: 200px; display: block; }
+  svg.bars text { font-size: 11px; fill: var(--muted); }
+  svg.bars rect { fill: var(--ink); }
+  svg.bars rect.zero { fill: var(--line); }
+
+  #fix tr.done td { color: var(--muted); }
+  #fix tr.done td.name { text-decoration: line-through; }
+  #fix input[type=checkbox] { width: 24px; height: 24px; accent-color: var(--ok); }
+  #who { min-height: 40px; padding: 0 12px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); width: 180px; }
+  .empty { text-align: center; color: var(--muted); padding: 28px 10px; }
+
+  .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff;
+    padding: 12px 20px; border-radius: 999px; font-weight: 700; z-index: 50; max-width: 90vw; text-align: center; }
+
+  @media print {
+    header, .noprint, #tiles, #daysCard, #hoursCard, #topCard, #catsCard, #staffCard { display: none !important; }
+    body { background: #fff; } .card { border: none; padding: 0; }
+    #fix input[type=checkbox] { width: 14px; height: 14px; }
+  }
+</style>
+</head>
+
+<body>
+<div id="app">
+  <header>
+    <h1>סיכום אירוע</h1>
+    <select id="ev" class="pick grow"><option value="">טוען אירועים…</option></select>
+    <button class="btn ghost small" id="reload">רענן</button>
+    <a class="quiet" href="./index.html">לקופה</a>
+  </header>
+
+  <main>
+    <p class="empty" id="status">טוען…</p>
+
+    <section id="rep" class="hide">
+      <div class="tiles" id="tiles"></div>
+
+      <div class="card" id="daysCard">
+        <h2>לפי יום</h2>
+        <table id="days"></table>
+      </div>
+
+      <div class="card" id="hoursCard">
+        <div class="row" style="justify-content:space-between">
+          <h2 style="margin:0">הכנסות לפי שעה</h2>
+          <select id="daySel" class="pick small"></select>
+        </div>
+        <div id="hours" style="margin-top:8px"></div>
+        <p class="sub" id="hoursNote" style="margin:6px 0 0"></p>
+      </div>
+
+      <div class="card" id="topCard">
+        <h2>פריטים מובילים</h2>
+        <table id="top"></table>
+      </div>
+
+      <div class="row2">
+        <div class="card" id="catsCard"><h2>לפי קטגוריה</h2><table id="cats"></table></div>
+        <div class="card" id="staffCard"><h2>לפי עובד</h2><table id="staff"></table></div>
+      </div>
+
+      <div class="card" id="fixCard">
+        <h2>תיקון הקופה בכספיט</h2>
+        <p class="sub">כל פריט שנמכר באירוע, עם הכמות להוריד מהמלאי בכספיט. מסמנים וי אחרי שהפריט הוקלד; הסימון נשמר בגיליון עם שם ושעה, כך שכל אחד בחנות רואה מה כבר נעשה.</p>
+        <div class="row noprint" style="margin-bottom:10px">
+          <label>מי מקליד&nbsp;<input id="who" type="text" placeholder="שם" autocomplete="off"></label>
+          <button class="btn ghost small" id="copy">העתק רשימה</button>
+          <button class="btn ghost small" id="print">הדפס רשימה</button>
+          <span class="muted" id="fixprog"></span>
+        </div>
+        <table id="fix"></table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+/* ==================================================================
+   CONFIG — must match Code.gs and index.html
+   ================================================================== */
+const API_URL = 'https://script.google.com/macros/s/AKfycbxt4X2H5PmVMM2na7gjXrizs4TzO-ZiBJAg6yBWzwVlDBxVppOZ7CnpnNPCa0z4Yb8/exec';
+const TOKEN   = 'freak-hRBEJJ1eYTVmbs_JJq0tRczl';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const money = n => '₪' + (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('he-IL', { maximumFractionDigits: 2 });
+const num = n => (Number(n) || 0).toLocaleString('he-IL');
+const fmtDay = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : '';
+const DAYNAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+const dayName = s => { const d = new Date(s + 'T12:00:00'); return isNaN(d) ? '' : DAYNAMES[d.getDay()]; };
+
+function toast(msg) {
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 2200);
+}
+
+function fetchT(url, opts, ms) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  return fetch(url, { ...opts, signal: ctl.signal }).finally(() => clearTimeout(t));
+}
+async function apiGet(query) {
+  const res = await fetchT(`${API_URL}?${query}&token=${encodeURIComponent(TOKEN)}`, {}, 30000);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const j = await res.json();
+  if (!j.ok) throw new Error(j.error || 'API error');
+  return j;
+}
+async function apiPost(body) {
+  // text/plain on purpose: application/json would trigger a CORS preflight Apps Script cannot answer.
+  const res = await fetchT(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ token: TOKEN, ...body }) }, 30000);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const j = await res.json();
+  if (!j.ok) throw new Error(j.error || 'API error');
+  return j;
+}
+
+/* ==================================================================
+   Events
+   ================================================================== */
+let report = null;
+
+async function loadEvents() {
+  const sel = $('ev');
+  try {
+    const r = await apiGet('action=events');
+    const withSales = r.sales || [];
+    const planned = (r.tab || []).filter(e => !withSales.some(s => s.name === e.name));
+    let html = withSales.map(e =>
+      `<option value="${esc(e.name)}">${esc(e.name)} · ${fmtDay(e.first)}${e.last && e.last !== e.first ? '–' + fmtDay(e.last) : ''} · ${num(e.sales)} מכירות</option>`).join('');
+    if (planned.length) html += '<optgroup label="מתוכננים — עדיין בלי מכירות">' +
+      planned.map(e => `<option value="${esc(e.name)}">${esc(e.name)} · ${fmtDay(e.start)}</option>`).join('') + '</optgroup>';
+    sel.innerHTML = '<option value="">בחר אירוע…</option>' + html;
+
+    const fromHash = decodeURIComponent((location.hash.match(/event=([^&]+)/) || [])[1] || '');
+    const remembered = localStorage.getItem('pos_report_event') || '';
+    const first = withSales[0] ? withSales[0].name : '';
+    const pick = [fromHash, remembered, first].find(v => v && [...sel.options].some(o => o.value === v)) || '';
+    sel.value = pick;
+    if (pick) loadReport(pick); else $('status').textContent = 'בחר אירוע למעלה';
+  } catch (err) {
+    sel.innerHTML = '<option value="">שגיאה בטעינת אירועים</option>';
+    $('status').textContent = 'טעינת האירועים נכשלה: ' + err.message;
+  }
+}
+
+$('ev').onchange = () => { const v = $('ev').value; if (v) loadReport(v); };
+$('reload').onclick = () => { const v = $('ev').value; if (v) loadReport(v); else loadEvents(); };
+
+/* ==================================================================
+   Report
+   ================================================================== */
+async function loadReport(eventName) {
+  $('status').textContent = 'טוען סיכום…'; $('status').classList.remove('hide'); $('rep').classList.add('hide');
+  try {
+    const r = await apiGet('action=report&event=' + encodeURIComponent(eventName));
+    report = r.report;
+    localStorage.setItem('pos_report_event', eventName);
+    location.hash = 'event=' + encodeURIComponent(eventName);
+    render();
+    $('status').classList.add('hide'); $('rep').classList.remove('hide');
+  } catch (err) {
+    $('status').textContent = 'טעינת הסיכום נכשלה: ' + err.message;
+  }
+}
+
+function render() {
+  const r = report;
+  const multiDay = r.days.length > 1;
+
+  $('tiles').innerHTML = [
+    ['הכנסות', money(r.revenue)], ['מכירות', num(r.sales)], ['ממוצע למכירה', money(r.avg)], ['יחידות', num(r.units)],
+    ['מזומן', money(r.tender.cash)], ['אשראי', money(r.tender.card)], ['אחר', money(r.tender.other)]
+  ].map(([k, v]) => `<div class="tile"><span>${k}</span><b>${v}</b></div>`).join('');
+
+  // per day
+  $('days').innerHTML = `<tr><th>יום</th><th class="n">מכירות</th><th class="n">יחידות</th><th class="n">מזומן</th><th class="n">אשראי</th><th class="n">אחר</th><th class="n">הכנסות</th><th class="n">ממוצע</th></tr>` +
+    r.days.map(d => `<tr><td>${esc(dayName(d.day))} ${fmtDay(d.day)}</td><td class="n">${num(d.sales)}</td><td class="n">${num(d.units)}</td><td class="n">${money(d.cash)}</td><td class="n">${money(d.card)}</td><td class="n">${money(d.other)}</td><td class="n">${money(d.revenue)}</td><td class="n">${money(d.sales ? d.revenue / d.sales : 0)}</td></tr>`).join('') +
+    (multiDay ? `<tr class="total"><td>סה״כ</td><td class="n">${num(r.sales)}</td><td class="n">${num(r.units)}</td><td class="n">${money(r.tender.cash)}</td><td class="n">${money(r.tender.card)}</td><td class="n">${money(r.tender.other)}</td><td class="n">${money(r.revenue)}</td><td class="n">${money(r.avg)}</td></tr>` : '');
+
+  // hour chart + day picker
+  const ds = $('daySel');
+  ds.innerHTML = `<option value="">כל הימים</option>` + r.days.map(d => `<option value="${d.day}">${esc(dayName(d.day))} ${fmtDay(d.day)}</option>`).join('');
+  ds.classList.toggle('hide', !multiDay);
+  ds.onchange = renderHours;
+  renderHours();
+
+  // top items
+  const top = r.items.slice(0, 15);
+  $('top').innerHTML = `<tr><th>#</th><th>פריט</th><th>קטגוריה</th><th class="n">יחידות</th><th class="n">הכנסות</th></tr>` +
+    top.map((it, i) => `<tr><td>${i + 1}</td><td>${esc(it.name)}${it.item_id ? ` <span class="muted">קוד ${esc(it.item_id)}</span>` : ''}</td><td class="muted">${esc(it.category)}</td><td class="n">${num(it.qty)}</td><td class="n">${money(it.revenue)}</td></tr>`).join('');
+
+  $('cats').innerHTML = `<tr><th>קטגוריה</th><th class="n">יחידות</th><th class="n">הכנסות</th><th class="n">%</th></tr>` +
+    r.categories.map(c => `<tr><td>${esc(c.name)}</td><td class="n">${num(c.qty)}</td><td class="n">${money(c.revenue)}</td><td class="n">${r.revenue ? Math.round(c.revenue / r.revenue * 100) : 0}%</td></tr>`).join('');
+
+  $('staff').innerHTML = `<tr><th>עובד</th><th class="n">מכירות</th><th class="n">הכנסות</th></tr>` +
+    r.staff.map(s => `<tr><td>${esc(s.name || '—')}</td><td class="n">${num(s.sales)}</td><td class="n">${money(s.revenue)}</td></tr>`).join('');
+
+  renderFix();
+}
+
+function renderHours() {
+  const r = report, day = $('daySel').value;
+  const src = day ? (r.days.find(d => d.day === day) || { hours: [], hoursSales: [] }) : r;
+  const hours = src.hours || [], sales = src.hoursSales || [];
+  let lo = -1, hi = -1;
+  for (let h = 0; h < 24; h++) if ((hours[h] || 0) > 0 || (sales[h] || 0) > 0) { if (lo < 0) lo = h; hi = h; }
+  if (lo < 0) { $('hours').innerHTML = '<p class="empty">אין נתוני שעות</p>'; $('hoursNote').textContent = ''; return; }
+  lo = Math.max(0, lo - 1); hi = Math.min(23, hi + 1);
+  const n = hi - lo + 1, W = 900, H = 200, padB = 28, padT = 18, bw = W / n;
+  const max = Math.max(...hours.slice(lo, hi + 1), 1);
+  let svg = `<svg class="bars" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="הכנסות לפי שעה">`;
+  for (let i = 0; i < n; i++) {
+    const h = lo + i, v = hours[h] || 0, bh = Math.round((H - padB - padT) * v / max);
+    const x = W - (i + 1) * bw + 4, w = Math.max(bw - 8, 6);   // rtl: hours run right → left
+    svg += `<rect class="${v ? '' : 'zero'}" x="${x}" y="${H - padB - (v ? bh : 2)}" width="${w}" height="${v ? bh : 2}" rx="3"></rect>`;
+    if (v) svg += `<text x="${x + w / 2}" y="${H - padB - bh - 4}" text-anchor="middle">${Math.round(v)}</text>`;
+    svg += `<text x="${x + w / 2}" y="${H - 8}" text-anchor="middle">${String(h).padStart(2, '0')}</text>`;
+  }
+  svg += '</svg>';
+  $('hours').innerHTML = svg;
+  const best = hours.indexOf(Math.max(...hours));
+  $('hoursNote').textContent = `שעת השיא: ${String(best).padStart(2, '0')}:00 (${money(hours[best])}, ${num(sales[best] || 0)} מכירות)`;
+}
+
+/* ==================================================================
+   Caspit-fix checklist — one row per item sold, tick = keyed into Caspit
+   ================================================================== */
+$('who').value = localStorage.getItem('pos_fix_who') || '';
+$('who').oninput = () => localStorage.setItem('pos_fix_who', $('who').value.trim());
+
+function renderFix() {
+  const r = report, fixes = r.fixes || {};
+  const multiDay = r.days.length > 1;
+  const dayHead = multiDay ? r.days.map(d => `<th class="n">${fmtDay(d.day).slice(0, 5)}</th>`).join('') : '';
+  $('fix').innerHTML = `<tr><th></th><th>קוד</th><th>פריט</th><th>ברקוד</th>${dayHead}<th class="n">כמות</th><th>סומן</th></tr>` +
+    r.items.map(it => {
+      const f = fixes[it.key];
+      const dayCells = multiDay ? r.days.map(d => `<td class="n muted">${it.days && it.days[d.day] ? num(it.days[d.day]) : ''}</td>`).join('') : '';
+      return `<tr class="${f ? 'done' : ''}" data-key="${esc(it.key)}">
+        <td><input type="checkbox" ${f ? 'checked' : ''} aria-label="הוקלד בכספיט"></td>
+        <td>${esc(it.item_id) || '<span class="flag">ללא קוד</span>'}</td>
+        <td class="name">${esc(it.name)}${it.manual ? ' <span class="flag">· הוזן ידנית בדוכן</span>' : ''}</td>
+        <td class="muted">${esc(it.barcode)}</td>${dayCells}
+        <td class="n"><b>${num(it.qty)}</b></td>
+        <td class="muted">${f ? esc(f.by) + ' · ' + (f.at || '').slice(5, 16).replace('T', ' ') : ''}</td>
+      </tr>`;
+    }).join('');
+  $('fix').querySelectorAll('input[type=checkbox]').forEach(cb => { cb.onchange = () => tick(cb); });
+  updateProgress();
+  if (r.codeless_units) toast(`שים לב: ${num(r.codeless_units)} יחידות נמכרו בלי קוד פריט`);
+}
+
+function updateProgress() {
+  const all = $('fix').querySelectorAll('tr[data-key]').length;
+  const done = $('fix').querySelectorAll('tr.done').length;
+  $('fixprog').textContent = all ? `${done} מתוך ${all} פריטים הוקלדו` : '';
+}
+
+async function tick(cb) {
+  const tr = cb.closest('tr'), key = tr.dataset.key;
+  const it = report.items.find(x => x.key === key);
+  const who = $('who').value.trim();
+  if (cb.checked && !who) { cb.checked = false; $('who').focus(); return toast('כתוב מי מקליד'); }
+  cb.disabled = true;
+  try {
+    const res = await apiPost({ action: 'fix_tick', event: report.event, item_key: key, item_id: it.item_id, barcode: it.barcode, name: it.name, qty: it.qty, done: cb.checked, by: who });
+    if (res.done) { report.fixes[key] = { by: res.by, at: res.at, qty: it.qty }; tr.classList.add('done'); tr.lastElementChild.textContent = res.by + ' · ' + (res.at || '').slice(5, 16).replace('T', ' '); }
+    else { delete report.fixes[key]; tr.classList.remove('done'); tr.lastElementChild.textContent = ''; }
+    updateProgress();
+  } catch (err) {
+    cb.checked = !cb.checked;
+    toast('לא נשמר: ' + err.message);
+  } finally {
+    cb.disabled = false;
+  }
+}
+
+$('copy').onclick = async () => {
+  const r = report;
+  const lines = [`${r.event} — תיקון כספיט (${num(r.units)} יחידות, ${r.items.length} פריטים)`, 'קוד\tכמות\tפריט\tברקוד\tסטטוס'];
+  r.items.forEach(it => lines.push(`${it.item_id || '-'}\t${it.qty}\t${it.name}\t${it.barcode || ''}\t${r.fixes[it.key] ? 'הוקלד' : ''}`));
+  try { await navigator.clipboard.writeText(lines.join('\n')); toast('הרשימה הועתקה'); }
+  catch (e) { toast('העתקה נכשלה'); }
+};
+$('print').onclick = () => window.print();
+
+loadEvents();
+</script>
+</body>
+</html>

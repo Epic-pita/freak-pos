@@ -83,6 +83,13 @@
     border: 2px solid var(--line); border-radius: 10px; background: var(--surface);
   }
   input:focus { border-color: var(--ink); outline: none; }
+  select.pick {
+    width: 100%; min-height: var(--tap); padding: 0 14px;
+    border: 2px solid var(--line); border-radius: 10px; background: var(--surface);
+    appearance: auto;
+  }
+  select.pick:focus { border-color: var(--ink); outline: none; }
+  a.quiet { color: var(--muted); text-decoration: underline; font-size: 14px; }
 
   .btn {
     min-height: var(--tap); width: 100%; border-radius: 10px; font-weight: 700;
@@ -165,14 +172,16 @@
       <div class="card">
         <h2 style="margin:0 0 14px;font-size:22px;">דוכן FREAK</h2>
         <label for="g-staff">שם עובד</label>
-        <input id="g-staff" type="text" autocomplete="off">
+        <select id="g-staff" class="pick"><option value="">בחר עובד…</option></select>
         <div style="height:12px"></div>
         <label for="g-event">אירוע</label>
-        <input id="g-event" type="text" autocomplete="off" placeholder="לדוגמה: PTCon 2026">
+        <select id="g-event" class="pick"><option value="">בחר אירוע…</option></select>
+        <p class="hint" id="g-event-hint"></p>
         <div style="height:16px"></div>
         <button class="btn" id="g-go">התחל מכירה</button>
       </div>
       <p class="empty" id="g-status">טוען קטלוג…</p>
+      <p class="empty" style="padding-top:0"><a class="quiet" href="./report.html">סיכום אירוע ותיקוני כספיט</a></p>
     </main>
   </div>
 
@@ -302,7 +311,7 @@
 /* ==================================================================
    CONFIG — the two lines you edit
    ================================================================== */
-const API_URL = 'https://script.google.com/macros/s/AKfycbyF8jMXKLcZLDL1aPKtGrF3QnWh3zrjAFSl3IZdacerKHFFDWAtdQLZ9lo0nU6zW2Yn/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbxt4X2H5PmVMM2na7gjXrizs4TzO-ZiBJAg6yBWzwVlDBxVppOZ7CnpnNPCa0z4Yb8/exec';
 const TOKEN   = 'freak-hRBEJJ1eYTVmbs_JJq0tRczl';   // must match POS_CONFIG.TOKEN
 
 /* ==================================================================
@@ -390,23 +399,75 @@ function keysFor(raw) {
  * bags). Indexing exact barcodes first means a variant of one item can never
  * squat the real barcode of another — whatever gets added to the catalog later.
  */
+let byCode = new Map();
+
 function indexCatalog() {
-  byBarcode = new Map();
-  flat = (catalog?.rows || []).map(r => ({
-    barcode: r[0], item_id: r[1], name: r[2], category: r[3], price: Number(r[4]) || 0
+  byBarcode = new Map(); byCode = new Map();
+  const all = (catalog?.rows || []).map(r => ({
+    barcode: String(r[0] ?? '').trim(), item_id: String(r[1] ?? '').trim(),
+    name: r[2], category: r[3], price: Number(r[4]) || 0
   }));
-  for (const item of flat) {
-    const s = String(item.barcode || '').trim();
-    if (s && !byBarcode.has(s)) byBarcode.set(s, item);
+  // The catalog carries one row per barcode, so an item with two barcodes
+  // arrives twice. Search shows it once; lookup answers to both barcodes.
+  flat = [];
+  for (const item of all) {
+    if (item.item_id && byCode.has(item.item_id)) continue;
+    if (item.item_id) byCode.set(item.item_id, item);
+    flat.push(item);
   }
-  for (const item of flat) {
-    for (const k of keysFor(item.barcode)) if (!byBarcode.has(k)) byBarcode.set(k, item);
+  for (const item of all) {
+    if (item.barcode && !byBarcode.has(item.barcode)) byBarcode.set(item.barcode, byCode.get(item.item_id) || item);
+  }
+  for (const item of all) {
+    for (const k of keysFor(item.barcode)) if (!byBarcode.has(k)) byBarcode.set(k, byCode.get(item.item_id) || item);
   }
 }
 
 function lookup(raw) {
   for (const k of keysFor(raw)) if (byBarcode.has(k)) return byBarcode.get(k);
+  const code = String(raw || '').trim();
+  if (byCode.has(code)) return byCode.get(code);   // a gun (or a person) typed the Caspit item code
   return null;
+}
+
+/* ==================================================================
+   Gate pickers — staff and events come from the workbook's עובדים and
+   אירועים tabs, cached with the catalog so they exist offline too.
+   An event is "current" from 3 days before it starts until the day after it
+   ends; when nothing is current, the upcoming ones are offered instead.
+   ================================================================== */
+function dayStr(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+const fmtDay = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) : '';
+
+function renderGate() {
+  const staff = catalog?.staff || [], events = catalog?.events || [];
+  const sSel = $('g-staff'), eSel = $('g-event');
+  const keepS = sSel.value || (session && session.staff) || '';
+  const keepE = eSel.value || (session && session.event) || '';
+
+  sSel.innerHTML = '<option value="">בחר עובד…</option>' + staff.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  if (keepS && !staff.includes(keepS)) sSel.insertAdjacentHTML('beforeend', `<option value="${esc(keepS)}">${esc(keepS)}</option>`);
+  sSel.value = keepS;
+
+  const soon = dayStr(new Date(Date.now() + 3 * 864e5));
+  const recent = dayStr(new Date(Date.now() - 1 * 864e5));
+  const endOf = e => e.end || e.start || '';
+  const current = events.filter(e => (e.start || '') <= soon && endOf(e) >= recent);
+  const upcoming = events.filter(e => endOf(e) >= recent);
+  const shown = current.length ? current : (upcoming.length ? upcoming : events);
+
+  eSel.innerHTML = '<option value="">בחר אירוע…</option>' + shown.map(e => {
+    const when = e.start ? ' · ' + fmtDay(e.start) + (e.end && e.end !== e.start ? '–' + fmtDay(e.end) : '') : '';
+    return `<option value="${esc(e.name)}">${esc(e.name)}${when}</option>`;
+  }).join('');
+  if (keepE && !shown.some(e => e.name === keepE)) eSel.insertAdjacentHTML('beforeend', `<option value="${esc(keepE)}">${esc(keepE)}</option>`);
+  eSel.value = keepE;
+
+  $('g-event-hint').textContent = !events.length
+    ? 'אין אירועים בגיליון — מוסיפים שורה בלשונית "אירועים" (שם, התחלה, סיום, פעיל = כן).'
+    : current.length ? '' : 'אין אירוע בתאריכים האלה — מוצגים האירועים הבאים. אירוע חדש נרשם בלשונית "אירועים" בגיליון.';
 }
 
 /* ==================================================================
@@ -450,7 +511,7 @@ function toast(msg) {
 /* ==================================================================
    Boot
    ================================================================== */
-const BUILD = 'v4';
+const BUILD = 'v5';
 
 window.addEventListener('load', async () => {
   if ('serviceWorker' in navigator) {
@@ -474,11 +535,12 @@ window.addEventListener('load', async () => {
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
   if (catalog) indexCatalog();
+  renderGate();
 
   // Session first, network second. The catalog refresh used to sit between the
   // saved session and enterMain(), so zombie wifi held the whole app on
   // "טוען קטלוג…" while a day-old catalog sat right there in localStorage.
-  if (session) { $('g-staff').value = session.staff; $('g-event').value = session.event; enterMain(); }
+  if (session && session.staff && session.event) enterMain();
   renderPill(); renderStuck();
   setInterval(flush, 20000);
   window.addEventListener('online', flush);
@@ -500,10 +562,11 @@ window.addEventListener('load', async () => {
   try {
     const res = await apiGet('catalog');
     if (!res.ok) throw new Error(res.error || 'API error');
-    catalog = { version: res.version, rows: res.rows };
+    catalog = { version: res.version, rows: res.rows, staff: res.staff || [], events: res.events || [] };
     save(LS.catalog, catalog);
     indexCatalog();
-    $('g-status').textContent = flat.length.toLocaleString('he-IL') + ' פריטים נטענו · ' + BUILD;
+    renderGate();
+    $('g-status').textContent = flat.length.toLocaleString('he-IL') + ' פריטים · ' + (catalog.staff.length) + ' עובדים · ' + (catalog.events.length) + ' אירועים · ' + BUILD;
   } catch (err) {
     $('g-status').textContent = (flat.length
       ? 'אין רשת — קטלוג שמור (' + flat.length.toLocaleString('he-IL') + ' פריטים)'
@@ -514,7 +577,8 @@ window.addEventListener('load', async () => {
 $('g-go').onclick = () => {
   unlockAudio();
   const staff = $('g-staff').value.trim(), event = $('g-event').value.trim();
-  if (!staff || !event) return toast('מלא שם ואירוע');
+  if (!staff) return toast('בחר עובד');
+  if (!event) return toast('בחר אירוע');
   session = { staff, event }; save(LS.session, session);
   enterMain();
 };
@@ -533,6 +597,7 @@ function enterMain() {
 $('who-btn').onclick = async () => {
   if (cart.length) return toast('סיים או רוקן את הסל קודם');
   if (scanning) await stopCam();
+  renderGate();
   $('g-staff').value = session.staff;
   $('g-event').value = session.event;
   $('main').classList.add('hide');
@@ -729,13 +794,13 @@ $('q').addEventListener('input', e => {
   const hits = [];
   for (let n = 0; n < flat.length && hits.length < 12; n++) {
     const i = flat[n];
-    if (i.name.toLowerCase().includes(q) || String(i.barcode).includes(q) || i.category.toLowerCase().includes(q)) {
+    if (i.name.toLowerCase().includes(q) || String(i.barcode).includes(q) || String(i.item_id).includes(q) || i.category.toLowerCase().includes(q)) {
       hits.push({ i, n });
     }
   }
   box.innerHTML = hits.length
     ? hits.map(({ i, n }) => `<div class="line" data-hit="${n}">
-         <div class="info"><b>${esc(i.name)}</b><small>${esc(i.category)} · ${money(i.price)}</small></div>
+         <div class="info"><b>${esc(i.name)}</b><small>${esc(i.category)}${i.item_id ? ' · קוד ' + esc(i.item_id) : ''} · ${money(i.price)}</small></div>
        </div>`).join('')
     : `<div class="line"><div class="info"><b>לא נמצא</b><small>לחץ Enter כדי להוסיף ידנית</small></div></div>`;
 
@@ -766,7 +831,7 @@ function openItem(item) {
   $('i-name').textContent = unknown ? 'פריט לא מזוהה' : item.name;
   $('i-meta').textContent = unknown
     ? 'ברקוד ' + item.barcode + ' — יירשם כהזנה ידנית ויסומן לניקוי אחרי האירוע'
-    : [item.category, item.barcode].filter(Boolean).join(' · ');
+    : [item.category, item.item_id ? 'קוד ' + item.item_id : '', item.barcode].filter(Boolean).join(' · ');
   $('i-qty').value = 1;
 
   // Empty on purpose when there's no price. A pre-filled 0 is a free item one
