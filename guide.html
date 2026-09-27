@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c0a09">
+<title>FREAK POS — מדריך לצוות</title>
+<link rel="icon" href="./icon-192.png">
+
+<!--
+  Staff training guide. Every picture in guide/ is a real screenshot of this app
+  at phone size, produced by tools/test/make_guide_shots.py — regenerate them
+  after any change to a screen, so the guide never drifts from the till.
+  Same rules as the till: nothing loaded from outside this folder.
+-->
+
+<style>
+  :root { --ink: #0c0a09; --muted: #57534e; --line: #d6d3d1; --bg: #f5f5f4; --surface: #ffffff;
+          --ok: #15803d; --queued: #b45309; --danger: #b91c1c; --mark: #dc2626; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Rubik, Arial, sans-serif; font-size: 17px; line-height: 1.5; }
+  #app { max-width: 720px; margin: 0 auto; }
+  header { position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--line);
+    padding: 10px 14px; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 18px; margin: 0; flex: 1; }
+  header a { color: var(--muted); font-size: 14px; }
+  main { padding: 14px; }
+
+  nav.toc { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; }
+  nav.toc ol { margin: 0; padding-inline-start: 22px; columns: 2; column-gap: 24px; }
+  nav.toc li { break-inside: avoid; margin: 2px 0; }
+  nav.toc a { color: var(--ink); text-decoration: none; }
+  @media (max-width: 480px) { nav.toc ol { columns: 1; } }
+
+  section { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; scroll-margin-top: 64px; }
+  section h2 { margin: 0 0 8px; font-size: 21px; }
+  section h2 .n { display: inline-flex; width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: #fff;
+    font-size: 16px; align-items: center; justify-content: center; margin-inline-end: 8px; vertical-align: middle; }
+  .lead { color: var(--muted); margin: 0 0 12px; }
+  figure { margin: 0 0 14px; }
+  figure img { display: block; width: 100%; max-width: 360px; border: 1px solid var(--line); border-radius: 14px; margin: 0 auto; }
+  figure.wide img { max-width: 100%; }
+  figcaption { font-size: 13px; color: var(--muted); text-align: center; margin-top: 6px; }
+  ol.steps { padding-inline-start: 0; margin: 0; list-style: none; counter-reset: s; }
+  ol.steps li { position: relative; padding-inline-start: 40px; margin: 8px 0; }
+  ol.steps li::before { counter-increment: s; content: counter(s); position: absolute; inset-inline-start: 0; top: 1px;
+    width: 28px; height: 28px; border-radius: 50%; background: var(--mark); color: #fff; font-weight: 700; font-size: 15px;
+    display: flex; align-items: center; justify-content: center; }
+  ul.plain { margin: 8px 0 0; padding-inline-start: 20px; }
+  .tip { background: #fffbeb; border: 1px solid #fcd34d; border-radius: 10px; padding: 10px 12px; margin: 10px 0 0; font-size: 15px; }
+  .warn { background: #fef2f2; border: 1px solid #fca5a5; border-radius: 10px; padding: 10px 12px; margin: 10px 0 0; font-size: 15px; }
+  .pills { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .pills figure { margin: 0; }
+  .pills img { max-width: 360px; }
+  .pills p { margin: 4px 0 0; font-size: 15px; }
+  kbd { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; font-family: inherit; font-size: 14px; }
+  b.ok { color: var(--ok); } b.queued { color: var(--queued); } b.bad { color: var(--danger); }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: start; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-size: 13px; font-weight: 600; }
+  @media print { header, nav.toc { display: none; } section { break-inside: avoid; border: none; } figure img { max-width: 300px; } }
+</style>
+</head>
+
+<body>
+<div id="app">
+  <header>
+    <h1>מדריך לצוות · דוכן FREAK</h1>
+    <a href="./index.html">לקופה</a>
+  </header>
+
+  <main>
+    <nav class="toc">
+      <b>מה בפנים</b>
+      <ol>
+        <li><a href="#s1">התקנה על הטלפון</a></li>
+        <li><a href="#s2">תחילת משמרת</a></li>
+        <li><a href="#s3">שלוש דרכים למצוא פריט</a></li>
+        <li><a href="#s4">המצלמה</a></li>
+        <li><a href="#s5">כמות ומחיר</a></li>
+        <li><a href="#s6">פריט שלא מזוהה</a></li>
+        <li><a href="#s7">הסל</a></li>
+        <li><a href="#s8">תשלום</a></li>
+        <li><a href="#s9">מה אומר הכפתור הצבעוני</a></li>
+        <li><a href="#s10">להחליף עובד או אירוע</a></li>
+        <li><a href="#s11">סוף האירוע (מנהלים)</a></li>
+        <li><a href="#s12">תקלות ופתרונות</a></li>
+      </ol>
+    </nav>
+
+    <section id="s1">
+      <h2><span class="n">1</span>התקנה על הטלפון</h2>
+      <p class="lead">האפליקציה היא דף אינטרנט שמתקינים כאייקון. פעם אחת לכל טלפון.</p>
+      <ol class="steps">
+        <li>פתחו בדפדפן את הכתובת: <b>epic-pita.github.io/freak-pos</b></li>
+        <li><b>אנדרואיד (כרום):</b> תפריט ⋮ (למעלה מימין) → <kbd>הוסף למסך הבית</kbd> → <kbd>התקן</kbd>.</li>
+        <li><b>אייפון (ספארי):</b> כפתור השיתוף (ריבוע עם חץ למעלה) → <kbd>הוסף למסך הבית</kbd> → <kbd>הוסף</kbd>.</li>
+        <li>בפתיחה הראשונה אשרו גישה למצלמה כשהטלפון שואל.</li>
+      </ol>
+      <p class="tip">האפליקציה עובדת גם בלי קליטה. הקטלוג נשמר בטלפון, ומכירות שנרשמו בלי רשת נשלחות לבד כשהקליטה חוזרת.</p>
+    </section>
+
+    <section id="s2">
+      <h2><span class="n">2</span>תחילת משמרת</h2>
+      <figure><img src="./guide/01-gate.jpg" alt="מסך הפתיחה: בחירת עובד ואירוע"><figcaption>מסך הפתיחה</figcaption></figure>
+      <ol class="steps">
+        <li>בחרו את השם שלכם ברשימה.</li>
+        <li>בחרו את האירוע. הרשימה מציגה את האירועים של הימים האלה.</li>
+        <li>לחצו <kbd>התחל מכירה</kbd>.</li>
+        <li>הקישור למטה פותח את דוח האירוע (למנהלים, סעיף 11).</li>
+      </ol>
+      <p class="tip">אם השם שלכם או האירוע לא ברשימה: תגידו למנהל. הוא מוסיף אותם בגיליון, ובפתיחה הבאה הם יופיעו.</p>
+    </section>
+
+    <section id="s3">
+      <h2><span class="n">3</span>שלוש דרכים למצוא פריט</h2>
+      <figure><img src="./guide/02-main.jpg" alt="מסך המכירה"><figcaption>מסך המכירה</figcaption></figure>
+      <ol class="steps">
+        <li><b>אקדח ברקוד:</b> לחצו פעם אחת בשדה החיפוש, ומאז פשוט סורקים. השדה נשאר פעיל אחרי כל פריט.</li>
+        <li><b>מצלמת הטלפון:</b> <kbd>הפעל מצלמה</kbd> (סעיף 4).</li>
+        <li>הכפתור הצבעוני מראה אם המכירות נשלחו (סעיף 9).</li>
+        <li>לחיצה על שם האירוע חוזרת למסך הפתיחה (סעיף 10).</li>
+      </ol>
+      <figure><img src="./guide/03-search.jpg" alt="חיפוש לפי שם"><figcaption>חיפוש לפי שם, ברקוד או קוד פריט</figcaption></figure>
+      <ol class="steps">
+        <li><b>חיפוש ידני:</b> הקלידו חלק מהשם (גם באנגלית), ברקוד או קוד פריט.</li>
+        <li>לחצו על הפריט ברשימה. מוצגים שם, קטגוריה, קוד ומחיר.</li>
+      </ol>
+    </section>
+
+    <section id="s4">
+      <h2><span class="n">4</span>המצלמה</h2>
+      <figure><img src="./guide/10-camera.jpg" alt="חלון המצלמה עם החלפת מצלמה, זום ופנס"><figcaption>חלון המצלמה</figcaption></figure>
+      <ol class="steps">
+        <li><kbd>הפעל מצלמה</kbd> פותח את חלון הסריקה. הברקוד צריך להיות בתוך המסגרת, לרוחב.</li>
+        <li><b>תמונה מטושטשת?</b> לחצו <kbd>החלף מצלמה</kbd>. לרוב לטלפון יש כמה עדשות אחוריות ורק אחת מהן מצליחה למקד מקרוב. הבחירה נשמרת.</li>
+        <li>אפשר גם לבחור עדשה מהרשימה.</li>
+        <li><b>ברקוד קטן?</b> אל תתקרבו. הישארו כ-20 ס״מ והגבירו זום. מתחת ל-10 ס״מ העדשה לא מסוגלת למקד.</li>
+        <li><b>חושך?</b> פנס.</li>
+        <li>השורה הקטנה מציגה איזו עדשה פעילה ומה נסרק אחרון. אם משהו לא עובד, <kbd>העתק פרטים</kbd> ושלחו למנהל.</li>
+      </ol>
+      <p class="tip">סריקה מוצלחת: מסגרת ירוקה, צפצוף ורטט קצר. הפריט נפתח מיד.</p>
+    </section>
+
+    <section id="s5">
+      <h2><span class="n">5</span>כמות ומחיר</h2>
+      <figure><img src="./guide/04-item.jpg" alt="חלון הפריט: כמות, מחיר, הוסף לסל"><figcaption>חלון הפריט</figcaption></figure>
+      <ol class="steps">
+        <li>כמות. ברירת המחדל 1.</li>
+        <li>מחיר ליחידה. מגיע מהמחירון; אפשר לשנות (הנחה, מבצע). שינוי מסומן בסל.</li>
+        <li><kbd>הוסף לסל</kbd>.</li>
+        <li><kbd>ביטול</kbd> אם נסרק בטעות.</li>
+      </ol>
+      <p class="warn">פריט שמופיע בלי מחיר: הקלידו את המחיר מהמדבקה. אי אפשר להוסיף פריט במחיר ריק.</p>
+    </section>
+
+    <section id="s6">
+      <h2><span class="n">6</span>פריט שלא מזוהה</h2>
+      <figure><img src="./guide/06-unknown.jpg" alt="פריט לא מזוהה"><figcaption>ברקוד שלא נמצא בקטלוג</figcaption></figure>
+      <ol class="steps">
+        <li>הכותרת אומרת "פריט לא מזוהה" ומציגה את הברקוד.</li>
+        <li>הקלידו את המחיר מהמדבקה.</li>
+        <li><kbd>הוסף לסל</kbd>. המכירה נרשמת כהזנה ידנית, ואחרי האירוע המנהל משייך אותה לפריט הנכון.</li>
+      </ol>
+      <p class="tip">לפני שמוסיפים ידנית, נסו חיפוש לפי שם. הקטלוג מתעדכן כל בוקר, אבל פריט חדש לגמרי אולי עוד לא בו.</p>
+    </section>
+
+    <section id="s7">
+      <h2><span class="n">7</span>הסל</h2>
+      <figure><img src="./guide/05-cart.jpg" alt="הסל"><figcaption>הסל</figcaption></figure>
+      <ol class="steps">
+        <li><b>×</b> מוחק שורה אחת.</li>
+        <li><kbd>רוקן סל</kbd> מוחק הכל (מבקש אישור).</li>
+        <li>הסכום מתעדכן בכל שינוי.</li>
+        <li><kbd>לתשלום</kbd>.</li>
+      </ol>
+    </section>
+
+    <section id="s8">
+      <h2><span class="n">8</span>תשלום</h2>
+      <figure><img src="./guide/07-pay.jpg" alt="חלון התשלום"><figcaption>חלון התשלום. תשלום במזומן מלא</figcaption></figure>
+      <ol class="steps">
+        <li>שלושה שדות: מזומן, אשראי, אחר.</li>
+        <li><kbd>השלם</kbd> ליד שדה ממלא בו את כל מה שנשאר לשלם. לתשלום מלא במזומן: <kbd>השלם</kbd> ליד מזומן.</li>
+        <li>השורה חייבת להיות <b class="ok">מאוזן</b>. אם כתוב "נותר לשלם" או "עודף", הסכומים לא שווים לסל.</li>
+        <li><kbd>סיים מכירה</kbd> נדלק רק כשמאוזן.</li>
+        <li><kbd>חזור לסל</kbd> אם צריך לתקן משהו.</li>
+      </ol>
+      <figure><img src="./guide/07b-pay-split.jpg" alt="תשלום מפוצל"><figcaption>תשלום מפוצל: חלק במזומן, השאר באשראי</figcaption></figure>
+      <ol class="steps">
+        <li>הקלידו את הסכום במזומן.</li>
+        <li><kbd>השלם</kbd> ליד אשראי ממלא את היתרה.</li>
+        <li>מאוזן → <kbd>סיים מכירה</kbd>.</li>
+      </ol>
+      <p class="warn"><b>"אחר"</b> (ביט, העברה, החלפה, זיכוי) מחייב פירוט בשדה שנפתח. בלי פירוט אי אפשר לסיים.</p>
+      <p class="tip">האשראי נסלק במסופון כרגיל. הקופה רק רושמת שהתשלום היה באשראי.</p>
+    </section>
+
+    <section id="s9">
+      <h2><span class="n">9</span>מה אומר הכפתור הצבעוני</h2>
+      <p class="lead">כל מכירה נשמרת קודם בטלפון ורק אז נשלחת לגיליון. הכפתור למעלה מראה איפה זה עומד.</p>
+      <div class="pills">
+        <figure><img src="./guide/08-pill-synced.jpg" alt="מסונכרן"><p><b class="ok">מסונכרן</b> — הכל נשלח. ככה זה צריך להיראות רוב הזמן.</p></figure>
+        <figure><img src="./guide/08-pill-queued.jpg" alt="ממתין"><p><b class="queued">ממתין · 3</b> — 3 מכירות מחכות לשליחה. נשלחות לבד תוך שניות. אפשר ללחוץ על הכפתור כדי לנסות עכשיו.</p></figure>
+        <figure><img src="./guide/08-pill-offline.jpg" alt="לא מקוון"><p><b class="queued">לא מקוון · 3</b> — אין קליטה. ממשיכים למכור רגיל; המכירות נשלחות כשהקליטה חוזרת. <b>לא למחוק את האפליקציה ולא לנקות את הדפדפן</b> כשיש מספר על הכפתור.</p></figure>
+        <figure><img src="./guide/08-pill-stuck.jpg" alt="תקוע"><p><b class="bad">תקוע · 1</b> — השרת דחה מכירה. לחצו על <kbd>מכירות תקועות</kbd> שמופיע מתחת לסל, <kbd>⧉</kbd> מעתיק את הפרטים, ושלחו למנהל. לא למחוק בלי לשלוח.</p></figure>
+      </div>
+    </section>
+
+    <section id="s10">
+      <h2><span class="n">10</span>להחליף עובד או אירוע</h2>
+      <figure><img src="./guide/09-header.jpg" alt="לחיצה על הכותרת"><figcaption>הכותרת היא כפתור</figcaption></figure>
+      <ol class="steps">
+        <li>לחצו על שם האירוע למעלה. חוזרים למסך הפתיחה ובוחרים מחדש.</li>
+      </ol>
+      <p class="tip">מחליפים משמרת? כל אחד בוחר את השם שלו לפני שמתחיל למכור. המכירות נרשמות על שם המוכר.</p>
+    </section>
+
+    <section id="s11">
+      <h2><span class="n">11</span>סוף האירוע (מנהלים)</h2>
+      <figure class="wide"><img src="./guide/11-report.jpg" alt="דוח סיכום אירוע"><figcaption>סיכום אירוע: epic-pita.github.io/freak-pos/report.html</figcaption></figure>
+      <ol class="steps">
+        <li>בוחרים אירוע. כל אירוע שהיו בו מכירות מופיע.</li>
+        <li>הכנסות, מספר מכירות, ממוצע למכירה, מזומן / אשראי / אחר.</li>
+        <li>בגרף השעות אפשר לבחור יום אחד באירוע של כמה ימים.</li>
+      </ol>
+      <figure class="wide"><img src="./guide/12-fixlist.jpg" alt="רשימת תיקון לכספיט"><figcaption>תיקון הקופה בכספיט</figcaption></figure>
+      <ol class="steps">
+        <li>כותבים מי מקליד.</li>
+        <li>לכל פריט: הכמות למחיקה מהמלאי בכספיט. אחרי שהוקלד, מסמנים וי. הסימון נשמר עם שם ושעה, כך שאפשר להמשיך מחר או שמישהו אחר ימשיך.</li>
+        <li><kbd>העתק רשימה</kbd> לוואטסאפ או לאקסל.</li>
+        <li><kbd>הדפס רשימה</kbd>.</li>
+      </ol>
+      <p class="warn">פריטים עם "ללא קוד" הוזנו ידנית בדוכן. צריך למצוא אותם בכספיט לפי הברקוד או השם.</p>
+    </section>
+
+    <section id="s12">
+      <h2><span class="n">12</span>תקלות ופתרונות</h2>
+      <table>
+        <tr><th>מה קורה</th><th>מה עושים</th></tr>
+        <tr><td>המצלמה לא נפתחת: "אין הרשאה"</td><td>בכרום: המנעול ליד הכתובת → הרשאות → מצלמה → אפשר. באייפון: הגדרות → ספארי → מצלמה → אפשר. אם זה לא עוזר מהאייקון, פתחו את הכתובת בספארי.</td></tr>
+        <tr><td>המצלמה שחורה או תפוסה</td><td>סגרו אפליקציות אחרות שמשתמשות במצלמה. אם צריך, הפעילו מחדש את הטלפון.</td></tr>
+        <tr><td>הסריקה לא תופסת</td><td><kbd>החלף מצלמה</kbd>; התרחקו ל-20 ס״מ והגבירו זום; נקו את העדשה; פנס בחושך. בינתיים: אקדח ברקוד או חיפוש לפי שם.</td></tr>
+        <tr><td>ברקוד נסרק אבל "פריט לא מזוהה"</td><td>חפשו לפי שם. אם אין: הזנה ידנית עם המחיר מהמדבקה (סעיף 6).</td></tr>
+        <tr><td>המחיר במסך שונה מהמדבקה</td><td>הקלידו את המחיר הנכון בשדה המחיר. השינוי מסומן ומדווח.</td></tr>
+        <tr><td>"ממתין" הרבה זמן</td><td>לחצו על הכפתור. אם אין קליטה, זה ישלח לבד אחר כך. אל תמחקו כלום.</td></tr>
+        <tr><td>"טוקן שגוי"</td><td>סגרו ופתחו את האפליקציה כדי לקבל עדכון. אם נשאר: למנהל.</td></tr>
+        <tr><td>המסך "קפא"</td><td>סגרו ופתחו את האפליקציה. הסל והמכירות שממתינות נשמרים בטלפון.</td></tr>
+      </table>
+    </section>
+  </main>
+</div>
+</body>
+</html>
