@@ -9,9 +9,12 @@
 
 <!--
   Event report + the Caspit-fix checklist. Same rules as the till: no web
-  fonts, no CDN, nothing that isn't in this folder. Every number on this page
-  comes from one call (?action=report) computed on the server from the Sales
-  and Sale_Lines tabs, so the page and the workbook can never disagree.
+  fonts, no CDN, nothing that isn't in this folder.
+
+  One call (?action=report) returns every sale of the event with its lines
+  (salesList). The page filters that list by day and rebuilds every table from
+  it, so "today" and "the whole convention" are two views of the same rows and
+  can never disagree. The Caspit checklist is always for the whole event.
 -->
 
 <style>
@@ -22,6 +25,7 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--ink);
     font-family: system-ui, -apple-system, "Segoe UI", Rubik, Arial, sans-serif; font-size: 16px; line-height: 1.4; }
+  body { overflow-x: hidden; }   /* body only: on both html and body, body becomes its own scroller and window scrolling breaks */
   button, input, select { font: inherit; color: inherit; }
   button { cursor: pointer; border: none; background: none; }
   .hide { display: none !important; }
@@ -41,12 +45,22 @@
   a.quiet { color: var(--muted); font-size: 14px; }
 
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; overflow-x: auto; }
-  body { overflow-x: hidden; }   /* body only: on both html and body, body becomes its own scroller and window scrolling breaks */
   .card h2 { margin: 0 0 10px; font-size: 17px; }
   .sub { color: var(--muted); font-size: 14px; margin: 0 0 10px; }
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   @media (max-width: 640px) { .row2 { grid-template-columns: 1fr; } }
+
+  /* day picker */
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { min-height: 46px; padding: 4px 14px; border-radius: 12px; border: 2px solid var(--line); background: var(--surface);
+    font-weight: 700; text-align: center; line-height: 1.15; }
+  .chip small { display: block; font-weight: 600; font-size: 12px; color: var(--muted); }
+  .chip.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .chip.on small { color: #d6d3d1; }
+  .chip .now { color: var(--ok); } .chip.on .now { color: #86efac; }
+  #scope { margin: 10px 0 0; font-weight: 700; font-size: 17px; }
+  #scope span { font-weight: 500; color: var(--muted); font-size: 14px; }
 
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 12px; }
   .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
@@ -58,6 +72,9 @@
   th { font-size: 13px; color: var(--muted); font-weight: 600; }
   td.n, th.n { text-align: end; white-space: nowrap; }
   tr.total td { font-weight: 700; border-top: 2px solid var(--ink); }
+  #days tr.day { cursor: pointer; }
+  #days tr.day.on td { background: #f5f5f4; font-weight: 700; }
+  #days tr.day.on td:first-child { box-shadow: inset -4px 0 0 var(--ink); }
   .muted { color: var(--muted); font-size: 13px; }
   .flag { color: var(--queued); font-weight: 700; font-size: 13px; }
 
@@ -66,8 +83,12 @@
   svg.bars rect { fill: var(--ink); }
   svg.bars rect.zero { fill: var(--line); }
 
+  #sales td.items div { margin-bottom: 2px; }
+  #sales td.when { white-space: nowrap; }
+
   #fix tr.done td { color: var(--muted); }
   #fix tr.done td.name { text-decoration: line-through; }
+  #fix tr.partial td.st { color: var(--queued); font-weight: 700; }
   #fix input[type=checkbox] { width: 24px; height: 24px; accent-color: var(--ok); }
   #who { min-height: 40px; padding: 0 12px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); width: 180px; }
   .empty { text-align: center; color: var(--muted); padding: 28px 10px; }
@@ -76,7 +97,7 @@
     padding: 12px 20px; border-radius: 999px; font-weight: 700; z-index: 50; max-width: 90vw; text-align: center; }
 
   @media print {
-    header, .noprint, #tiles, #daysCard, #hoursCard, #topCard, #catsCard, #staffCard { display: none !important; }
+    header, .noprint, #scopeCard, #tiles, #daysCard, #hoursCard, #topCard, #catsCard, #staffCard, #salesCard { display: none !important; }
     body { background: #fff; } .card { border: none; padding: 0; }
     #fix input[type=checkbox] { width: 14px; height: 14px; }
   }
@@ -89,6 +110,7 @@
     <h1>סיכום אירוע</h1>
     <select id="ev" class="pick grow"><option value="">טוען אירועים…</option></select>
     <button class="btn ghost small" id="reload">רענן</button>
+    <span class="muted" id="stamp"></span>
     <a class="quiet" href="./index.html">לקופה</a>
   </header>
 
@@ -96,6 +118,11 @@
     <p class="empty" id="status">טוען…</p>
 
     <section id="rep" class="hide">
+      <div class="card" id="scopeCard">
+        <div class="chips" id="dayBar"></div>
+        <p id="scope"></p>
+      </div>
+
       <div class="tiles" id="tiles"></div>
 
       <div class="card" id="daysCard">
@@ -104,12 +131,14 @@
       </div>
 
       <div class="card" id="hoursCard">
-        <div class="row" style="justify-content:space-between">
-          <h2 style="margin:0">הכנסות לפי שעה</h2>
-          <select id="daySel" class="pick small"></select>
-        </div>
-        <div id="hours" style="margin-top:8px"></div>
+        <h2>הכנסות לפי שעה</h2>
+        <div id="hours"></div>
         <p class="sub" id="hoursNote" style="margin:6px 0 0"></p>
+      </div>
+
+      <div class="row2">
+        <div class="card" id="staffCard"><h2>לפי עובד</h2><table id="staff"></table></div>
+        <div class="card" id="catsCard"><h2>לפי קטגוריה</h2><table id="cats"></table></div>
       </div>
 
       <div class="card" id="topCard">
@@ -117,14 +146,19 @@
         <table id="top"></table>
       </div>
 
-      <div class="row2">
-        <div class="card" id="catsCard"><h2>לפי קטגוריה</h2><table id="cats"></table></div>
-        <div class="card" id="staffCard"><h2>לפי עובד</h2><table id="staff"></table></div>
+      <div class="card" id="salesCard">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+          <h2 style="margin:0">פירוט מכירות</h2>
+          <select id="staffSel" class="pick small" aria-label="סינון לפי עובד"></select>
+        </div>
+        <p class="sub" id="salesNote"></p>
+        <table id="sales"></table>
+        <button class="btn ghost small hide" id="salesMore" style="margin-top:10px"></button>
       </div>
 
       <div class="card" id="fixCard">
         <h2>תיקון הקופה בכספיט</h2>
-        <p class="sub">כל פריט שנמכר באירוע, עם הכמות להוריד מהמלאי בכספיט. מסמנים וי אחרי שהפריט הוקלד; הסימון נשמר בגיליון עם שם ושעה, כך שכל אחד בחנות רואה מה כבר נעשה.</p>
+        <p class="sub">כל פריט שנמכר <b>בכל האירוע</b> (הרשימה הזו לא מסוננת לפי יום), עם הכמות להוריד מהמלאי בכספיט. מסמנים וי אחרי שהפריט הוקלד; הסימון נשמר בגיליון עם שם, שעה וכמות. אם הפריט נמכר שוב אחרי הסימון, השורה חוזרת ומראה כמה נוספו.</p>
         <div class="row noprint" style="margin-bottom:10px">
           <label>מי מקליד&nbsp;<input id="who" type="text" placeholder="שם" autocomplete="off"></label>
           <button class="btn ghost small" id="copy">העתק רשימה</button>
@@ -148,9 +182,14 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const money = n => '₪' + (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('he-IL', { maximumFractionDigits: 2 });
 const num = n => (Number(n) || 0).toLocaleString('he-IL');
+const r2 = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+const zeros = n => Array.from({ length: n }, () => 0);
 const fmtDay = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : '';
+const shortDay = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) : '';
 const DAYNAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 const dayName = s => { const d = new Date(s + 'T12:00:00'); return isNaN(d) ? '' : DAYNAMES[d.getDay()]; };
+const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const todayStr = () => iso(new Date());
 
 function toast(msg) {
   const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
@@ -179,96 +218,206 @@ async function apiPost(body) {
 }
 
 /* ==================================================================
-   Events
+   State
+   view.day: '' = the whole event, or one 'yyyy-MM-dd'
    ================================================================== */
 let report = null;
+let planned = {};                 // event name → {start, end} from the אירועים tab
+let view = { day: '', staff: '' };
+let showAllSales = false;
+let toldCodeless = '';
 
+function hashGet(k) { const m = location.hash.match(new RegExp('[#&]' + k + '=([^&]*)')); return m ? decodeURIComponent(m[1]) : ''; }
+function hashSet() {
+  const parts = ['event=' + encodeURIComponent(report.event)];
+  if (view.day) parts.push('day=' + view.day);
+  history.replaceState(null, '', '#' + parts.join('&'));
+}
+
+/* ==================================================================
+   Events
+   ================================================================== */
 async function loadEvents() {
   const sel = $('ev');
   try {
     const r = await apiGet('action=events');
     const withSales = r.sales || [];
-    const planned = (r.tab || []).filter(e => !withSales.some(s => s.name === e.name));
+    planned = {};
+    (r.tab || []).forEach(e => { planned[e.name] = e; });
+    const plannedOnly = (r.tab || []).filter(e => !withSales.some(s => s.name === e.name));
     let html = withSales.map(e =>
       `<option value="${esc(e.name)}">${esc(e.name)} · ${fmtDay(e.first)}${e.last && e.last !== e.first ? '–' + fmtDay(e.last) : ''} · ${num(e.sales)} מכירות</option>`).join('');
-    if (planned.length) html += '<optgroup label="מתוכננים — עדיין בלי מכירות">' +
-      planned.map(e => `<option value="${esc(e.name)}">${esc(e.name)} · ${fmtDay(e.start)}</option>`).join('') + '</optgroup>';
+    if (plannedOnly.length) html += '<optgroup label="מתוכננים — עדיין בלי מכירות">' +
+      plannedOnly.map(e => `<option value="${esc(e.name)}">${esc(e.name)} · ${fmtDay(e.start)}</option>`).join('') + '</optgroup>';
     sel.innerHTML = '<option value="">בחר אירוע…</option>' + html;
 
-    const fromHash = decodeURIComponent((location.hash.match(/event=([^&]+)/) || [])[1] || '');
+    const fromHash = hashGet('event');
     const remembered = localStorage.getItem('pos_report_event') || '';
     const first = withSales[0] ? withSales[0].name : '';
     const pick = [fromHash, remembered, first].find(v => v && [...sel.options].some(o => o.value === v)) || '';
     sel.value = pick;
-    if (pick) loadReport(pick); else $('status').textContent = 'בחר אירוע למעלה';
+    if (pick) loadReport(pick, hashGet('day')); else $('status').textContent = 'בחר אירוע למעלה';
   } catch (err) {
     sel.innerHTML = '<option value="">שגיאה בטעינת אירועים</option>';
     $('status').textContent = 'טעינת האירועים נכשלה: ' + err.message;
   }
 }
 
-$('ev').onchange = () => { const v = $('ev').value; if (v) loadReport(v); };
-$('reload').onclick = () => { const v = $('ev').value; if (v) loadReport(v); else loadEvents(); };
+$('ev').onchange = () => { const v = $('ev').value; if (v) loadReport(v, ''); };
+$('reload').onclick = () => { const v = $('ev').value; if (v) loadReport(v, view.day, true); else loadEvents(); };
 
 /* ==================================================================
    Report
    ================================================================== */
-async function loadReport(eventName) {
-  $('status').textContent = 'טוען סיכום…'; $('status').classList.remove('hide'); $('rep').classList.add('hide');
+async function loadReport(eventName, day, keepScroll) {
+  if (!keepScroll) { $('status').textContent = 'טוען סיכום…'; $('status').classList.remove('hide'); $('rep').classList.add('hide'); }
   try {
     const r = await apiGet('action=report&event=' + encodeURIComponent(eventName));
     report = r.report;
     localStorage.setItem('pos_report_event', eventName);
-    location.hash = 'event=' + encodeURIComponent(eventName);
+    const days = eventDays();
+    const want = day === 'today' ? todayStr() : (day || '');
+    view = { day: days.includes(want) ? want : '', staff: '' };
+    showAllSales = false;
+    const now = new Date();
+    $('stamp').textContent = 'עודכן ' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
     render();
     $('status').classList.add('hide'); $('rep').classList.remove('hide');
   } catch (err) {
-    $('status').textContent = 'טעינת הסיכום נכשלה: ' + err.message;
+    if (keepScroll) toast('הרענון נכשל: ' + err.message);
+    else $('status').textContent = 'טעינת הסיכום נכשלה: ' + err.message;
   }
 }
 
-function render() {
-  const r = report;
-  const multiDay = r.days.length > 1;
+/** Every day of the event: the planned range (אירועים tab) plus any day that has sales. */
+function eventDays() {
+  const set = new Set();
+  (report.salesList || []).forEach(s => { if (s.day) set.add(s.day); });
+  (report.days || []).forEach(d => { if (d.day) set.add(d.day); });
+  const p = planned[report.event];
+  if (p && p.start) {
+    let d = new Date(p.start + 'T12:00:00');
+    const end = new Date((p.end || p.start) + 'T12:00:00');
+    for (let guard = 0; d <= end && guard < 31; guard++) { set.add(iso(d)); d = new Date(d.getTime() + 864e5); }
+  }
+  return [...set].sort();
+}
 
+/** Everything the tables need, for one day ('' = the whole event), built from the sale list. */
+function aggregate(day) {
+  // discount = money below the list price, only where the item HAD a list price
+  const a = { sales: 0, units: 0, revenue: 0, discount: 0, tender: { cash: 0, card: 0, other: 0 },
+              hours: zeros(24), hoursSales: zeros(24), items: {}, categories: {}, staff: {}, list: [] };
+
+  if (!report.salesList) {            // an older backend: whole-event numbers only
+    if (day) return a;
+    return { ...a, sales: report.sales, units: report.units, revenue: report.revenue, tender: report.tender,
+             hours: report.hours, hoursSales: report.hoursSales,
+             itemList: report.items, categoryList: report.categories,
+             staffList: report.staff.map(s => ({ units: 0, ...s })), avg: report.avg };
+  }
+
+  for (const s of report.salesList) {
+    if (day && s.day !== day) continue;
+    a.list.push(s);
+    a.sales++; a.revenue += s.total;
+    a.tender.cash += s.cash; a.tender.card += s.card; a.tender.other += s.other;
+    if (s.hour >= 0) { a.hours[s.hour] += s.total; a.hoursSales[s.hour]++; }
+    const st = a.staff[s.staff] || (a.staff[s.staff] = { name: s.staff, sales: 0, units: 0, revenue: 0, discount: 0 });
+    st.sales++; st.revenue += s.total;
+    for (const l of s.lines) {
+      a.units += l.qty; st.units += l.qty;
+      if (l.list > 0 && l.unit < l.list) { const d = (l.list - l.unit) * l.qty; a.discount += d; st.discount += d; }
+      const it = a.items[l.key] || (a.items[l.key] = { key: l.key, item_id: l.item_id, barcode: l.barcode, name: l.name, category: l.category, qty: 0, revenue: 0 });
+      it.qty += l.qty; it.revenue += l.total;
+      const c = a.categories[l.category] || (a.categories[l.category] = { name: l.category, qty: 0, revenue: 0 });
+      c.qty += l.qty; c.revenue += l.total;
+    }
+  }
+  a.revenue = r2(a.revenue); a.discount = r2(a.discount);
+  a.hasList = report.salesList.some(s => s.lines.some(l => l.list !== undefined));
+  a.tender = { cash: r2(a.tender.cash), card: r2(a.tender.card), other: r2(a.tender.other) };
+  a.hours = a.hours.map(r2);
+  a.avg = a.sales ? r2(a.revenue / a.sales) : 0;
+  a.itemList = Object.values(a.items).map(i => ({ ...i, revenue: r2(i.revenue) })).sort((x, y) => y.qty - x.qty || y.revenue - x.revenue);
+  a.categoryList = Object.values(a.categories).map(c => ({ ...c, revenue: r2(c.revenue) })).sort((x, y) => y.revenue - x.revenue);
+  a.staffList = Object.values(a.staff).map(s => ({ ...s, revenue: r2(s.revenue) })).sort((x, y) => y.revenue - x.revenue);
+  return a;
+}
+
+function setDay(day) {
+  view.day = day; view.staff = ''; showAllSales = false;
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function render() {
+  const days = eventDays();
+  const today = todayStr();
+  const canFilter = !!report.salesList;
+  const a = aggregate(view.day);
+  const perDay = days.map(d => ({ day: d, a: canFilter ? aggregate(d) : null }));
+  const whole = view.day ? aggregate('') : a;
+  hashSet();
+
+  // ---- day picker + what is on screen ----
+  const multi = days.length > 1;
+  $('dayBar').innerHTML = !multi || !canFilter ? '' :
+    `<button class="chip${view.day ? '' : ' on'}" data-day="">כל האירוע<small>${days.length} ימים</small></button>` +
+    days.map((d, i) => `<button class="chip${view.day === d ? ' on' : ''}" data-day="${d}">${esc(dayName(d))} ${shortDay(d)}<small>יום ${i + 1}${d === today ? ' · <span class="now">היום</span>' : ''}</small></button>`).join('');
+  $('dayBar').querySelectorAll('[data-day]').forEach(b => { b.onclick = () => setDay(b.dataset.day); });
+  $('dayBar').classList.toggle('hide', !multi || !canFilter);
+
+  const idx = days.indexOf(view.day);
+  $('scope').innerHTML = view.day
+    ? `${esc(report.event)} · יום ${esc(dayName(view.day))} ${fmtDay(view.day)} <span>· יום ${idx + 1} מתוך ${days.length}${view.day === today ? ' · היום' : ''}</span>`
+    : `${esc(report.event)} · כל האירוע <span>· ${days.length > 1 ? days.length + ' ימים, ' + shortDay(days[0]) + '–' + shortDay(days[days.length - 1]) : fmtDay(days[0] || '')}</span>`;
+
+  // ---- tiles ----
   $('tiles').innerHTML = [
-    ['הכנסות', money(r.revenue)], ['מכירות', num(r.sales)], ['ממוצע למכירה', money(r.avg)], ['יחידות', num(r.units)],
-    ['מזומן', money(r.tender.cash)], ['אשראי', money(r.tender.card)], ['אחר', money(r.tender.other)]
+    ['הכנסות', money(a.revenue)], ['מכירות', num(a.sales)], ['ממוצע למכירה', money(a.avg)], ['יחידות', num(a.units)],
+    ['מזומן', money(a.tender.cash)], ['אשראי', money(a.tender.card)], ['אחר', money(a.tender.other)],
+    ...(a.hasList ? [['הנחות ממחירון', money(a.discount)]] : [])
   ].map(([k, v]) => `<div class="tile"><span>${k}</span><b>${v}</b></div>`).join('');
 
-  // per day
+  // ---- per day: always every day; the shown one is marked; a tap selects it ----
+  const dayRow = (d, x) => `<tr class="day${view.day === d ? ' on' : ''}" data-day="${d}"><td>${esc(dayName(d))} ${fmtDay(d)}${d === today ? ' <span class="flag">היום</span>' : ''}</td><td class="n">${num(x.sales)}</td><td class="n">${num(x.units)}</td><td class="n">${money(x.tender.cash)}</td><td class="n">${money(x.tender.card)}</td><td class="n">${money(x.tender.other)}</td><td class="n">${money(x.revenue)}</td><td class="n">${money(x.avg)}</td></tr>`;
+  const serverDay = d => { const s = (report.days || []).find(x => x.day === d); return s ? { sales: s.sales, units: s.units, revenue: s.revenue, avg: s.sales ? s.revenue / s.sales : 0, tender: { cash: s.cash, card: s.card, other: s.other } } : { sales: 0, units: 0, revenue: 0, avg: 0, tender: { cash: 0, card: 0, other: 0 } }; };
   $('days').innerHTML = `<tr><th>יום</th><th class="n">מכירות</th><th class="n">יחידות</th><th class="n">מזומן</th><th class="n">אשראי</th><th class="n">אחר</th><th class="n">הכנסות</th><th class="n">ממוצע</th></tr>` +
-    r.days.map(d => `<tr><td>${esc(dayName(d.day))} ${fmtDay(d.day)}</td><td class="n">${num(d.sales)}</td><td class="n">${num(d.units)}</td><td class="n">${money(d.cash)}</td><td class="n">${money(d.card)}</td><td class="n">${money(d.other)}</td><td class="n">${money(d.revenue)}</td><td class="n">${money(d.sales ? d.revenue / d.sales : 0)}</td></tr>`).join('') +
-    (multiDay ? `<tr class="total"><td>סה״כ</td><td class="n">${num(r.sales)}</td><td class="n">${num(r.units)}</td><td class="n">${money(r.tender.cash)}</td><td class="n">${money(r.tender.card)}</td><td class="n">${money(r.tender.other)}</td><td class="n">${money(r.revenue)}</td><td class="n">${money(r.avg)}</td></tr>` : '');
+    perDay.map(p => dayRow(p.day, p.a || serverDay(p.day))).join('') +
+    (multi ? `<tr class="total"><td>כל האירוע</td><td class="n">${num(whole.sales)}</td><td class="n">${num(whole.units)}</td><td class="n">${money(whole.tender.cash)}</td><td class="n">${money(whole.tender.card)}</td><td class="n">${money(whole.tender.other)}</td><td class="n">${money(whole.revenue)}</td><td class="n">${money(whole.avg)}</td></tr>` : '');
+  if (canFilter && multi) $('days').querySelectorAll('tr.day').forEach(tr => { tr.onclick = () => setDay(view.day === tr.dataset.day ? '' : tr.dataset.day); });
 
-  // hour chart + day picker
-  const ds = $('daySel');
-  ds.innerHTML = `<option value="">כל הימים</option>` + r.days.map(d => `<option value="${d.day}">${esc(dayName(d.day))} ${fmtDay(d.day)}</option>`).join('');
-  ds.classList.toggle('hide', !multiDay);
-  ds.onchange = renderHours;
-  renderHours();
+  renderHours(a);
 
-  // top items
-  const top = r.items.slice(0, 15);
-  $('top').innerHTML = `<tr><th>#</th><th>פריט</th><th>קטגוריה</th><th class="n">יחידות</th><th class="n">הכנסות</th></tr>` +
-    top.map((it, i) => `<tr><td>${i + 1}</td><td>${esc(it.name)}${it.item_id ? ` <span class="muted">קוד ${esc(it.item_id)}</span>` : ''}</td><td class="muted">${esc(it.category)}</td><td class="n">${num(it.qty)}</td><td class="n">${money(it.revenue)}</td></tr>`).join('');
+  // ---- staff ----
+  $('staff').innerHTML = a.staffList.length
+    ? `<tr><th>עובד</th><th class="n">מכירות</th><th class="n">יחידות</th><th class="n">הכנסות</th><th class="n">ממוצע</th><th class="n">%</th>${a.hasList ? '<th class="n">הנחות</th>' : ''}</tr>` +
+      a.staffList.map(s => `<tr><td>${esc(s.name || '—')}</td><td class="n">${num(s.sales)}</td><td class="n">${num(s.units)}</td><td class="n">${money(s.revenue)}</td><td class="n">${money(s.sales ? s.revenue / s.sales : 0)}</td><td class="n">${a.revenue ? Math.round(s.revenue / a.revenue * 100) : 0}%</td>${a.hasList ? `<td class="n muted">${money(s.discount)}</td>` : ''}</tr>`).join('')
+    : '<tr><td class="empty">אין מכירות</td></tr>';
 
-  $('cats').innerHTML = `<tr><th>קטגוריה</th><th class="n">יחידות</th><th class="n">הכנסות</th><th class="n">%</th></tr>` +
-    r.categories.map(c => `<tr><td>${esc(c.name)}</td><td class="n">${num(c.qty)}</td><td class="n">${money(c.revenue)}</td><td class="n">${r.revenue ? Math.round(c.revenue / r.revenue * 100) : 0}%</td></tr>`).join('');
+  // ---- categories ----
+  $('cats').innerHTML = a.categoryList.length
+    ? `<tr><th>קטגוריה</th><th class="n">יחידות</th><th class="n">הכנסות</th><th class="n">%</th></tr>` +
+      a.categoryList.map(c => `<tr><td>${esc(c.name)}</td><td class="n">${num(c.qty)}</td><td class="n">${money(c.revenue)}</td><td class="n">${a.revenue ? Math.round(c.revenue / a.revenue * 100) : 0}%</td></tr>`).join('')
+    : '<tr><td class="empty">אין מכירות</td></tr>';
 
-  $('staff').innerHTML = `<tr><th>עובד</th><th class="n">מכירות</th><th class="n">הכנסות</th></tr>` +
-    r.staff.map(s => `<tr><td>${esc(s.name || '—')}</td><td class="n">${num(s.sales)}</td><td class="n">${money(s.revenue)}</td></tr>`).join('');
+  // ---- top items ----
+  const top = a.itemList.slice(0, 15);
+  $('top').innerHTML = top.length
+    ? `<tr><th>#</th><th>פריט</th><th>קטגוריה</th><th class="n">יחידות</th><th class="n">הכנסות</th></tr>` +
+      top.map((it, i) => `<tr><td>${i + 1}</td><td>${esc(it.name)}${it.item_id ? ` <span class="muted">קוד ${esc(it.item_id)}</span>` : ''}</td><td class="muted">${esc(it.category)}</td><td class="n">${num(it.qty)}</td><td class="n">${money(it.revenue)}</td></tr>`).join('')
+    : '<tr><td class="empty">אין מכירות</td></tr>';
 
+  renderSales(a);
   renderFix();
 }
 
-function renderHours() {
-  const r = report, day = $('daySel').value;
-  const src = day ? (r.days.find(d => d.day === day) || { hours: [], hoursSales: [] }) : r;
-  const hours = src.hours || [], sales = src.hoursSales || [];
+function renderHours(a) {
+  const hours = a.hours || [], sales = a.hoursSales || [];
   let lo = -1, hi = -1;
   for (let h = 0; h < 24; h++) if ((hours[h] || 0) > 0 || (sales[h] || 0) > 0) { if (lo < 0) lo = h; hi = h; }
-  if (lo < 0) { $('hours').innerHTML = '<p class="empty">אין נתוני שעות</p>'; $('hoursNote').textContent = ''; return; }
+  if (lo < 0) { $('hours').innerHTML = '<p class="empty">אין מכירות עדיין</p>'; $('hoursNote').textContent = ''; return; }
   lo = Math.max(0, lo - 1); hi = Math.min(23, hi + 1);
   const n = hi - lo + 1, W = 900, H = 200, padB = 28, padT = 18, bw = W / n;
   const max = Math.max(...hours.slice(lo, hi + 1), 1);
@@ -287,37 +436,95 @@ function renderHours() {
 }
 
 /* ==================================================================
-   Caspit-fix checklist — one row per item sold, tick = keyed into Caspit
+   Sale by sale — newest first, for the day on screen
+   ================================================================== */
+function tenderText(s) {
+  const p = [];
+  if (s.cash) p.push('מזומן ' + money(s.cash));
+  if (s.card) p.push('אשראי ' + money(s.card));
+  if (s.other) p.push('אחר ' + money(s.other) + (s.note ? ' (' + s.note + ')' : ''));
+  return p.join(' + ');
+}
+
+function renderSales(a) {
+  const card = $('salesCard');
+  if (!report.salesList) { card.classList.add('hide'); return; }
+  card.classList.remove('hide');
+
+  const names = a.staffList.map(s => s.name);
+  if (view.staff && !names.includes(view.staff)) view.staff = '';
+  const sel = $('staffSel');
+  sel.innerHTML = '<option value="">כל העובדים</option>' + names.map(n => `<option value="${esc(n)}"${n === view.staff ? ' selected' : ''}>${esc(n || '—')}</option>`).join('');
+  sel.onchange = () => { view.staff = sel.value; showAllSales = false; renderSales(a); };
+
+  const list = a.list.filter(s => !view.staff || s.staff === view.staff).slice().reverse();
+  const total = r2(list.reduce((t, s) => t + s.total, 0));
+  $('salesNote').textContent = list.length
+    ? `${num(list.length)} מכירות · ${money(total)}${view.staff ? ' · ' + view.staff : ''} · מהחדשה לישנה`
+    : 'אין מכירות להצגה';
+
+  const LIMIT = 40;
+  const shown = showAllSales ? list : list.slice(0, LIMIT);
+  const withDate = !view.day && eventDays().length > 1;
+  // Three columns so it reads on a phone: who and when · what · how much and how it was paid.
+  // A price is flagged only when the item HAD a list price and was sold at another one.
+  const priceNote = l => (l.price_changed && l.list > 0 && Math.abs(l.unit - l.list) > 0.001)
+    ? ` <span class="flag">${l.unit < l.list ? 'הנחה' : 'מעל המחירון'} · מחירון ${money(l.list)}</span>` : '';
+  $('sales').innerHTML = !shown.length ? '' :
+    `<tr><th>שעה · עובד</th><th>פריטים</th><th class="n">סכום · תשלום</th></tr>` +
+    shown.map(s => `<tr>
+      <td class="when"><b>${esc(s.time)}</b>${withDate ? ` <span class="muted">${shortDay(s.day)}</span>` : ''}<div>${esc(s.staff || '—')}</div></td>
+      <td class="items">${s.lines.map(l => `<div>${l.qty > 1 ? '<b>' + num(l.qty) + '×</b> ' : ''}${esc(l.name)} <span class="muted">${money(l.total)}</span>${priceNote(l)}${l.manual ? ' <span class="flag">הוזן ידנית</span>' : ''}</div>`).join('')}</td>
+      <td class="n"><b>${money(s.total)}</b><div class="muted" style="white-space:normal">${esc(tenderText(s))}</div></td>
+    </tr>`).join('');
+
+  const more = $('salesMore');
+  more.classList.toggle('hide', showAllSales || list.length <= LIMIT);
+  more.textContent = `הצג את כל ${num(list.length)} המכירות`;
+  more.onclick = () => { showAllSales = true; renderSales(a); };
+}
+
+/* ==================================================================
+   Caspit-fix checklist — always the whole event. One row per item sold.
+   A tick records the quantity keyed in; if the item sells again afterwards
+   (day 2 of a convention), the row reopens and says how many were added.
    ================================================================== */
 $('who').value = localStorage.getItem('pos_fix_who') || '';
 $('who').oninput = () => localStorage.setItem('pos_fix_who', $('who').value.trim());
 
+const fixState = (it, f) => !f ? 'open' : (Number(f.qty) < Number(it.qty) ? 'partial' : 'done');
+const fixStamp = f => esc(f.by) + ' · ' + (f.at || '').slice(5, 16).replace('T', ' ');
+
 function renderFix() {
   const r = report, fixes = r.fixes || {};
-  const multiDay = r.days.length > 1;
-  const dayHead = multiDay ? r.days.map(d => `<th class="n">${fmtDay(d.day).slice(0, 5)}</th>`).join('') : '';
+  const days = (r.days || []).map(d => d.day);
+  const multiDay = days.length > 1;
+  const dayHead = multiDay ? days.map(d => `<th class="n">${shortDay(d)}</th>`).join('') : '';
   $('fix').innerHTML = `<tr><th></th><th>קוד</th><th>פריט</th><th>ברקוד</th>${dayHead}<th class="n">כמות</th><th>סומן</th></tr>` +
     r.items.map(it => {
-      const f = fixes[it.key];
-      const dayCells = multiDay ? r.days.map(d => `<td class="n muted">${it.days && it.days[d.day] ? num(it.days[d.day]) : ''}</td>`).join('') : '';
-      return `<tr class="${f ? 'done' : ''}" data-key="${esc(it.key)}">
-        <td><input type="checkbox" ${f ? 'checked' : ''} aria-label="הוקלד בכספיט"></td>
+      const f = fixes[it.key], state = fixState(it, f);
+      const dayCells = multiDay ? days.map(d => `<td class="n muted">${it.days && it.days[d] ? num(it.days[d]) : ''}</td>`).join('') : '';
+      const status = state === 'done' ? fixStamp(f)
+        : state === 'partial' ? `הוקלדו ${num(f.qty)} · נוספו ${num(it.qty - f.qty)} <span class="muted">(${fixStamp(f)})</span>` : '';
+      return `<tr class="${state === 'open' ? '' : state}" data-key="${esc(it.key)}">
+        <td><input type="checkbox" ${state === 'done' ? 'checked' : ''} aria-label="הוקלד בכספיט"></td>
         <td>${esc(it.item_id) || '<span class="flag">ללא קוד</span>'}</td>
         <td class="name">${esc(it.name)}${it.manual ? ' <span class="flag">· הוזן ידנית בדוכן</span>' : ''}</td>
         <td class="muted">${esc(it.barcode)}</td>${dayCells}
         <td class="n"><b>${num(it.qty)}</b></td>
-        <td class="muted">${f ? esc(f.by) + ' · ' + (f.at || '').slice(5, 16).replace('T', ' ') : ''}</td>
+        <td class="st muted">${status}</td>
       </tr>`;
     }).join('');
   $('fix').querySelectorAll('input[type=checkbox]').forEach(cb => { cb.onchange = () => tick(cb); });
   updateProgress();
-  if (r.codeless_units) toast(`שים לב: ${num(r.codeless_units)} יחידות נמכרו בלי קוד פריט`);
+  if (r.codeless_units && toldCodeless !== r.event) { toldCodeless = r.event; toast(`שים לב: ${num(r.codeless_units)} יחידות נמכרו בלי קוד פריט`); }
 }
 
 function updateProgress() {
   const all = $('fix').querySelectorAll('tr[data-key]').length;
   const done = $('fix').querySelectorAll('tr.done').length;
-  $('fixprog').textContent = all ? `${done} מתוך ${all} פריטים הוקלדו` : '';
+  const partial = $('fix').querySelectorAll('tr.partial').length;
+  $('fixprog').textContent = all ? `${done} מתוך ${all} פריטים הוקלדו${partial ? ` · ${partial} נמכרו שוב מאז הסימון` : ''}` : '';
 }
 
 async function tick(cb) {
@@ -328,8 +535,11 @@ async function tick(cb) {
   cb.disabled = true;
   try {
     const res = await apiPost({ action: 'fix_tick', event: report.event, item_key: key, item_id: it.item_id, barcode: it.barcode, name: it.name, qty: it.qty, done: cb.checked, by: who });
-    if (res.done) { report.fixes[key] = { by: res.by, at: res.at, qty: it.qty }; tr.classList.add('done'); tr.lastElementChild.textContent = res.by + ' · ' + (res.at || '').slice(5, 16).replace('T', ' '); }
-    else { delete report.fixes[key]; tr.classList.remove('done'); tr.lastElementChild.textContent = ''; }
+    if (res.done) report.fixes[key] = { by: res.by, at: res.at, qty: it.qty };
+    else delete report.fixes[key];
+    const f = report.fixes[key], state = fixState(it, f);
+    tr.className = state === 'open' ? '' : state;
+    tr.lastElementChild.innerHTML = state === 'done' ? fixStamp(f) : '';
     updateProgress();
   } catch (err) {
     cb.checked = !cb.checked;
@@ -342,7 +552,10 @@ async function tick(cb) {
 $('copy').onclick = async () => {
   const r = report;
   const lines = [`${r.event} — תיקון כספיט (${num(r.units)} יחידות, ${r.items.length} פריטים)`, 'קוד\tכמות\tפריט\tברקוד\tסטטוס'];
-  r.items.forEach(it => lines.push(`${it.item_id || '-'}\t${it.qty}\t${it.name}\t${it.barcode || ''}\t${r.fixes[it.key] ? 'הוקלד' : ''}`));
+  r.items.forEach(it => {
+    const f = r.fixes[it.key], state = fixState(it, f);
+    lines.push(`${it.item_id || '-'}\t${it.qty}\t${it.name}\t${it.barcode || ''}\t${state === 'done' ? 'הוקלד' : state === 'partial' ? `הוקלדו ${f.qty}, נוספו ${it.qty - f.qty}` : ''}`);
+  });
   try { await navigator.clipboard.writeText(lines.join('\n')); toast('הרשימה הועתקה'); }
   catch (e) { toast('העתקה נכשלה'); }
 };
