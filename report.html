@@ -11,10 +11,17 @@
   Event report + the Caspit-fix checklist. Same rules as the till: no web
   fonts, no CDN, nothing that isn't in this folder.
 
-  One call (?action=report) returns every sale of the event with its lines
-  (salesList). The page filters that list by day and rebuilds every table from
-  it, so "today" and "the whole convention" are two views of the same rows and
-  can never disagree. The Caspit checklist is always for the whole event.
+  ONE call (?action=report&with_events=1) returns the event lists and every sale
+  of the event with its lines. The page filters that list by day and rebuilds
+  every table from it, so "today" and "the whole convention" are two views of the
+  same rows. The Caspit checklist is always for the whole event.
+
+  The backend is Google Apps Script, and on a busy stall day a request can wait
+  10–60 seconds in Google's queue before our code even starts (measured
+  2026-09-30: an empty ping took 14 s). So this page never shows a blank screen
+  for that: the last report is kept in the browser and drawn at once, the fresh
+  one replaces it when it arrives, and a slow or failed request is retried by
+  itself with a plain-language note instead of an error.
 -->
 
 <style>
@@ -42,14 +49,21 @@
   .btn { min-height: var(--tap); border-radius: 10px; font-weight: 700; background: var(--ink); color: #fff; padding: 0 16px; white-space: nowrap; }
   .btn.ghost { background: var(--surface); color: var(--ink); border: 2px solid var(--line); }
   .btn.small { min-height: 40px; padding: 0 12px; }
+  .btn[disabled] { opacity: .5; }
   a.quiet { color: var(--muted); font-size: 14px; }
+
+  /* what the network is doing, in words */
+  .net { border-radius: 10px; padding: 9px 12px; font-size: 14px; margin-bottom: 12px; background: #fffbeb; border: 1px solid #fcd34d;
+    display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .net.bad { background: #fef2f2; border-color: #fca5a5; }
+  .net button { font-weight: 700; text-decoration: underline; }
 
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; overflow-x: auto; }
   .card h2 { margin: 0 0 10px; font-size: 17px; }
   .sub { color: var(--muted); font-size: 14px; margin: 0 0 10px; }
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  @media (max-width: 640px) { .row2 { grid-template-columns: 1fr; } }
+  @media (max-width: 760px) { .row2 { grid-template-columns: 1fr; } }
 
   /* day picker */
   .chips { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -66,6 +80,7 @@
   .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
   .tile span { display: block; font-size: 13px; color: var(--muted); font-weight: 600; }
   .tile b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; letter-spacing: -0.5px; }
+  .tile small { display: block; font-size: 12px; color: var(--muted); }
 
   table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
   th, td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: start; vertical-align: top; }
@@ -97,7 +112,7 @@
     padding: 12px 20px; border-radius: 999px; font-weight: 700; z-index: 50; max-width: 90vw; text-align: center; }
 
   @media print {
-    header, .noprint, #scopeCard, #tiles, #daysCard, #hoursCard, #topCard, #catsCard, #staffCard, #salesCard { display: none !important; }
+    header, .noprint, .net, #scopeCard, #tiles, #daysCard, #hoursCard, #topCard, #catsCard, #staffCard, #salesCard { display: none !important; }
     body { background: #fff; } .card { border: none; padding: 0; }
     #fix input[type=checkbox] { width: 14px; height: 14px; }
   }
@@ -115,6 +130,7 @@
   </header>
 
   <main>
+    <div class="net hide" id="net"><span id="netText"></span><button id="netRetry" class="hide">נסה שוב</button></div>
     <p class="empty" id="status">טוען…</p>
 
     <section id="rep" class="hide">
@@ -182,39 +198,82 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const money = n => '₪' + (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('he-IL', { maximumFractionDigits: 2 });
 const num = n => (Number(n) || 0).toLocaleString('he-IL');
+const pct = n => (Math.round((Number(n) || 0) * 10) / 10).toLocaleString('he-IL') + '%';
 const r2 = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const zeros = n => Array.from({ length: n }, () => 0);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 const fmtDay = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : '';
 const shortDay = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) : '';
 const DAYNAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 const dayName = s => { const d = new Date(s + 'T12:00:00'); return isNaN(d) ? '' : DAYNAMES[d.getDay()]; };
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 const todayStr = () => iso(new Date());
+const hhmm = ms => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
 
 function toast(msg) {
   const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
   document.body.appendChild(t); setTimeout(() => t.remove(), 2200);
 }
 
+/* ==================================================================
+   Transport — patient on purpose. Google can hold a request for a long
+   time before the script starts; giving up at 30 s was the error people saw.
+   ================================================================== */
 function fetchT(url, opts, ms) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms);
   return fetch(url, { ...opts, signal: ctl.signal }).finally(() => clearTimeout(t));
 }
-async function apiGet(query) {
-  const res = await fetchT(`${API_URL}?${query}&token=${encodeURIComponent(TOKEN)}`, {}, 30000);
+
+async function apiGet(query, ms) {
+  const t0 = performance.now();
+  let res;
+  try { res = await fetchT(`${API_URL}?${query}&token=${encodeURIComponent(TOKEN)}`, {}, ms || 60000); }
+  catch (e) { throw new Error(e && e.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK'); }
   if (!res.ok) throw new Error('HTTP ' + res.status);
-  const j = await res.json();
-  if (!j.ok) throw new Error(j.error || 'API error');
+  let j;
+  try { j = await res.json(); } catch (e) { throw new Error('BAD_REPLY'); }
+  if (!j.ok) throw new Error(j.error || 'API_ERROR');
+  j._roundtrip = Math.round(performance.now() - t0);
   return j;
 }
+
+/** Up to three tries, each more patient than the last. */
+async function apiGetRetry(query, onAttempt) {
+  const waits = [45000, 60000, 75000];
+  let lastErr;
+  for (let i = 0; i < waits.length; i++) {
+    if (onAttempt) onAttempt(i + 1, waits.length);
+    try { return await apiGet(query, waits[i]); }
+    catch (err) {
+      lastErr = err;
+      if (/BAD_TOKEN|UNKNOWN_ACTION/.test(err.message)) break;   // retrying cannot fix these
+      if (i < waits.length - 1) await sleep(1500);
+    }
+  }
+  throw lastErr;
+}
+
 async function apiPost(body) {
   // text/plain on purpose: application/json would trigger a CORS preflight Apps Script cannot answer.
-  const res = await fetchT(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ token: TOKEN, ...body }) }, 30000);
+  let res;
+  try { res = await fetchT(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ token: TOKEN, ...body }) }, 60000); }
+  catch (e) { throw new Error(e && e.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK'); }
   if (!res.ok) throw new Error('HTTP ' + res.status);
-  const j = await res.json();
-  if (!j.ok) throw new Error(j.error || 'API error');
+  let j;
+  try { j = await res.json(); } catch (e) { throw new Error('BAD_REPLY'); }
+  if (!j.ok) throw new Error(j.error || 'API_ERROR');
   return j;
+}
+
+function friendly(err) {
+  const m = String((err && err.message) || err || '');
+  if (m === 'TIMEOUT') return 'השרת של גוגל לא ענה בזמן';
+  if (m === 'NETWORK') return 'אין חיבור לרשת';
+  if (m === 'BAD_TOKEN') return 'הדף לא מעודכן. סגור ופתח אותו מחדש';
+  if (/^HTTP|BAD_REPLY/.test(m)) return 'השרת של גוגל החזיר תשובה לא תקינה';
+  if (m === 'BUSY') return 'השרת עסוק ברישום מכירות';
+  return m;
 }
 
 /* ==================================================================
@@ -226,6 +285,12 @@ let planned = {};                 // event name → {start, end} from the איר
 let view = { day: '', staff: '' };
 let showAllSales = false;
 let toldCodeless = '';
+let lastAt = 0;                   // when the report on screen was fetched
+let loading = false, retryTimer = null, autoRetries = 0;
+
+const CACHE_KEY = 'pos_report_cache_v1';
+function cacheLoad() { try { return JSON.parse(localStorage.getItem(CACHE_KEY)) || null; } catch (e) { return null; } }
+function cacheSave(o) { try { localStorage.setItem(CACHE_KEY, JSON.stringify(o)); } catch (e) {} }
 
 function hashGet(k) { const m = location.hash.match(new RegExp('[#&]' + k + '=([^&]*)')); return m ? decodeURIComponent(m[1]) : ''; }
 function hashSet() {
@@ -234,60 +299,93 @@ function hashSet() {
   history.replaceState(null, '', '#' + parts.join('&'));
 }
 
-/* ==================================================================
-   Events
-   ================================================================== */
-async function loadEvents() {
-  const sel = $('ev');
-  try {
-    const r = await apiGet('action=events');
-    const withSales = r.sales || [];
-    planned = {};
-    (r.tab || []).forEach(e => { planned[e.name] = e; });
-    const plannedOnly = (r.tab || []).filter(e => !withSales.some(s => s.name === e.name));
-    let html = withSales.map(e =>
-      `<option value="${esc(e.name)}">${esc(e.name)} · ${fmtDay(e.first)}${e.last && e.last !== e.first ? '–' + fmtDay(e.last) : ''} · ${num(e.sales)} מכירות</option>`).join('');
-    if (plannedOnly.length) html += '<optgroup label="מתוכננים — עדיין בלי מכירות">' +
-      plannedOnly.map(e => `<option value="${esc(e.name)}">${esc(e.name)} · ${fmtDay(e.start)}</option>`).join('') + '</optgroup>';
-    sel.innerHTML = '<option value="">בחר אירוע…</option>' + html;
+function netMsg(text, kind, withRetry) {
+  const box = $('net');
+  if (!text) { box.classList.add('hide'); return; }
+  box.className = 'net' + (kind === 'bad' ? ' bad' : '');
+  $('netText').textContent = text;
+  $('netRetry').classList.toggle('hide', !withRetry);
+}
+$('netRetry').onclick = () => { autoRetries = 0; load(report ? report.event : ($('ev').value || ''), view.day, { keep: !!report }); };
 
-    const fromHash = hashGet('event');
-    const remembered = localStorage.getItem('pos_report_event') || '';
-    const first = withSales[0] ? withSales[0].name : '';
-    const pick = [fromHash, remembered, first].find(v => v && [...sel.options].some(o => o.value === v)) || '';
-    sel.value = pick;
-    if (pick) loadReport(pick, hashGet('day')); else $('status').textContent = 'בחר אירוע למעלה';
-  } catch (err) {
-    sel.innerHTML = '<option value="">שגיאה בטעינת אירועים</option>';
-    $('status').textContent = 'טעינת האירועים נכשלה: ' + err.message;
-  }
+/* ==================================================================
+   Loading — one request brings the event lists and the report
+   ================================================================== */
+function fillEvents(ev) {
+  const sel = $('ev');
+  const withSales = (ev && ev.sales) || [], tab = (ev && ev.tab) || [];
+  planned = {};
+  tab.forEach(e => { planned[e.name] = e; });
+  const plannedOnly = tab.filter(e => !withSales.some(s => s.name === e.name));
+  let html = withSales.map(e =>
+    `<option value="${esc(e.name)}">${esc(e.name)} · ${fmtDay(e.first)}${e.last && e.last !== e.first ? '–' + fmtDay(e.last) : ''} · ${num(e.sales)} מכירות</option>`).join('');
+  if (plannedOnly.length) html += '<optgroup label="מתוכננים — עדיין בלי מכירות">' +
+    plannedOnly.map(e => `<option value="${esc(e.name)}">${esc(e.name)} · ${fmtDay(e.start)}</option>`).join('') + '</optgroup>';
+  sel.innerHTML = '<option value="">בחר אירוע…</option>' + html;
+  if (report) sel.value = report.event;
 }
 
-$('ev').onchange = () => { const v = $('ev').value; if (v) loadReport(v, ''); };
-$('reload').onclick = () => { const v = $('ev').value; if (v) loadReport(v, view.day, true); else loadEvents(); };
-
-/* ==================================================================
-   Report
-   ================================================================== */
-async function loadReport(eventName, day, keepScroll) {
-  if (!keepScroll) { $('status').textContent = 'טוען סיכום…'; $('status').classList.remove('hide'); $('rep').classList.add('hide'); }
-  try {
-    const r = await apiGet('action=report&event=' + encodeURIComponent(eventName));
-    report = r.report;
-    localStorage.setItem('pos_report_event', eventName);
-    const days = eventDays();
+/** Put a report on screen. keep = a refresh of what is already shown: the day and the staff filter stay. */
+function applyReport(rep, day, keep) {
+  report = rep;
+  localStorage.setItem('pos_report_event', rep.event);
+  const days = eventDays();
+  if (keep) {
+    if (view.day && !days.includes(view.day)) view.day = '';
+  } else {
     const want = day === 'today' ? todayStr() : (day || '');
     view = { day: days.includes(want) ? want : '', staff: '' };
     showAllSales = false;
-    const now = new Date();
-    $('stamp').textContent = 'עודכן ' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
-    render();
-    $('status').classList.add('hide'); $('rep').classList.remove('hide');
+  }
+  if ([...$('ev').options].some(o => o.value === rep.event)) $('ev').value = rep.event;
+  render();
+  $('status').classList.add('hide'); $('rep').classList.remove('hide');
+}
+
+async function load(eventName, day, opts) {
+  if (loading) return;
+  loading = true; clearTimeout(retryTimer);
+  const keep = !!(opts && opts.keep) && !!report;
+  const onScreen = !!report && !$('rep').classList.contains('hide') && (!eventName || eventName === report.event);
+  if (!onScreen) { $('rep').classList.add('hide'); $('status').classList.remove('hide'); $('status').textContent = 'טוען סיכום…'; }
+  netMsg(onScreen ? 'מרענן…' : '');
+  $('reload').disabled = true;
+  try {
+    const r = await apiGetRetry('action=report&with_events=1' + (eventName ? '&event=' + encodeURIComponent(eventName) : ''), (i, n) => {
+      if (i > 1) {
+        const t = `השרת של גוגל איטי כרגע. מנסה שוב (${i} מתוך ${n})…`;
+        if (onScreen) netMsg(t); else $('status').textContent = t;
+      }
+    });
+    if (r.events) fillEvents(r.events);
+    if (!r.report) {
+      report = null; $('rep').classList.add('hide'); $('status').classList.remove('hide');
+      $('status').textContent = 'אין עדיין אירועים עם מכירות. אירוע נרשם בלשונית "אירועים" בגיליון.';
+      netMsg(''); return;
+    }
+    lastAt = Date.now();
+    applyReport(r.report, day, keep && r.report.event === (report && report.event));
+    cacheSave({ at: lastAt, events: r.events, report: r.report });
+    $('stamp').textContent = 'עודכן ' + hhmm(lastAt);
+    $('stamp').title = `התשובה הגיעה תוך ${(r._roundtrip / 1000).toFixed(1)} שנ׳, מתוכן ${((r.ms || 0) / 1000).toFixed(1)} שנ׳ עבודה בשרת`;
+    netMsg(''); autoRetries = 0;
   } catch (err) {
-    if (keepScroll) toast('הרענון נכשל: ' + err.message);
-    else $('status').textContent = 'טעינת הסיכום נכשלה: ' + err.message;
+    const why = friendly(err);
+    if (report && !$('rep').classList.contains('hide')) {
+      const again = autoRetries < 4 && !document.hidden;
+      netMsg(`לא הצלחתי להתעדכן: ${why}. מוצג המצב מ-${hhmm(lastAt)}.${again ? ' מנסה שוב בעוד רגע.' : ''}`, 'bad', true);
+      if (again) { autoRetries++; retryTimer = setTimeout(() => load(report.event, view.day, { keep: true }), 40000); }
+    } else {
+      $('status').textContent = `הטעינה לא הצליחה: ${why}.`;
+      netMsg('אפשר לנסות שוב. בזמן עומס בדוכן התשובה מגוגל יכולה לקחת עד דקה.', 'bad', true);
+    }
+  } finally {
+    loading = false; $('reload').disabled = false;
   }
 }
+
+$('ev').onchange = () => { const v = $('ev').value; if (v) { autoRetries = 0; load(v, ''); } };
+$('reload').onclick = () => { autoRetries = 0; load(report ? report.event : ($('ev').value || ''), view.day, { keep: !!report }); };
 
 /** Every day of the event: the planned range (אירועים tab) plus any day that has sales. */
 function eventDays() {
@@ -303,18 +401,25 @@ function eventDays() {
   return [...set].sort();
 }
 
-/** Everything the tables need, for one day ('' = the whole event), built from the sale list. */
+/**
+ * Everything the tables need, for one day ('' = the whole event), built from the sale list.
+ *
+ * Discounts count only lines whose item HAD a list price:
+ *   discount  = money below list            Σ (list − sold) × qty   where sold < list
+ *   listValue = what those lines would have brought at list price   Σ list × qty
+ *   discPct   = discount ÷ listValue  — the average discount over everything sold
+ */
 function aggregate(day) {
-  // discount = money below the list price, only where the item HAD a list price
-  const a = { sales: 0, units: 0, revenue: 0, discount: 0, tender: { cash: 0, card: 0, other: 0 },
+  const a = { sales: 0, units: 0, revenue: 0, discount: 0, listValue: 0, listUnits: 0, discUnits: 0,
+              tender: { cash: 0, card: 0, other: 0 },
               hours: zeros(24), hoursSales: zeros(24), items: {}, categories: {}, staff: {}, list: [] };
 
   if (!report.salesList) {            // an older backend: whole-event numbers only
-    if (day) return a;
+    if (day) return { ...a, avg: 0, discPct: 0, itemList: [], categoryList: [], staffList: [] };
     return { ...a, sales: report.sales, units: report.units, revenue: report.revenue, tender: report.tender,
-             hours: report.hours, hoursSales: report.hoursSales,
+             hours: report.hours, hoursSales: report.hoursSales, discPct: 0,
              itemList: report.items, categoryList: report.categories,
-             staffList: report.staff.map(s => ({ units: 0, ...s })), avg: report.avg };
+             staffList: report.staff.map(s => ({ units: 0, discount: 0, discPct: 0, ...s })), avg: report.avg };
   }
 
   for (const s of report.salesList) {
@@ -323,11 +428,15 @@ function aggregate(day) {
     a.sales++; a.revenue += s.total;
     a.tender.cash += s.cash; a.tender.card += s.card; a.tender.other += s.other;
     if (s.hour >= 0) { a.hours[s.hour] += s.total; a.hoursSales[s.hour]++; }
-    const st = a.staff[s.staff] || (a.staff[s.staff] = { name: s.staff, sales: 0, units: 0, revenue: 0, discount: 0 });
+    const st = a.staff[s.staff] || (a.staff[s.staff] = { name: s.staff, sales: 0, units: 0, revenue: 0, discount: 0, listValue: 0 });
     st.sales++; st.revenue += s.total;
     for (const l of s.lines) {
       a.units += l.qty; st.units += l.qty;
-      if (l.list > 0 && l.unit < l.list) { const d = (l.list - l.unit) * l.qty; a.discount += d; st.discount += d; }
+      if (l.list > 0) {
+        const lv = l.list * l.qty;
+        a.listValue += lv; a.listUnits += l.qty; st.listValue += lv;
+        if (l.unit < l.list) { const d = (l.list - l.unit) * l.qty; a.discount += d; a.discUnits += l.qty; st.discount += d; }
+      }
       const it = a.items[l.key] || (a.items[l.key] = { key: l.key, item_id: l.item_id, barcode: l.barcode, name: l.name, category: l.category, qty: 0, revenue: 0 });
       it.qty += l.qty; it.revenue += l.total;
       const c = a.categories[l.category] || (a.categories[l.category] = { name: l.category, qty: 0, revenue: 0 });
@@ -335,15 +444,23 @@ function aggregate(day) {
     }
   }
   a.revenue = r2(a.revenue); a.discount = r2(a.discount);
+  a.discPct = a.listValue ? a.discount / a.listValue * 100 : 0;
   a.hasList = report.salesList.some(s => s.lines.some(l => l.list !== undefined));
   a.tender = { cash: r2(a.tender.cash), card: r2(a.tender.card), other: r2(a.tender.other) };
   a.hours = a.hours.map(r2);
   a.avg = a.sales ? r2(a.revenue / a.sales) : 0;
   a.itemList = Object.values(a.items).map(i => ({ ...i, revenue: r2(i.revenue) })).sort((x, y) => y.qty - x.qty || y.revenue - x.revenue);
   a.categoryList = Object.values(a.categories).map(c => ({ ...c, revenue: r2(c.revenue) })).sort((x, y) => y.revenue - x.revenue);
-  a.staffList = Object.values(a.staff).map(s => ({ ...s, revenue: r2(s.revenue) })).sort((x, y) => y.revenue - x.revenue);
+  a.staffList = Object.values(a.staff).map(s => ({ ...s, revenue: r2(s.revenue), discount: r2(s.discount), discPct: s.listValue ? s.discount / s.listValue * 100 : 0 }))
+    .sort((x, y) => y.revenue - x.revenue);
   return a;
 }
+
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (report && !$('rep').classList.contains('hide')) renderHours(aggregate(view.day)); }, 200);
+});
 
 function setDay(day) {
   view.day = day; view.staff = ''; showAllSales = false;
@@ -358,6 +475,7 @@ function render() {
   const a = aggregate(view.day);
   const perDay = days.map(d => ({ day: d, a: canFilter ? aggregate(d) : null }));
   const whole = view.day ? aggregate('') : a;
+  const disc = canFilter && a.hasList;
   hashSet();
 
   // ---- day picker + what is on screen ----
@@ -377,23 +495,27 @@ function render() {
   $('tiles').innerHTML = [
     ['הכנסות', money(a.revenue)], ['מכירות', num(a.sales)], ['ממוצע למכירה', money(a.avg)], ['יחידות', num(a.units)],
     ['מזומן', money(a.tender.cash)], ['אשראי', money(a.tender.card)], ['אחר', money(a.tender.other)],
-    ...(a.hasList ? [['הנחות ממחירון', money(a.discount)]] : [])
-  ].map(([k, v]) => `<div class="tile"><span>${k}</span><b>${v}</b></div>`).join('');
+    ...(disc ? [['הנחות ממחירון', money(a.discount)],
+                ['הנחה ממוצעת', pct(a.discPct), `${num(a.discUnits)} מתוך ${num(a.listUnits)} יח׳ נמכרו בהנחה`]] : [])
+  ].map(([k, v, sub]) => `<div class="tile"><span>${k}</span><b>${v}</b>${sub ? `<small>${sub}</small>` : ''}</div>`).join('');
 
   // ---- per day: always every day; the shown one is marked; a tap selects it ----
-  const dayRow = (d, x) => `<tr class="day${view.day === d ? ' on' : ''}" data-day="${d}"><td>${esc(dayName(d))} ${fmtDay(d)}${d === today ? ' <span class="flag">היום</span>' : ''}</td><td class="n">${num(x.sales)}</td><td class="n">${num(x.units)}</td><td class="n">${money(x.tender.cash)}</td><td class="n">${money(x.tender.card)}</td><td class="n">${money(x.tender.other)}</td><td class="n">${money(x.revenue)}</td><td class="n">${money(x.avg)}</td></tr>`;
+  // Column order puts what is read most first: a phone shows about four columns before it scrolls.
+  const cells = x => `<td class="n">${num(x.sales)}</td><td class="n">${money(x.revenue)}</td>` +
+    (disc ? `<td class="n">${pct(x.discPct)}</td><td class="n">${money(x.discount)}</td>` : '') +
+    `<td class="n">${num(x.units)}</td><td class="n">${money(x.avg)}</td><td class="n">${money(x.tender.cash)}</td><td class="n">${money(x.tender.card)}</td><td class="n">${money(x.tender.other)}</td>`;
   const serverDay = d => { const s = (report.days || []).find(x => x.day === d); return s ? { sales: s.sales, units: s.units, revenue: s.revenue, avg: s.sales ? s.revenue / s.sales : 0, tender: { cash: s.cash, card: s.card, other: s.other } } : { sales: 0, units: 0, revenue: 0, avg: 0, tender: { cash: 0, card: 0, other: 0 } }; };
-  $('days').innerHTML = `<tr><th>יום</th><th class="n">מכירות</th><th class="n">יחידות</th><th class="n">מזומן</th><th class="n">אשראי</th><th class="n">אחר</th><th class="n">הכנסות</th><th class="n">ממוצע</th></tr>` +
-    perDay.map(p => dayRow(p.day, p.a || serverDay(p.day))).join('') +
-    (multi ? `<tr class="total"><td>כל האירוע</td><td class="n">${num(whole.sales)}</td><td class="n">${num(whole.units)}</td><td class="n">${money(whole.tender.cash)}</td><td class="n">${money(whole.tender.card)}</td><td class="n">${money(whole.tender.other)}</td><td class="n">${money(whole.revenue)}</td><td class="n">${money(whole.avg)}</td></tr>` : '');
+  $('days').innerHTML = `<tr><th>יום</th><th class="n">מכירות</th><th class="n">הכנסות</th>${disc ? '<th class="n">הנחה ממוצעת</th><th class="n">הנחות</th>' : ''}<th class="n">יחידות</th><th class="n">ממוצע למכירה</th><th class="n">מזומן</th><th class="n">אשראי</th><th class="n">אחר</th></tr>` +
+    perDay.map(p => `<tr class="day${view.day === p.day ? ' on' : ''}" data-day="${p.day}"><td>${esc(dayName(p.day))} ${fmtDay(p.day)}${p.day === today ? ' <span class="flag">היום</span>' : ''}</td>${cells(p.a || serverDay(p.day))}</tr>`).join('') +
+    (multi ? `<tr class="total"><td>כל האירוע</td>${cells(whole)}</tr>` : '');
   if (canFilter && multi) $('days').querySelectorAll('tr.day').forEach(tr => { tr.onclick = () => setDay(view.day === tr.dataset.day ? '' : tr.dataset.day); });
 
   renderHours(a);
 
   // ---- staff ----
   $('staff').innerHTML = a.staffList.length
-    ? `<tr><th>עובד</th><th class="n">מכירות</th><th class="n">יחידות</th><th class="n">הכנסות</th><th class="n">ממוצע</th><th class="n">%</th>${a.hasList ? '<th class="n">הנחות</th>' : ''}</tr>` +
-      a.staffList.map(s => `<tr><td>${esc(s.name || '—')}</td><td class="n">${num(s.sales)}</td><td class="n">${num(s.units)}</td><td class="n">${money(s.revenue)}</td><td class="n">${money(s.sales ? s.revenue / s.sales : 0)}</td><td class="n">${a.revenue ? Math.round(s.revenue / a.revenue * 100) : 0}%</td>${a.hasList ? `<td class="n muted">${money(s.discount)}</td>` : ''}</tr>`).join('')
+    ? `<tr><th>עובד</th><th class="n">מכירות</th><th class="n">יחידות</th><th class="n">הכנסות</th><th class="n">ממוצע</th><th class="n">%</th>${disc ? '<th class="n">הנחות</th><th class="n">הנחה ממוצעת</th>' : ''}</tr>` +
+      a.staffList.map(s => `<tr><td>${esc(s.name || '—')}</td><td class="n">${num(s.sales)}</td><td class="n">${num(s.units)}</td><td class="n">${money(s.revenue)}</td><td class="n">${money(s.sales ? s.revenue / s.sales : 0)}</td><td class="n">${a.revenue ? Math.round(s.revenue / a.revenue * 100) : 0}%</td>${disc ? `<td class="n muted">${money(s.discount)}</td><td class="n muted">${pct(s.discPct)}</td>` : ''}</tr>`).join('')
     : '<tr><td class="empty">אין מכירות</td></tr>';
 
   // ---- categories ----
@@ -419,15 +541,19 @@ function renderHours(a) {
   for (let h = 0; h < 24; h++) if ((hours[h] || 0) > 0 || (sales[h] || 0) > 0) { if (lo < 0) lo = h; hi = h; }
   if (lo < 0) { $('hours').innerHTML = '<p class="empty">אין מכירות עדיין</p>'; $('hoursNote').textContent = ''; return; }
   lo = Math.max(0, lo - 1); hi = Math.min(23, hi + 1);
-  const n = hi - lo + 1, W = 900, H = 200, padB = 28, padT = 18, bw = W / n;
+  // Drawn at the card's real width, so text is never stretched. On a phone the bars are
+  // narrow: only the peak keeps its number and every second hour keeps its label.
+  const n = hi - lo + 1, W = Math.max(280, $('hours').clientWidth || 900), H = 200, padB = 28, padT = 18, bw = W / n;
   const max = Math.max(...hours.slice(lo, hi + 1), 1);
-  let svg = `<svg class="bars" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="הכנסות לפי שעה">`;
+  const peak = hours.indexOf(Math.max(...hours));
+  const tight = bw < 40, veryTight = bw < 26;
+  let svg = `<svg class="bars" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="הכנסות לפי שעה">`;
   for (let i = 0; i < n; i++) {
     const h = lo + i, v = hours[h] || 0, bh = Math.round((H - padB - padT) * v / max);
-    const x = W - (i + 1) * bw + 4, w = Math.max(bw - 8, 6);   // rtl: hours run right → left
+    const x = W - (i + 1) * bw + 3, w = Math.max(bw - 6, 4);   // rtl: hours run right → left
     svg += `<rect class="${v ? '' : 'zero'}" x="${x}" y="${H - padB - (v ? bh : 2)}" width="${w}" height="${v ? bh : 2}" rx="3"></rect>`;
-    if (v) svg += `<text x="${x + w / 2}" y="${H - padB - bh - 4}" text-anchor="middle">${Math.round(v)}</text>`;
-    svg += `<text x="${x + w / 2}" y="${H - 8}" text-anchor="middle">${String(h).padStart(2, '0')}</text>`;
+    if (v && (!tight || h === peak)) svg += `<text x="${x + w / 2}" y="${H - padB - bh - 4}" text-anchor="middle">${num(Math.round(v))}</text>`;
+    if (!veryTight || (h - lo) % 2 === 0) svg += `<text x="${x + w / 2}" y="${H - 8}" text-anchor="middle">${String(h).padStart(2, '0')}</text>`;
   }
   svg += '</svg>';
   $('hours').innerHTML = svg;
@@ -469,7 +595,7 @@ function renderSales(a) {
   // Three columns so it reads on a phone: who and when · what · how much and how it was paid.
   // A price is flagged only when the item HAD a list price and was sold at another one.
   const priceNote = l => (l.price_changed && l.list > 0 && Math.abs(l.unit - l.list) > 0.001)
-    ? ` <span class="flag">${l.unit < l.list ? 'הנחה' : 'מעל המחירון'} · מחירון ${money(l.list)}</span>` : '';
+    ? ` <span class="flag">${l.unit < l.list ? 'הנחה ' + Math.round((1 - l.unit / l.list) * 100) + '%' : 'מעל המחירון'} · מחירון ${money(l.list)}</span>` : '';
   $('sales').innerHTML = !shown.length ? '' :
     `<tr><th>שעה · עובד</th><th>פריטים</th><th class="n">סכום · תשלום</th></tr>` +
     shown.map(s => `<tr>
@@ -541,9 +667,10 @@ async function tick(cb) {
     tr.className = state === 'open' ? '' : state;
     tr.lastElementChild.innerHTML = state === 'done' ? fixStamp(f) : '';
     updateProgress();
+    const c = cacheLoad(); if (c && c.report && c.report.event === report.event) { c.report.fixes = report.fixes; cacheSave(c); }
   } catch (err) {
     cb.checked = !cb.checked;
-    toast('לא נשמר: ' + err.message);
+    toast('לא נשמר: ' + friendly(err));
   } finally {
     cb.disabled = false;
   }
@@ -561,7 +688,21 @@ $('copy').onclick = async () => {
 };
 $('print').onclick = () => window.print();
 
-loadEvents();
+/* ==================================================================
+   Boot: draw the last report we have at once, then fetch the fresh one.
+   ================================================================== */
+(function boot() {
+  const want = hashGet('event') || localStorage.getItem('pos_report_event') || '';
+  const c = cacheLoad();
+  if (c && c.report && (!want || c.report.event === want)) {
+    report = c.report;
+    if (c.events) fillEvents(c.events);
+    lastAt = c.at || 0;
+    applyReport(c.report, hashGet('day'), false);
+    $('stamp').textContent = 'מצב שמור מ-' + hhmm(lastAt);
+  }
+  load(want, hashGet('day'), { keep: !!report });
+})();
 </script>
 </body>
 </html>
