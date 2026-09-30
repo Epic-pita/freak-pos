@@ -338,8 +338,8 @@ function applyReport(rep, day, keep) {
     showAllSales = false;
   }
   if ([...$('ev').options].some(o => o.value === rep.event)) $('ev').value = rep.event;
+  $('status').classList.add('hide'); $('rep').classList.remove('hide');   // visible first: the hour chart measures its card
   render();
-  $('status').classList.add('hide'); $('rep').classList.remove('hide');
 }
 
 async function load(eventName, day, opts) {
@@ -543,7 +543,7 @@ function renderHours(a) {
   lo = Math.max(0, lo - 1); hi = Math.min(23, hi + 1);
   // Drawn at the card's real width, so text is never stretched. On a phone the bars are
   // narrow: only the peak keeps its number and every second hour keeps its label.
-  const n = hi - lo + 1, W = Math.max(280, $('hours').clientWidth || 900), H = 200, padB = 28, padT = 18, bw = W / n;
+  const n = hi - lo + 1, W = Math.max(280, $('hours').clientWidth || (Math.min(window.innerWidth, 980) - 58)), H = 200, padB = 28, padT = 18, bw = W / n;
   const max = Math.max(...hours.slice(lo, hi + 1), 1);
   const peak = hours.indexOf(Math.max(...hours));
   const tight = bw < 40, veryTight = bw < 26;
