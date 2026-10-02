@@ -235,6 +235,7 @@
       </div>
 
       <button class="btn ghost hide" id="stuck-btn" style="margin-bottom:12px">מכירות תקועות (<span id="stuck-n">0</span>)</button>
+      <a class="btn ghost" id="fix-link" href="./report.html" style="margin-bottom:12px;text-decoration:none">מכירות אחרונות · תיקון תשלום · החזרה</a>
     </main>
 
     <div id="totalbar">
@@ -519,7 +520,7 @@ function toast(msg, ms) {
 /* ==================================================================
    Boot
    ================================================================== */
-const BUILD = 'v8';
+const BUILD = 'v9';
 
 window.addEventListener('load', async () => {
   if ('serviceWorker' in navigator) {
@@ -596,6 +597,8 @@ function enterMain() {
   $('h-staff').textContent = session.staff;
   $('gate').classList.add('hide');
   $('main').classList.remove('hide');
+  // corrections live on the report page; it opens on today's sales of this event, signed by this seller
+  $('fix-link').href = './report.html#event=' + encodeURIComponent(session.event) + '&day=today&by=' + encodeURIComponent(session.staff) + '&fix=1';
   renderCart();
 }
 

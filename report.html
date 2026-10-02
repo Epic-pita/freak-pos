@@ -8,20 +8,23 @@
 <link rel="icon" href="./icon-192.png">
 
 <!--
-  Event report + the Caspit-fix checklist. Same rules as the till: no web
-  fonts, no CDN, nothing that isn't in this folder.
+  Event report, sale corrections, and the Caspit-fix checklist. Same rules as the
+  till: no web fonts, no CDN, nothing that isn't in this folder.
 
-  ONE call (?action=report&with_events=1) returns the event lists and every sale
-  of the event with its lines. The page filters that list by day and rebuilds
-  every table from it, so "today" and "the whole convention" are two views of the
-  same rows. The Caspit checklist is always for the whole event.
+  ONE call (?action=report&with_events=1) returns the event lists, every sale of
+  the event with its lines, and every return. The page filters by day and rebuilds
+  every table from those rows, so "today" and "the whole convention" are two views
+  of the same data. The Caspit checklist is always for the whole event.
 
-  The backend is Google Apps Script, and on a busy stall day a request can wait
-  10–60 seconds in Google's queue before our code even starts (measured
-  2026-09-30: an empty ping took 14 s). So this page never shows a blank screen
-  for that: the last report is kept in the browser and drawn at once, the fresh
-  one replaces it when it arrives, and a slow or failed request is retried by
-  itself with a plain-language note instead of an error.
+  CORRECTIONS never rewrite history. A change of tender keeps what it replaced; a
+  return or a cancellation is a new record beside the sale. All numbers on this
+  page are NET: sales minus returns, on the day the return was processed.
+
+  The backend is Google Apps Script, and a request can wait 10–60 seconds in
+  Google's queue before our code even starts (measured 2026-09-30: an empty ping
+  took 14 s). So the last report is kept in the browser and drawn at once, the
+  fresh one replaces it when it arrives, and a slow or failed request is retried
+  by itself with a plain-language note instead of an error.
 -->
 
 <style>
@@ -49,7 +52,9 @@
   .btn { min-height: var(--tap); border-radius: 10px; font-weight: 700; background: var(--ink); color: #fff; padding: 0 16px; white-space: nowrap; }
   .btn.ghost { background: var(--surface); color: var(--ink); border: 2px solid var(--line); }
   .btn.small { min-height: 40px; padding: 0 12px; }
-  .btn[disabled] { opacity: .5; }
+  .btn.tiny { min-height: 34px; padding: 0 10px; font-size: 14px; }
+  .btn.wide { width: 100%; }
+  .btn[disabled] { opacity: .45; }
   a.quiet { color: var(--muted); font-size: 14px; }
 
   /* what the network is doing, in words */
@@ -92,6 +97,7 @@
   #days tr.day.on td:first-child { box-shadow: inset -4px 0 0 var(--ink); }
   .muted { color: var(--muted); font-size: 13px; }
   .flag { color: var(--queued); font-weight: 700; font-size: 13px; }
+  .neg { color: var(--danger); }
 
   svg.bars { width: 100%; height: 200px; display: block; }
   svg.bars text { font-size: 11px; fill: var(--muted); }
@@ -100,6 +106,8 @@
 
   #sales td.items div { margin-bottom: 2px; }
   #sales td.when { white-space: nowrap; }
+  #sales tr.void td.items, #sales tr.void td.amt b { text-decoration: line-through; color: var(--muted); }
+  #rets tr.cancelled td { text-decoration: line-through; color: var(--muted); }
 
   #fix tr.done td { color: var(--muted); }
   #fix tr.done td.name { text-decoration: line-through; }
@@ -108,11 +116,36 @@
   #who { min-height: 40px; padding: 0 12px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); width: 180px; }
   .empty { text-align: center; color: var(--muted); padding: 28px 10px; }
 
+  /* correction sheet */
+  .sheet { position: fixed; inset: 0; z-index: 40; background: rgba(12,10,9,.55); display: flex; align-items: flex-end; }
+  .sheet .panel { background: var(--surface); width: 100%; max-width: 620px; margin: 0 auto; border-radius: 18px 18px 0 0;
+    padding: 16px 16px calc(18px + env(safe-area-inset-bottom)); max-height: 94dvh; overflow-y: auto; }
+  .sheet h2 { margin: 0; font-size: 20px; }
+  .sheet label.f { display: block; font-size: 14px; font-weight: 600; color: var(--muted); margin: 12px 0 6px; }
+  .sheet input[type=number], .sheet input[type=text], .sheet input[type=date], .sheet input[type=time] {
+    width: 100%; min-height: var(--tap); padding: 0 12px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); }
+  .tender { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 8px; }
+  .tender .f { flex: 1; }
+  .tender .fill { min-height: var(--tap); padding: 0 14px; border: 2px solid var(--line); border-radius: 10px; font-weight: 700; white-space: nowrap; }
+  .remain { text-align: center; font-weight: 800; font-size: 17px; padding: 10px; border-radius: 10px; margin: 6px 0 12px; }
+  .remain.ok { color: var(--ok); background: #f0fdf4; } .remain.bad { color: var(--danger); background: #fef2f2; }
+  .rline { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .rline .info { flex: 1; min-width: 0; }
+  .rline .info b { display: block; }
+  .step { display: flex; align-items: center; gap: 6px; }
+  .step button { width: 44px; height: 44px; border-radius: 10px; border: 2px solid var(--line); font-size: 22px; font-weight: 700; }
+  .step span { min-width: 28px; text-align: center; font-weight: 800; font-size: 18px; }
+  .choice { display: flex; gap: 8px; flex-wrap: wrap; }
+  .choice button { min-height: 44px; padding: 0 12px; border-radius: 10px; border: 2px solid var(--line); font-weight: 700; }
+  .choice button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .hist { background: var(--bg); border-radius: 10px; padding: 10px 12px; margin-top: 10px; font-size: 14px; }
+  .hist div { margin-bottom: 6px; }
+
   .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff;
-    padding: 12px 20px; border-radius: 999px; font-weight: 700; z-index: 50; max-width: 90vw; text-align: center; }
+    padding: 12px 20px; border-radius: 999px; font-weight: 700; z-index: 60; max-width: 90vw; text-align: center; }
 
   @media print {
-    header, .noprint, .net, #scopeCard, #tiles, #daysCard, #hoursCard, #topCard, #catsCard, #staffCard, #salesCard { display: none !important; }
+    header, .noprint, .net, .sheet, #scopeCard, #tiles, #daysCard, #hoursCard, #topCard, #catsCard, #staffCard, #salesCard, #retCard { display: none !important; }
     body { background: #fff; } .card { border: none; padding: 0; }
     #fix input[type=checkbox] { width: 14px; height: 14px; }
   }
@@ -164,17 +197,24 @@
 
       <div class="card" id="salesCard">
         <div class="row" style="justify-content:space-between;margin-bottom:8px">
-          <h2 style="margin:0">פירוט מכירות</h2>
+          <h2 style="margin:0">פירוט מכירות ותיקונים</h2>
           <select id="staffSel" class="pick small" aria-label="סינון לפי עובד"></select>
         </div>
         <p class="sub" id="salesNote"></p>
+        <p class="sub noprint">הלקוח שינה אמצעי תשלום, החזיר מוצר, או שמכירה הוקלדה פעמיים? לוחצים <b>תיקון</b> ליד המכירה. שום דבר לא נמחק: התיקון נרשם ליד המכירה, עם מי ביצע ומתי.</p>
+        <input id="saleSearch" class="pick noprint" type="search" placeholder="חיפוש מכירה: שם פריט, סכום או שעה" autocomplete="off" style="margin-bottom:8px">
         <table id="sales"></table>
         <button class="btn ghost small hide" id="salesMore" style="margin-top:10px"></button>
       </div>
 
+      <div class="card hide" id="retCard">
+        <h2>החזרות וביטולים</h2>
+        <table id="rets"></table>
+      </div>
+
       <div class="card" id="fixCard">
         <h2>תיקון הקופה בכספיט</h2>
-        <p class="sub">כל פריט שנמכר <b>בכל האירוע</b> (הרשימה הזו לא מסוננת לפי יום), עם הכמות להוריד מהמלאי בכספיט. מסמנים וי אחרי שהפריט הוקלד; הסימון נשמר בגיליון עם שם, שעה וכמות. אם הפריט נמכר שוב אחרי הסימון, השורה חוזרת ומראה כמה נוספו.</p>
+        <p class="sub">כל פריט שנמכר <b>בכל האירוע</b> (הרשימה הזו לא מסוננת לפי יום), עם הכמות להוריד מהמלאי בכספיט. פריט שהוחזר למדף כבר ירד מהכמות. מסמנים וי אחרי שהפריט הוקלד; הסימון נשמר בגיליון עם שם, שעה וכמות. אם הפריט נמכר שוב אחרי הסימון, השורה חוזרת ומראה כמה נוספו.</p>
         <div class="row noprint" style="margin-bottom:10px">
           <label>מי מקליד&nbsp;<input id="who" type="text" placeholder="שם" autocomplete="off"></label>
           <button class="btn ghost small" id="copy">העתק רשימה</button>
@@ -187,6 +227,72 @@
   </main>
 </div>
 
+<!-- ============ CORRECTION SHEET ============ -->
+<div class="sheet hide" id="fx">
+  <div class="panel">
+    <div class="row" style="justify-content:space-between">
+      <h2 id="fxTitle">תיקון מכירה</h2>
+      <button class="btn ghost small" id="fxClose">סגור</button>
+    </div>
+    <p class="sub" id="fxSale" style="margin:6px 0 0"></p>
+
+    <label class="f" for="fxWho">מי מבצע את התיקון</label>
+    <select id="fxWho" class="pick"></select>
+
+    <!-- menu -->
+    <div id="fxMenu">
+      <div style="height:14px"></div>
+      <button class="btn wide" id="fxGoTender">הלקוח שילם בדרך אחרת · שינוי אמצעי תשלום</button>
+      <div style="height:10px"></div>
+      <button class="btn wide" id="fxGoReturn">החזרת מוצר</button>
+      <div style="height:10px"></div>
+      <button class="btn ghost wide" id="fxGoCancel">המכירה הוקלדה בטעות או פעמיים · ביטול</button>
+      <div class="hist hide" id="fxHist"></div>
+    </div>
+
+    <!-- change of tender -->
+    <div id="fxTender" class="hide">
+      <p class="sub" style="margin:14px 0 8px">הסכום לא משתנה. מחלקים אותו מחדש בין אמצעי התשלום.</p>
+      <div class="tender"><div class="f"><label class="f" for="tCash" style="margin-top:0">מזומן</label><input id="tCash" type="number" inputmode="decimal" min="0" step="0.5"></div><button class="fill" data-fill="tCash">השלם</button></div>
+      <div class="tender"><div class="f"><label class="f" for="tCard" style="margin-top:0">אשראי</label><input id="tCard" type="number" inputmode="decimal" min="0" step="0.5"></div><button class="fill" data-fill="tCard">השלם</button></div>
+      <div class="tender"><div class="f"><label class="f" for="tOther" style="margin-top:0">אחר</label><input id="tOther" type="number" inputmode="decimal" min="0" step="0.5"></div><button class="fill" data-fill="tOther">השלם</button></div>
+      <div id="tNoteWrap" class="hide"><label class="f" for="tNote" style="margin-top:0">פירוט "אחר" (חובה)</label><input id="tNote" type="text" placeholder="ביט / העברה / החלפה…" autocomplete="off"></div>
+      <div class="remain bad" id="tRemain">—</div>
+      <button class="btn wide" id="tSave" disabled>שמור את השינוי</button>
+      <div style="height:8px"></div>
+      <button class="btn ghost wide" id="tBack">חזרה</button>
+    </div>
+
+    <!-- return / cancellation -->
+    <div id="fxReturn" class="hide">
+      <p class="sub" id="rIntro" style="margin:14px 0 4px"></p>
+      <div id="rLines"></div>
+      <div class="row" style="margin-top:8px"><button class="btn ghost tiny" id="rAll">כל המכירה</button><button class="btn ghost tiny" id="rNone">נקה</button></div>
+
+      <div id="rStockWrap"><label class="f">מה קרה למוצר</label>
+        <div class="choice" id="rStock"><button data-v="1" class="on">חזר למדף</button><button data-v="0">לא חזר למלאי (פגום)</button></div></div>
+
+      <div id="rWhenWrap"><label class="f">מתי זה קרה</label>
+        <div class="choice" id="rWhen"><button data-v="now">עכשיו</button><button data-v="date">בתאריך אחר</button></div>
+        <div class="row hide" id="rDateRow" style="margin-top:8px;flex-wrap:nowrap"><input id="rDate" type="date"><input id="rTime" type="time" style="max-width:130px"></div></div>
+
+      <label class="f" id="rRefundLabel">איך הלקוח קיבל את הכסף</label>
+      <div class="tender"><div class="f"><label class="f" for="rCash" style="margin-top:0">מזומן</label><input id="rCash" type="number" inputmode="decimal" min="0" step="0.5"></div><button class="fill" data-fill="rCash">השלם</button></div>
+      <div class="tender"><div class="f"><label class="f" for="rCard" style="margin-top:0">זיכוי באשראי (במסופון)</label><input id="rCard" type="number" inputmode="decimal" min="0" step="0.5"></div><button class="fill" data-fill="rCard">השלם</button></div>
+      <div class="tender"><div class="f"><label class="f" for="rOther" style="margin-top:0">אחר (קרדיט חנות, ביט)</label><input id="rOther" type="number" inputmode="decimal" min="0" step="0.5"></div><button class="fill" data-fill="rOther">השלם</button></div>
+      <div id="rNoteWrap" class="hide">
+        <label class="f" for="rNote" style="margin-top:0">פירוט "אחר" (חובה)</label>
+        <input id="rNote" type="text" placeholder="קרדיט חנות / ביט…" autocomplete="off">
+        <div class="row" style="margin-top:6px"><button class="btn ghost tiny" data-note="קרדיט חנות">קרדיט חנות</button><button class="btn ghost tiny" data-note="ביט">ביט</button></div>
+      </div>
+      <div class="remain bad" id="rRemain">—</div>
+      <button class="btn wide" id="rSave" disabled>שמור</button>
+      <div style="height:8px"></div>
+      <button class="btn ghost wide" id="rBack">חזרה</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ==================================================================
    CONFIG — must match Code.gs and index.html
@@ -196,7 +302,7 @@ const TOKEN   = 'freak-hRBEJJ1eYTVmbs_JJq0tRczl';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const money = n => '₪' + (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('he-IL', { maximumFractionDigits: 2 });
+const money = n => (Number(n) < 0 ? '−' : '') + '₪' + (Math.round(Math.abs(Number(n) || 0) * 100) / 100).toLocaleString('he-IL', { maximumFractionDigits: 2 });
 const num = n => (Number(n) || 0).toLocaleString('he-IL');
 const pct = n => (Math.round((Number(n) || 0) * 10) / 10).toLocaleString('he-IL') + '%';
 const r2 = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
@@ -209,10 +315,11 @@ const dayName = s => { const d = new Date(s + 'T12:00:00'); return isNaN(d) ? ''
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 const todayStr = () => iso(new Date());
 const hhmm = ms => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'rid-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10));
 
-function toast(msg) {
+function toast(msg, ms) {
   const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
-  document.body.appendChild(t); setTimeout(() => t.remove(), 2200);
+  document.body.appendChild(t); setTimeout(() => t.remove(), ms || 2200);
 }
 
 /* ==================================================================
@@ -254,25 +361,67 @@ async function apiGetRetry(query, onAttempt) {
   throw lastErr;
 }
 
+/** A write. The server's own refusal (j.ok === false) comes back as an Error carrying the reply. */
 async function apiPost(body) {
   // text/plain on purpose: application/json would trigger a CORS preflight Apps Script cannot answer.
   let res;
-  try { res = await fetchT(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ token: TOKEN, ...body }) }, 60000); }
+  try { res = await fetchT(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ token: TOKEN, ...body }) }, 75000); }
   catch (e) { throw new Error(e && e.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK'); }
   if (!res.ok) throw new Error('HTTP ' + res.status);
   let j;
   try { j = await res.json(); } catch (e) { throw new Error('BAD_REPLY'); }
-  if (!j.ok) throw new Error(j.error || 'API_ERROR');
+  if (!j.ok) { const err = new Error(j.error || 'API_ERROR'); err.reply = j; throw err; }
   return j;
+}
+
+/**
+ * A write that may be repeated. Google sometimes holds a request for over a minute, the
+ * page gives up, and the server runs it anyway — so every write here is safe to send
+ * again: a return carries one id for the life of its form, a change of tender to the same
+ * values is a no-op, and a tick or an undo applied twice changes nothing. Only a silent
+ * failure (timeout, no network, a broken reply) is retried; a refusal from the server is not.
+ */
+async function apiPostRetry(body, onAttempt) {
+  const tries = 3;
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    if (onAttempt) onAttempt(i + 1, tries);
+    try { return await apiPost(body); }
+    catch (err) {
+      lastErr = err;
+      // The server answered "no" — final. Except BAD_TOKEN on a write: when Google re-dispatches a
+      // stalled POST it can arrive as a bare GET, which our own doGet rejects for the missing
+      // token. The page's token is the one that just loaded the report, so this is transport.
+      if (err.reply && err.message !== 'BAD_TOKEN') throw err;
+      if (i < tries - 1) await sleep(2000);
+    }
+  }
+  lastErr.unsure = true;                              // we never heard back: it may or may not have been saved
+  throw lastErr;
+}
+const saving = (btn, label) => (i, n) => { btn.textContent = i > 1 ? `גוגל איטי, מנסה שוב (${i} מתוך ${n})…` : label; };
+/** After a write we never got an answer to: say so, and reload so the screen shows what the sheet really holds. */
+function unsure(err) {
+  toast(`לא התקבלה תשובה (${friendly(err)}). מרענן כדי לבדוק אם זה נשמר.`, 6000);
+  closeFix();
+  load(report.event, view.day, { keep: true });
 }
 
 function friendly(err) {
   const m = String((err && err.message) || err || '');
+  const r = (err && err.reply) || {};
   if (m === 'TIMEOUT') return 'השרת של גוגל לא ענה בזמן';
   if (m === 'NETWORK') return 'אין חיבור לרשת';
   if (m === 'BAD_TOKEN') return 'הדף לא מעודכן. סגור ופתח אותו מחדש';
   if (/^HTTP|BAD_REPLY/.test(m)) return 'השרת של גוגל החזיר תשובה לא תקינה';
-  if (m === 'BUSY') return 'השרת עסוק ברישום מכירות';
+  if (m === 'BUSY') return 'השרת עסוק ברישום מכירות. נסה שוב בעוד רגע';
+  if (m === 'QTY_EXCEEDS') return `אי אפשר להחזיר יותר ממה שנמכר (נשאר להחזיר: ${r.left ?? 0})`;
+  if (m === 'REFUND_MISMATCH') return `סכום ההחזר חייב להיות ${money(r.total)}`;
+  if (m === 'TENDER_MISMATCH') return `הסכומים חייבים להסתכם ל-${money(r.total)}`;
+  if (m === 'NOTE_REQUIRED') return 'חסר פירוט ל"אחר"';
+  if (m === 'SALE_NOT_FOUND') return 'המכירה לא נמצאה בגיליון';
+  if (m === 'RETURN_NOT_FOUND') return 'ההחזרה לא נמצאה בגיליון';
+  if (m === 'UNKNOWN_ACTION') return 'השרת עדיין לא מעודכן לתיקונים';
   return m;
 }
 
@@ -282,11 +431,13 @@ function friendly(err) {
    ================================================================== */
 let report = null;
 let planned = {};                 // event name → {start, end} from the אירועים tab
-let view = { day: '', staff: '' };
+let staffNames = [];              // the עובדים tab, for "who is making the correction"
+let view = { day: '', staff: '', q: '' };
 let showAllSales = false;
 let toldCodeless = '';
 let lastAt = 0;                   // when the report on screen was fetched
 let loading = false, retryTimer = null, autoRetries = 0;
+let wantFixScroll = /[#&]fix=1/.test(location.hash);
 
 const CACHE_KEY = 'pos_report_cache_v1';
 function cacheLoad() { try { return JSON.parse(localStorage.getItem(CACHE_KEY)) || null; } catch (e) { return null; } }
@@ -298,6 +449,8 @@ function hashSet() {
   if (view.day) parts.push('day=' + view.day);
   history.replaceState(null, '', '#' + parts.join('&'));
 }
+// the till passes the seller's name, so a correction is signed without retyping
+(function () { const by = hashGet('by'); if (by) localStorage.setItem('pos_fix_who', by); })();
 
 function netMsg(text, kind, withRetry) {
   const box = $('net');
@@ -325,7 +478,7 @@ function fillEvents(ev) {
   if (report) sel.value = report.event;
 }
 
-/** Put a report on screen. keep = a refresh of what is already shown: the day and the staff filter stay. */
+/** Put a report on screen. keep = a refresh of what is already shown: the day and the filters stay. */
 function applyReport(rep, day, keep) {
   report = rep;
   localStorage.setItem('pos_report_event', rep.event);
@@ -334,12 +487,18 @@ function applyReport(rep, day, keep) {
     if (view.day && !days.includes(view.day)) view.day = '';
   } else {
     const want = day === 'today' ? todayStr() : (day || '');
-    view = { day: days.includes(want) ? want : '', staff: '' };
+    view = { day: days.includes(want) ? want : '', staff: '', q: '' };
+    $('saleSearch').value = '';
     showAllSales = false;
   }
   if ([...$('ev').options].some(o => o.value === rep.event)) $('ev').value = rep.event;
   $('status').classList.add('hide'); $('rep').classList.remove('hide');   // visible first: the hour chart measures its card
   render();
+  if (wantFixScroll) {
+    wantFixScroll = false;
+    const r = $('salesCard').getBoundingClientRect();
+    window.scrollTo(0, window.scrollY + r.top - document.querySelector('header').offsetHeight - 6);
+  }
 }
 
 async function load(eventName, day, opts) {
@@ -358,6 +517,7 @@ async function load(eventName, day, opts) {
       }
     });
     if (r.events) fillEvents(r.events);
+    if (r.staff) staffNames = r.staff;
     if (!r.report) {
       report = null; $('rep').classList.add('hide'); $('status').classList.remove('hide');
       $('status').textContent = 'אין עדיין אירועים עם מכירות. אירוע נרשם בלשונית "אירועים" בגיליון.';
@@ -365,7 +525,7 @@ async function load(eventName, day, opts) {
     }
     lastAt = Date.now();
     applyReport(r.report, day, keep && r.report.event === (report && report.event));
-    cacheSave({ at: lastAt, events: r.events, report: r.report });
+    cacheSave({ at: lastAt, events: r.events, staff: r.staff, report: r.report });
     $('stamp').textContent = 'עודכן ' + hhmm(lastAt);
     $('stamp').title = `התשובה הגיעה תוך ${(r._roundtrip / 1000).toFixed(1)} שנ׳, מתוכן ${((r.ms || 0) / 1000).toFixed(1)} שנ׳ עבודה בשרת`;
     netMsg(''); autoRetries = 0;
@@ -387,10 +547,11 @@ async function load(eventName, day, opts) {
 $('ev').onchange = () => { const v = $('ev').value; if (v) { autoRetries = 0; load(v, ''); } };
 $('reload').onclick = () => { autoRetries = 0; load(report ? report.event : ($('ev').value || ''), view.day, { keep: !!report }); };
 
-/** Every day of the event: the planned range (אירועים tab) plus any day that has sales. */
+/** Every day of the event: the planned range (אירועים tab) plus any day that has sales or returns. */
 function eventDays() {
   const set = new Set();
   (report.salesList || []).forEach(s => { if (s.day) set.add(s.day); });
+  (report.returns || []).forEach(r => { if (r.day && !r.cancelled) set.add(r.day); });
   (report.days || []).forEach(d => { if (d.day) set.add(d.day); });
   const p = planned[report.event];
   if (p && p.start) {
@@ -402,7 +563,12 @@ function eventDays() {
 }
 
 /**
- * Everything the tables need, for one day ('' = the whole event), built from the sale list.
+ * Everything the tables need, for one day ('' = the whole event), built from the sale list
+ * and the return list. All numbers are NET.
+ *
+ *   A sale counts on the day it was made; a sale whose every unit came back is not counted.
+ *   A return counts on the day it was PROCESSED: the money leaves that day's cash / card,
+ *   the units come off that day, and the seller of the original sale loses the revenue.
  *
  * Discounts count only lines whose item HAD a list price:
  *   discount  = money below list            Σ (list − sold) × qty   where sold < list
@@ -411,6 +577,7 @@ function eventDays() {
  */
 function aggregate(day) {
   const a = { sales: 0, units: 0, revenue: 0, discount: 0, listValue: 0, listUnits: 0, discUnits: 0,
+              returnsTotal: 0, returnsCount: 0, retList: [],
               tender: { cash: 0, card: 0, other: 0 },
               hours: zeros(24), hoursSales: zeros(24), items: {}, categories: {}, staff: {}, list: [] };
 
@@ -422,36 +589,57 @@ function aggregate(day) {
              staffList: report.staff.map(s => ({ units: 0, discount: 0, discPct: 0, ...s })), avg: report.avg };
   }
 
+  const seller = name => a.staff[name] || (a.staff[name] = { name, sales: 0, units: 0, revenue: 0, discount: 0, listValue: 0 });
+  const item = l => a.items[l.key] || (a.items[l.key] = { key: l.key, item_id: l.item_id, barcode: l.barcode, name: l.name, category: l.category, qty: 0, revenue: 0 });
+  const category = name => a.categories[name] || (a.categories[name] = { name, qty: 0, revenue: 0 });
+  /** one line, sold (sign +1) or returned (sign −1) */
+  const line = (l, st, sign) => {
+    a.units += sign * l.qty; st.units += sign * l.qty;
+    if (l.list > 0) {
+      const lv = l.list * l.qty;
+      a.listValue += sign * lv; a.listUnits += sign * l.qty; st.listValue += sign * lv;
+      if (l.unit < l.list) { const d = (l.list - l.unit) * l.qty; a.discount += sign * d; a.discUnits += sign * l.qty; st.discount += sign * d; }
+    }
+    const it = item(l); it.qty += sign * l.qty; it.revenue += sign * l.total;
+    const c = category(l.category || 'ללא קטגוריה'); c.qty += sign * l.qty; c.revenue += sign * l.total;
+  };
+
+  const saleById = {};
   for (const s of report.salesList) {
+    saleById[s.id] = s;
     if (day && s.day !== day) continue;
     a.list.push(s);
-    a.sales++; a.revenue += s.total;
+    const st = seller(s.staff);
+    if (!s.void) { a.sales++; st.sales++; }
+    a.revenue += s.total; st.revenue += s.total;
     a.tender.cash += s.cash; a.tender.card += s.card; a.tender.other += s.other;
     if (s.hour >= 0) { a.hours[s.hour] += s.total; a.hoursSales[s.hour]++; }
-    const st = a.staff[s.staff] || (a.staff[s.staff] = { name: s.staff, sales: 0, units: 0, revenue: 0, discount: 0, listValue: 0 });
-    st.sales++; st.revenue += s.total;
-    for (const l of s.lines) {
-      a.units += l.qty; st.units += l.qty;
-      if (l.list > 0) {
-        const lv = l.list * l.qty;
-        a.listValue += lv; a.listUnits += l.qty; st.listValue += lv;
-        if (l.unit < l.list) { const d = (l.list - l.unit) * l.qty; a.discount += d; a.discUnits += l.qty; st.discount += d; }
-      }
-      const it = a.items[l.key] || (a.items[l.key] = { key: l.key, item_id: l.item_id, barcode: l.barcode, name: l.name, category: l.category, qty: 0, revenue: 0 });
-      it.qty += l.qty; it.revenue += l.total;
-      const c = a.categories[l.category] || (a.categories[l.category] = { name: l.category, qty: 0, revenue: 0 });
-      c.qty += l.qty; c.revenue += l.total;
-    }
+    for (const l of s.lines) line(l, st, +1);
   }
-  a.revenue = r2(a.revenue); a.discount = r2(a.discount);
-  a.discPct = a.listValue ? a.discount / a.listValue * 100 : 0;
+
+  for (const r of report.returns || []) {
+    if (day && r.day !== day) continue;
+    a.retList.push(r);
+    if (r.cancelled) continue;
+    a.returnsTotal += r.total; a.returnsCount++;
+    a.revenue -= r.total;
+    a.tender.cash -= r.cash; a.tender.card -= r.card; a.tender.other -= r.other;
+    const sale = saleById[r.sale_id];
+    const st = seller(sale ? sale.staff : (r.sale ? r.sale.staff : ''));
+    st.revenue -= r.total;
+    for (const l of r.lines) line(l, st, -1);
+  }
+
+  a.revenue = r2(a.revenue); a.discount = r2(a.discount); a.returnsTotal = r2(a.returnsTotal);
+  a.discPct = a.listValue > 0 ? a.discount / a.listValue * 100 : 0;
   a.hasList = report.salesList.some(s => s.lines.some(l => l.list !== undefined));
   a.tender = { cash: r2(a.tender.cash), card: r2(a.tender.card), other: r2(a.tender.other) };
   a.hours = a.hours.map(r2);
   a.avg = a.sales ? r2(a.revenue / a.sales) : 0;
-  a.itemList = Object.values(a.items).map(i => ({ ...i, revenue: r2(i.revenue) })).sort((x, y) => y.qty - x.qty || y.revenue - x.revenue);
-  a.categoryList = Object.values(a.categories).map(c => ({ ...c, revenue: r2(c.revenue) })).sort((x, y) => y.revenue - x.revenue);
-  a.staffList = Object.values(a.staff).map(s => ({ ...s, revenue: r2(s.revenue), discount: r2(s.discount), discPct: s.listValue ? s.discount / s.listValue * 100 : 0 }))
+  a.itemList = Object.values(a.items).filter(i => i.qty !== 0 || r2(i.revenue) !== 0).map(i => ({ ...i, revenue: r2(i.revenue) })).sort((x, y) => y.qty - x.qty || y.revenue - x.revenue);
+  a.categoryList = Object.values(a.categories).filter(c => c.qty !== 0 || r2(c.revenue) !== 0).map(c => ({ ...c, revenue: r2(c.revenue) })).sort((x, y) => y.revenue - x.revenue);
+  a.staffList = Object.values(a.staff).filter(s => s.sales || s.units || r2(s.revenue))
+    .map(s => ({ ...s, revenue: r2(s.revenue), discount: r2(s.discount), discPct: s.listValue > 0 ? s.discount / s.listValue * 100 : 0 }))
     .sort((x, y) => y.revenue - x.revenue);
   return a;
 }
@@ -476,6 +664,7 @@ function render() {
   const perDay = days.map(d => ({ day: d, a: canFilter ? aggregate(d) : null }));
   const whole = view.day ? aggregate('') : a;
   const disc = canFilter && a.hasList;
+  const anyRet = (report.returns || []).some(r => !r.cancelled);
   hashSet();
 
   // ---- day picker + what is on screen ----
@@ -493,19 +682,21 @@ function render() {
 
   // ---- tiles ----
   $('tiles').innerHTML = [
-    ['הכנסות', money(a.revenue)], ['מכירות', num(a.sales)], ['ממוצע למכירה', money(a.avg)], ['יחידות', num(a.units)],
+    ['הכנסות', money(a.revenue), anyRet ? 'אחרי החזרות' : ''], ['מכירות', num(a.sales)], ['ממוצע למכירה', money(a.avg)], ['יחידות', num(a.units)],
     ['מזומן', money(a.tender.cash)], ['אשראי', money(a.tender.card)], ['אחר', money(a.tender.other)],
     ...(disc ? [['הנחות ממחירון', money(a.discount)],
-                ['הנחה ממוצעת', pct(a.discPct), `${num(a.discUnits)} מתוך ${num(a.listUnits)} יח׳ נמכרו בהנחה`]] : [])
+                ['הנחה ממוצעת', pct(a.discPct), `${num(a.discUnits)} מתוך ${num(a.listUnits)} יח׳ נמכרו בהנחה`]] : []),
+    ...(anyRet ? [['החזרות וביטולים', money(a.returnsTotal), `${num(a.returnsCount)} רשומות`]] : [])
   ].map(([k, v, sub]) => `<div class="tile"><span>${k}</span><b>${v}</b>${sub ? `<small>${sub}</small>` : ''}</div>`).join('');
 
   // ---- per day: always every day; the shown one is marked; a tap selects it ----
   // Column order puts what is read most first: a phone shows about four columns before it scrolls.
   const cells = x => `<td class="n">${num(x.sales)}</td><td class="n">${money(x.revenue)}</td>` +
     (disc ? `<td class="n">${pct(x.discPct)}</td><td class="n">${money(x.discount)}</td>` : '') +
+    (anyRet ? `<td class="n${x.returnsTotal ? ' neg' : ''}">${x.returnsTotal ? money(x.returnsTotal) : ''}</td>` : '') +
     `<td class="n">${num(x.units)}</td><td class="n">${money(x.avg)}</td><td class="n">${money(x.tender.cash)}</td><td class="n">${money(x.tender.card)}</td><td class="n">${money(x.tender.other)}</td>`;
-  const serverDay = d => { const s = (report.days || []).find(x => x.day === d); return s ? { sales: s.sales, units: s.units, revenue: s.revenue, avg: s.sales ? s.revenue / s.sales : 0, tender: { cash: s.cash, card: s.card, other: s.other } } : { sales: 0, units: 0, revenue: 0, avg: 0, tender: { cash: 0, card: 0, other: 0 } }; };
-  $('days').innerHTML = `<tr><th>יום</th><th class="n">מכירות</th><th class="n">הכנסות</th>${disc ? '<th class="n">הנחה ממוצעת</th><th class="n">הנחות</th>' : ''}<th class="n">יחידות</th><th class="n">ממוצע למכירה</th><th class="n">מזומן</th><th class="n">אשראי</th><th class="n">אחר</th></tr>` +
+  const serverDay = d => { const s = (report.days || []).find(x => x.day === d); return s ? { sales: s.sales, units: s.units, revenue: s.revenue, avg: s.sales ? s.revenue / s.sales : 0, returnsTotal: s.returns || 0, tender: { cash: s.cash, card: s.card, other: s.other } } : { sales: 0, units: 0, revenue: 0, avg: 0, returnsTotal: 0, tender: { cash: 0, card: 0, other: 0 } }; };
+  $('days').innerHTML = `<tr><th>יום</th><th class="n">מכירות</th><th class="n">הכנסות</th>${disc ? '<th class="n">הנחה ממוצעת</th><th class="n">הנחות</th>' : ''}${anyRet ? '<th class="n">החזרות</th>' : ''}<th class="n">יחידות</th><th class="n">ממוצע למכירה</th><th class="n">מזומן</th><th class="n">אשראי</th><th class="n">אחר</th></tr>` +
     perDay.map(p => `<tr class="day${view.day === p.day ? ' on' : ''}" data-day="${p.day}"><td>${esc(dayName(p.day))} ${fmtDay(p.day)}${p.day === today ? ' <span class="flag">היום</span>' : ''}</td>${cells(p.a || serverDay(p.day))}</tr>`).join('') +
     (multi ? `<tr class="total"><td>כל האירוע</td>${cells(whole)}</tr>` : '');
   if (canFilter && multi) $('days').querySelectorAll('tr.day').forEach(tr => { tr.onclick = () => setDay(view.day === tr.dataset.day ? '' : tr.dataset.day); });
@@ -525,13 +716,14 @@ function render() {
     : '<tr><td class="empty">אין מכירות</td></tr>';
 
   // ---- top items ----
-  const top = a.itemList.slice(0, 15);
+  const top = a.itemList.filter(i => i.qty > 0).slice(0, 15);
   $('top').innerHTML = top.length
     ? `<tr><th>#</th><th>פריט</th><th>קטגוריה</th><th class="n">יחידות</th><th class="n">הכנסות</th></tr>` +
       top.map((it, i) => `<tr><td>${i + 1}</td><td>${esc(it.name)}${it.item_id ? ` <span class="muted">קוד ${esc(it.item_id)}</span>` : ''}</td><td class="muted">${esc(it.category)}</td><td class="n">${num(it.qty)}</td><td class="n">${money(it.revenue)}</td></tr>`).join('')
     : '<tr><td class="empty">אין מכירות</td></tr>';
 
   renderSales(a);
+  renderReturns(a);
   renderFix();
 }
 
@@ -558,11 +750,11 @@ function renderHours(a) {
   svg += '</svg>';
   $('hours').innerHTML = svg;
   const best = hours.indexOf(Math.max(...hours));
-  $('hoursNote').textContent = `שעת השיא: ${String(best).padStart(2, '0')}:00 (${money(hours[best])}, ${num(sales[best] || 0)} מכירות)`;
+  $('hoursNote').textContent = `שעת השיא: ${String(best).padStart(2, '0')}:00 (${money(hours[best])}, ${num(sales[best] || 0)} מכירות) · לפי שעת המכירה, לפני החזרות`;
 }
 
 /* ==================================================================
-   Sale by sale — newest first, for the day on screen
+   Sale by sale — newest first, for the day on screen. Each row can be corrected.
    ================================================================== */
 function tenderText(s) {
   const p = [];
@@ -571,6 +763,10 @@ function tenderText(s) {
   if (s.other) p.push('אחר ' + money(s.other) + (s.note ? ' (' + s.note + ')' : ''));
   return p.join(' + ');
 }
+const returnsOf = s => (report.returns || []).filter(r => r.sale_id === s.id);
+const leftToReturn = s => s.lines.reduce((t, l) => t + l.qty - (l.returned || 0), 0);
+
+$('saleSearch').oninput = () => { view.q = $('saleSearch').value.trim().toLowerCase(); showAllSales = false; renderSales(aggregate(view.day)); };
 
 function renderSales(a) {
   const card = $('salesCard');
@@ -583,10 +779,12 @@ function renderSales(a) {
   sel.innerHTML = '<option value="">כל העובדים</option>' + names.map(n => `<option value="${esc(n)}"${n === view.staff ? ' selected' : ''}>${esc(n || '—')}</option>`).join('');
   sel.onchange = () => { view.staff = sel.value; showAllSales = false; renderSales(a); };
 
-  const list = a.list.filter(s => !view.staff || s.staff === view.staff).slice().reverse();
+  const q = view.q;
+  const hit = s => !q || s.time.includes(q) || String(s.total).includes(q) || s.staff.toLowerCase().includes(q) || s.lines.some(l => l.name.toLowerCase().includes(q) || String(l.item_id).includes(q));
+  const list = a.list.filter(s => (!view.staff || s.staff === view.staff) && hit(s)).slice().reverse();
   const total = r2(list.reduce((t, s) => t + s.total, 0));
   $('salesNote').textContent = list.length
-    ? `${num(list.length)} מכירות · ${money(total)}${view.staff ? ' · ' + view.staff : ''} · מהחדשה לישנה`
+    ? `${num(list.length)} מכירות · ${money(total)} לפני החזרות${view.staff ? ' · ' + view.staff : ''} · מהחדשה לישנה`
     : 'אין מכירות להצגה';
 
   const LIMIT = 40;
@@ -598,16 +796,246 @@ function renderSales(a) {
     ? ` <span class="flag">${l.unit < l.list ? 'הנחה ' + Math.round((1 - l.unit / l.list) * 100) + '%' : 'מעל המחירון'} · מחירון ${money(l.list)}</span>` : '';
   $('sales').innerHTML = !shown.length ? '' :
     `<tr><th>שעה · עובד</th><th>פריטים</th><th class="n">סכום · תשלום</th></tr>` +
-    shown.map(s => `<tr>
-      <td class="when"><b>${esc(s.time)}</b>${withDate ? ` <span class="muted">${shortDay(s.day)}</span>` : ''}<div>${esc(s.staff || '—')}</div></td>
-      <td class="items">${s.lines.map(l => `<div>${l.qty > 1 ? '<b>' + num(l.qty) + '×</b> ' : ''}${esc(l.name)} <span class="muted">${money(l.total)}</span>${priceNote(l)}${l.manual ? ' <span class="flag">הוזן ידנית</span>' : ''}</div>`).join('')}</td>
-      <td class="n"><b>${money(s.total)}</b><div class="muted" style="white-space:normal">${esc(tenderText(s))}</div></td>
+    shown.map(s => `<tr class="${s.void ? 'void' : ''}" data-sale="${esc(s.id)}">
+      <td class="when"><b>${esc(s.time)}</b>${withDate ? ` <span class="muted">${shortDay(s.day)}</span>` : ''}<div>${esc(s.staff || '—')}</div>
+        <button class="btn ghost tiny noprint" data-fix="${esc(s.id)}" style="margin-top:6px">תיקון</button></td>
+      <td class="items">${s.lines.map(l => `<div>${l.qty > 1 ? '<b>' + num(l.qty) + '×</b> ' : ''}${esc(l.name)} <span class="muted">${money(l.total)}</span>${priceNote(l)}${l.manual ? ' <span class="flag">הוזן ידנית</span>' : ''}${l.returned ? ` <span class="flag neg">הוחזרו ${num(l.returned)}</span>` : ''}</div>`).join('')}
+        ${s.void ? '<div class="flag neg" style="text-decoration:none">בוטלה או הוחזרה במלואה · לא נספרת</div>' : ''}</td>
+      <td class="n amt"><b>${money(s.total)}</b><div class="muted" style="white-space:normal">${esc(tenderText(s))}</div>
+        ${s.tender_changed ? `<div class="flag" style="white-space:normal">אמצעי התשלום שונה · היה: ${esc(s.tender_changed.was)}</div>` : ''}</td>
     </tr>`).join('');
+  $('sales').querySelectorAll('[data-fix]').forEach(b => { b.onclick = () => openFix(b.dataset.fix); });
 
   const more = $('salesMore');
   more.classList.toggle('hide', showAllSales || list.length <= LIMIT);
   more.textContent = `הצג את כל ${num(list.length)} המכירות`;
   more.onclick = () => { showAllSales = true; renderSales(a); };
+}
+
+/* ==================================================================
+   Returns and cancellations processed on the day on screen
+   ================================================================== */
+function refundText(r) {
+  const p = [];
+  if (r.cash) p.push('מזומן ' + money(r.cash));
+  if (r.card) p.push('זיכוי באשראי ' + money(r.card));
+  if (r.other) p.push((r.note || 'אחר') + ' ' + money(r.other));
+  return p.join(' + ');
+}
+
+function renderReturns(a) {
+  const list = a.retList.slice().reverse();
+  $('retCard').classList.toggle('hide', !list.length);
+  if (!list.length) return;
+  $('rets').innerHTML = `<tr><th>מתי · מי</th><th>מה</th><th class="n">סכום · איך הוחזר</th></tr>` +
+    list.map(r => `<tr class="${r.cancelled ? 'cancelled' : ''}">
+      <td class="when"><b>${shortDay(r.day)}</b> ${esc(r.time)}<div>${esc(r.by || '—')}</div></td>
+      <td><b>${esc(r.reason || 'החזרה')}</b>${r.cancelled ? ` <span class="flag" style="text-decoration:none">בוטל${r.cancelled_by ? ' על ידי ' + esc(r.cancelled_by) : ''}</span>` : ''}
+        ${r.lines.map(l => `<div>${l.qty > 1 ? '<b>' + num(l.qty) + '×</b> ' : ''}${esc(l.name)} <span class="muted">${money(l.total)}</span></div>`).join('')}
+        <div class="muted">מהמכירה של ${r.sale ? esc(r.sale.staff) + ', ' + shortDay(r.sale.day) + ' ' + esc(r.sale.time) : 'לא נמצאה'}${r.back ? '' : ' · לא חזר למלאי'}</div></td>
+      <td class="n"><b class="neg">${money(-r.total)}</b><div class="muted" style="white-space:normal">${esc(refundText(r))}</div></td>
+    </tr>`).join('');
+}
+
+/* ==================================================================
+   Corrections
+   ================================================================== */
+let fxSale = null, fxMode = '', rQty = {}, rBack = true, rWhen = 'now', rTouched = false, rId = '';
+
+function fillWho() {
+  const sel = $('fxWho');
+  const remembered = localStorage.getItem('pos_fix_who') || '';
+  const names = staffNames.slice();
+  if (remembered && !names.includes(remembered)) names.push(remembered);
+  sel.innerHTML = '<option value="">בחר שם…</option>' + names.map(n => `<option value="${esc(n)}"${n === remembered ? ' selected' : ''}>${esc(n)}</option>`).join('');
+  sel.onchange = () => { localStorage.setItem('pos_fix_who', sel.value); recalcTender(); recalcReturn(); };
+}
+
+function openFix(id) {
+  fxSale = (report.salesList || []).find(s => s.id === id);
+  if (!fxSale) return;
+  const s = fxSale;
+  $('fxSale').innerHTML = `${shortDay(s.day)} ${esc(s.time)} · ${esc(s.staff)} · <b>${money(s.total)}</b> · ${esc(tenderText(s))}<br>${s.lines.map(l => (l.qty > 1 ? num(l.qty) + '× ' : '') + esc(l.name)).join(' · ')}`;
+  fillWho();
+  showFx('menu');
+  $('fx').classList.remove('hide');
+}
+function closeFix() { $('fx').classList.add('hide'); fxSale = null; }
+$('fxClose').onclick = closeFix;
+
+function showFx(mode) {
+  fxMode = mode;
+  $('fxMenu').classList.toggle('hide', mode !== 'menu');
+  $('fxTender').classList.toggle('hide', mode !== 'tender');
+  $('fxReturn').classList.toggle('hide', mode !== 'return' && mode !== 'cancel');
+  $('fxTitle').textContent = mode === 'tender' ? 'שינוי אמצעי תשלום' : mode === 'return' ? 'החזרת מוצר' : mode === 'cancel' ? 'ביטול מכירה' : 'תיקון מכירה';
+  if (mode !== 'menu') return;
+  const s = fxSale, left = leftToReturn(s);
+  $('fxGoReturn').disabled = left <= 0; $('fxGoCancel').disabled = left <= 0;
+  const rets = returnsOf(s);
+  const h = $('fxHist');
+  h.classList.toggle('hide', !rets.length && !s.tender_changed);
+  h.innerHTML = (s.tender_changed ? `<div>אמצעי התשלום שונה על ידי ${esc(s.tender_changed.by || '—')} · היה: ${esc(s.tender_changed.was)}</div>` : '') +
+    rets.map(r => `<div>${r.cancelled ? '<s>' : ''}<b>${esc(r.reason || 'החזרה')}</b> ${money(r.total)} · ${shortDay(r.day)} ${esc(r.time)} · ${esc(r.by || '—')} · ${esc(refundText(r))}${r.cancelled ? '</s> <span class="flag">בוטל</span>' : ` <button class="btn ghost tiny" data-undo="${esc(r.id)}">בטל את ההחזרה הזו</button>`}</div>`).join('');
+  h.querySelectorAll('[data-undo]').forEach(b => { b.onclick = () => undoReturn(b.dataset.undo, b); });
+}
+
+/* ---- change of tender ---- */
+$('fxGoTender').onclick = () => {
+  const s = fxSale;
+  $('tCash').value = s.cash || 0; $('tCard').value = s.card || 0; $('tOther').value = s.other || 0; $('tNote').value = s.note || '';
+  showFx('tender'); recalcTender();
+};
+$('tBack').onclick = () => showFx('menu');
+const tSum = () => r2(['tCash', 'tCard', 'tOther'].reduce((t, id) => t + (parseFloat($(id).value) || 0), 0));
+function recalcTender() {
+  if (!fxSale || fxMode !== 'tender') return;
+  const total = fxSale.total, diff = r2(total - tSum());
+  const other = parseFloat($('tOther').value) || 0;
+  $('tNoteWrap').classList.toggle('hide', other <= 0);
+  const noteOk = other <= 0 || $('tNote').value.trim().length > 0;
+  const same = (parseFloat($('tCash').value) || 0) === fxSale.cash && (parseFloat($('tCard').value) || 0) === fxSale.card && other === fxSale.other && (other <= 0 || $('tNote').value.trim() === (fxSale.note || ''));
+  const el = $('tRemain'), balanced = Math.abs(diff) < 0.01;
+  if (!balanced) { el.className = 'remain bad'; el.textContent = diff > 0 ? 'חסר ' + money(diff) : 'עודף ' + money(-diff); }
+  else if (!noteOk) { el.className = 'remain bad'; el.textContent = 'חסר פירוט ל״אחר״'; }
+  else if (same) { el.className = 'remain bad'; el.textContent = 'זה אמצעי התשלום שכבר רשום'; }
+  else { el.className = 'remain ok'; el.textContent = 'מאוזן'; }
+  $('tSave').disabled = !(balanced && noteOk && !same && $('fxWho').value);
+  if (balanced && noteOk && !same && !$('fxWho').value) { el.className = 'remain bad'; el.textContent = 'בחר מי מבצע את התיקון'; }
+}
+['tCash', 'tCard', 'tOther', 'tNote'].forEach(id => $(id).addEventListener('input', recalcTender));
+$('fxTender').querySelectorAll('.fill').forEach(b => { b.onclick = () => {
+  const cur = tSum() - (parseFloat($(b.dataset.fill).value) || 0);
+  $(b.dataset.fill).value = r2(Math.max(fxSale.total - cur, 0)); recalcTender();
+}; });
+$('tSave').onclick = async () => {
+  const btn = $('tSave'); btn.disabled = true;
+  try {
+    await apiPostRetry({ action: 'tender_change', sale_id: fxSale.id, by: $('fxWho').value,
+      cash: parseFloat($('tCash').value) || 0, card: parseFloat($('tCard').value) || 0, other: parseFloat($('tOther').value) || 0, note: $('tNote').value.trim() }, saving(btn, 'שומר…'));
+    closeFix(); toast('אמצעי התשלום עודכן');
+    load(report.event, view.day, { keep: true });
+  } catch (err) { if (err.unsure) unsure(err); else { toast('לא נשמר: ' + friendly(err), 4000); btn.disabled = false; } }
+  finally { btn.textContent = 'שמור את השינוי'; }
+};
+
+/* ---- return / cancellation ---- */
+function startReturn(mode) {
+  const s = fxSale;
+  rQty = {}; rBack = true; rTouched = false;
+  rId = uuid();          // one id for this form: pressing save twice, or a retry, can never record two returns
+  s.lines.forEach(l => { rQty[l.line_no] = mode === 'cancel' ? l.qty - (l.returned || 0) : 0; });
+  // a cancellation belongs to the moment of the sale; a return of a sale from another day defaults to that day
+  rWhen = mode === 'cancel' ? 'sale' : (s.day === todayStr() ? 'now' : 'date');
+  $('rDate').value = s.day || todayStr(); $('rTime').value = '12:00';
+  ['rCash', 'rCard', 'rOther'].forEach(id => { $(id).value = 0; }); $('rNote').value = '';
+  $('rIntro').textContent = mode === 'cancel'
+    ? 'המכירה נשארת בגיליון ומסומנת כמבוטלת. היא לא תיספר בהכנסות ולא ברשימת הכספיט.'
+    : 'בוחרים מה חזר ואיך הלקוח קיבל את הכסף. המכירה המקורית נשארת, וההחזרה נרשמת לידה.';
+  $('rStockWrap').classList.toggle('hide', mode === 'cancel');
+  $('rWhenWrap').classList.toggle('hide', mode === 'cancel');
+  $('rRefundLabel').textContent = mode === 'cancel' ? 'באיזה אמצעי תשלום היא נרשמה (יורד מהסיכום)' : 'איך הלקוח קיבל את הכסף';
+  $('rAll').classList.toggle('hide', mode === 'cancel'); $('rNone').classList.toggle('hide', mode === 'cancel');
+  showFx(mode);
+  renderRLines(); syncChoices(); autoRefund(); recalcReturn();
+}
+$('fxGoReturn').onclick = () => startReturn('return');
+$('fxGoCancel').onclick = () => startReturn('cancel');
+$('rBack').onclick = () => showFx('menu');
+
+function renderRLines() {
+  const s = fxSale, locked = fxMode === 'cancel';
+  $('rLines').innerHTML = s.lines.map(l => {
+    const left = l.qty - (l.returned || 0);
+    return `<div class="rline"><div class="info"><b>${esc(l.name)}</b><span class="muted">${money(l.unit)} ליחידה · נמכרו ${num(l.qty)}${l.returned ? ' · כבר הוחזרו ' + num(l.returned) : ''}</span></div>
+      <div class="step">${locked || left <= 0 ? '' : `<button data-dec="${l.line_no}" aria-label="פחות">−</button>`}<span>${num(rQty[l.line_no] || 0)}</span>${locked || left <= 0 ? '' : `<button data-inc="${l.line_no}" aria-label="עוד">+</button>`}</div></div>`;
+  }).join('');
+  const bump = (ln, d) => {
+    const l = s.lines.find(x => x.line_no === ln), left = l.qty - (l.returned || 0);
+    rQty[ln] = Math.min(left, Math.max(0, (rQty[ln] || 0) + d));
+    renderRLines(); autoRefund(); recalcReturn();
+  };
+  $('rLines').querySelectorAll('[data-inc]').forEach(b => { b.onclick = () => bump(Number(b.dataset.inc), +1); });
+  $('rLines').querySelectorAll('[data-dec]').forEach(b => { b.onclick = () => bump(Number(b.dataset.dec), -1); });
+}
+$('rAll').onclick = () => { fxSale.lines.forEach(l => { rQty[l.line_no] = l.qty - (l.returned || 0); }); renderRLines(); autoRefund(); recalcReturn(); };
+$('rNone').onclick = () => { fxSale.lines.forEach(l => { rQty[l.line_no] = 0; }); renderRLines(); autoRefund(); recalcReturn(); };
+
+const rTotal = () => r2(fxSale.lines.reduce((t, l) => t + (rQty[l.line_no] || 0) * l.unit, 0));
+const rSum = () => r2(['rCash', 'rCard', 'rOther'].reduce((t, id) => t + (parseFloat($(id).value) || 0), 0));
+
+/** Until someone types an amount, the refund follows the way the sale was paid (when it was paid one way). */
+function autoRefund() {
+  if (rTouched) return;
+  const s = fxSale, total = rTotal();
+  const ways = [['rCash', s.cash], ['rCard', s.card], ['rOther', s.other]].filter(w => w[1] > 0);
+  ['rCash', 'rCard', 'rOther'].forEach(id => { $(id).value = 0; });
+  if (ways.length === 1) { $(ways[0][0]).value = total; if (ways[0][0] === 'rOther') $('rNote').value = s.note || ''; }
+  else if (fxMode === 'cancel' && r2(s.cash + s.card + s.other) === total) { $('rCash').value = s.cash; $('rCard').value = s.card; $('rOther').value = s.other; $('rNote').value = s.note || ''; }
+}
+function syncChoices() {
+  $('rStock').querySelectorAll('button').forEach(b => b.classList.toggle('on', (b.dataset.v === '1') === rBack));
+  $('rWhen').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === rWhen));
+  $('rDateRow').classList.toggle('hide', rWhen !== 'date');
+}
+$('rStock').querySelectorAll('button').forEach(b => { b.onclick = () => { rBack = b.dataset.v === '1'; syncChoices(); }; });
+$('rWhen').querySelectorAll('button').forEach(b => { b.onclick = () => { rWhen = b.dataset.v; syncChoices(); recalcReturn(); }; });
+['rCash', 'rCard', 'rOther'].forEach(id => $(id).addEventListener('input', () => { rTouched = true; recalcReturn(); }));
+$('rNote').addEventListener('input', recalcReturn);
+$('rDate').addEventListener('input', recalcReturn);
+$('fxReturn').querySelectorAll('[data-note]').forEach(b => { b.onclick = () => { $('rNote').value = b.dataset.note; recalcReturn(); }; });
+$('fxReturn').querySelectorAll('.fill').forEach(b => { b.onclick = () => {
+  rTouched = true;
+  const cur = rSum() - (parseFloat($(b.dataset.fill).value) || 0);
+  $(b.dataset.fill).value = r2(Math.max(rTotal() - cur, 0)); recalcReturn();
+}; });
+
+function recalcReturn() {
+  if (!fxSale || (fxMode !== 'return' && fxMode !== 'cancel')) return;
+  const total = rTotal(), diff = r2(total - rSum());
+  const other = parseFloat($('rOther').value) || 0;
+  $('rNoteWrap').classList.toggle('hide', other <= 0);
+  const noteOk = other <= 0 || $('rNote').value.trim().length > 0;
+  const dateOk = rWhen !== 'date' || !!$('rDate').value;
+  const el = $('rRemain');
+  let msg = '';
+  if (total <= 0) msg = 'בחר מה חזר';
+  else if (Math.abs(diff) >= 0.01) msg = diff > 0 ? `נשאר להחזיר ${money(diff)} מתוך ${money(total)}` : `יותר מדי: ${money(-diff)}`;
+  else if (!noteOk) msg = 'חסר פירוט ל״אחר״';
+  else if (!dateOk) msg = 'בחר תאריך';
+  else if (!$('fxWho').value) msg = 'בחר מי מבצע את התיקון';
+  el.className = 'remain ' + (msg ? 'bad' : 'ok');
+  el.textContent = msg || `${fxMode === 'cancel' ? 'ביטול' : 'החזרה'} של ${money(total)}`;
+  $('rSave').disabled = !!msg;
+  $('rSave').textContent = fxMode === 'cancel' ? 'בטל את המכירה' : 'שמור את ההחזרה';
+}
+
+$('rSave').onclick = async () => {
+  const s = fxSale, btn = $('rSave');
+  let at = '';
+  if (rWhen === 'sale') at = new Date(s.ts + 60000).toISOString();
+  else if (rWhen === 'date') at = new Date($('rDate').value + 'T' + ($('rTime').value || '12:00') + ':00').toISOString();
+  btn.disabled = true;
+  try {
+    await apiPostRetry({ action: 'return', return_id: rId, sale_id: s.id, by: $('fxWho').value,
+      reason: fxMode === 'cancel' ? 'ביטול מכירה' : 'החזרה מלקוח', returned_at: at, back_to_stock: fxMode === 'cancel' ? true : rBack,
+      lines: s.lines.filter(l => (rQty[l.line_no] || 0) > 0).map(l => ({ line_no: l.line_no, qty: rQty[l.line_no] })),
+      refund: { cash: parseFloat($('rCash').value) || 0, card: parseFloat($('rCard').value) || 0, other: parseFloat($('rOther').value) || 0, note: $('rNote').value.trim() } }, saving(btn, 'שומר…'));
+    const wasCancel = fxMode === 'cancel';
+    closeFix(); toast(wasCancel ? 'המכירה בוטלה' : 'ההחזרה נרשמה');
+    load(report.event, view.day, { keep: true });
+  } catch (err) { if (err.unsure) unsure(err); else { toast('לא נשמר: ' + friendly(err), 4000); recalcReturn(); } }
+};
+
+async function undoReturn(id, btn) {
+  if (!$('fxWho').value) return toast('בחר מי מבצע את התיקון');
+  if (!confirm('לבטל את ההחזרה הזו? היא תישאר רשומה כמבוטלת, והמכירה תחזור להיספר.')) return;
+  btn.disabled = true;
+  try {
+    await apiPostRetry({ action: 'return_cancel', return_id: id, by: $('fxWho').value }, saving(btn, 'מבטל…'));
+    closeFix(); toast('ההחזרה בוטלה');
+    load(report.event, view.day, { keep: true });
+  } catch (err) { if (err.unsure) unsure(err); else { toast('לא נשמר: ' + friendly(err), 4000); btn.disabled = false; } }
 }
 
 /* ==================================================================
@@ -632,13 +1060,14 @@ function renderFix() {
       const dayCells = multiDay ? days.map(d => `<td class="n muted">${it.days && it.days[d] ? num(it.days[d]) : ''}</td>`).join('') : '';
       const status = state === 'done' ? fixStamp(f)
         : state === 'partial' ? `הוקלדו ${num(f.qty)} · נוספו ${num(it.qty - f.qty)} <span class="muted">(${fixStamp(f)})</span>` : '';
+      const over = f && Number(f.qty) > Number(it.qty) ? ` <span class="flag">הוקלדו ${num(f.qty)}, אחרי החזרה נשארו ${num(it.qty)}</span>` : '';
       return `<tr class="${state === 'open' ? '' : state}" data-key="${esc(it.key)}">
         <td><input type="checkbox" ${state === 'done' ? 'checked' : ''} aria-label="הוקלד בכספיט"></td>
         <td>${esc(it.item_id) || '<span class="flag">ללא קוד</span>'}</td>
         <td class="name">${esc(it.name)}${it.manual ? ' <span class="flag">· הוזן ידנית בדוכן</span>' : ''}</td>
         <td class="muted">${esc(it.barcode)}</td>${dayCells}
         <td class="n"><b>${num(it.qty)}</b></td>
-        <td class="st muted">${status}</td>
+        <td class="st muted">${status}${over}</td>
       </tr>`;
     }).join('');
   $('fix').querySelectorAll('input[type=checkbox]').forEach(cb => { cb.onchange = () => tick(cb); });
@@ -660,7 +1089,7 @@ async function tick(cb) {
   if (cb.checked && !who) { cb.checked = false; $('who').focus(); return toast('כתוב מי מקליד'); }
   cb.disabled = true;
   try {
-    const res = await apiPost({ action: 'fix_tick', event: report.event, item_key: key, item_id: it.item_id, barcode: it.barcode, name: it.name, qty: it.qty, done: cb.checked, by: who });
+    const res = await apiPostRetry({ action: 'fix_tick', event: report.event, item_key: key, item_id: it.item_id, barcode: it.barcode, name: it.name, qty: it.qty, done: cb.checked, by: who });
     if (res.done) report.fixes[key] = { by: res.by, at: res.at, qty: it.qty };
     else delete report.fixes[key];
     const f = report.fixes[key], state = fixState(it, f);
@@ -697,6 +1126,7 @@ $('print').onclick = () => window.print();
   if (c && c.report && (!want || c.report.event === want)) {
     report = c.report;
     if (c.events) fillEvents(c.events);
+    if (c.staff) staffNames = c.staff;
     lastAt = c.at || 0;
     applyReport(c.report, hashGet('day'), false);
     $('stamp').textContent = 'מצב שמור מ-' + hhmm(lastAt);
