@@ -367,8 +367,8 @@ function fetchT(url, opts, ms) {
   return fetch(url, { ...opts, signal: ctl.signal }).finally(() => clearTimeout(t));
 }
 
-async function apiGet(action) {
-  const res = await fetchT(`${API_URL}?action=${encodeURIComponent(action)}&token=${encodeURIComponent(TOKEN)}`, {}, 8000);
+async function apiGet(action, ms) {
+  const res = await fetchT(`${API_URL}?action=${encodeURIComponent(action)}&token=${encodeURIComponent(TOKEN)}`, {}, ms || 8000);
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
 }
@@ -520,7 +520,7 @@ function toast(msg, ms) {
 /* ==================================================================
    Boot
    ================================================================== */
-const BUILD = 'v9';
+const BUILD = 'v10';
 
 window.addEventListener('load', async () => {
   if ('serviceWorker' in navigator) {
@@ -568,18 +568,31 @@ window.addEventListener('load', async () => {
   });
   flush();
 
-  try {
-    const res = await apiGet('catalog');
-    if (!res.ok) throw new Error(res.error || 'API error');
-    catalog = { version: res.version, rows: res.rows, staff: res.staff || [], events: res.events || [] };
-    save(LS.catalog, catalog);
-    indexCatalog();
-    renderGate();
-    $('g-status').textContent = flat.length.toLocaleString('he-IL') + ' פריטים · ' + (catalog.staff.length) + ' עובדים · ' + (catalog.events.length) + ' אירועים · ' + BUILD;
-  } catch (err) {
-    $('g-status').textContent = (flat.length
-      ? 'אין רשת — קטלוג שמור (' + flat.length.toLocaleString('he-IL') + ' פריטים)'
-      : 'טעינה נכשלה: ' + err.message + ' — בדוק API_URL ו-TOKEN') + ' · ' + BUILD;
+  // The catalog also carries the staff and event lists, so a phone that misses it shows
+  // yesterday's events. Google sometimes sits on a request for a minute (measured: an empty
+  // ping took 40 s). The first try is short — the saved catalog is already on screen and the
+  // till is usable — and then it keeps trying in the background, each time more patiently.
+  const waits = [8000, 20000, 45000, 60000];
+  const n = () => flat.length.toLocaleString('he-IL');
+  for (let i = 0; i < waits.length; i++) {
+    try {
+      const res = await apiGet('catalog', waits[i]);
+      if (!res.ok) throw new Error(res.error || 'API error');
+      catalog = { version: res.version, rows: res.rows, staff: res.staff || [], events: res.events || [] };
+      save(LS.catalog, catalog);
+      indexCatalog();
+      renderGate();
+      $('g-status').textContent = n() + ' פריטים · ' + (catalog.staff.length) + ' עובדים · ' + (catalog.events.length) + ' אירועים · ' + BUILD;
+      break;
+    } catch (err) {
+      const last = i === waits.length - 1 || !navigator.onLine;
+      $('g-status').textContent = (!navigator.onLine
+        ? (flat.length ? 'אין רשת — קטלוג שמור (' + n() + ' פריטים)' : 'אין רשת, והקטלוג עוד לא נטען בטלפון הזה')
+        : flat.length
+          ? (last ? 'השרת לא ענה — עובדים עם הקטלוג השמור (' + n() + ' פריטים)' : 'קטלוג שמור (' + n() + ' פריטים) · השרת איטי, מתעדכן…')
+          : (last ? 'הקטלוג לא נטען: השרת לא ענה. סגור ופתח את האפליקציה' : 'טוען קטלוג… השרת איטי, מנסה שוב')) + ' · ' + BUILD;
+      if (last) break;
+    }
   }
 });
 
