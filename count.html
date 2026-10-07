@@ -144,6 +144,7 @@
     <span id="progress">—</span>
     <button class="iconbtn" onclick="openSearch()" title="חיפוש">🔎</button>
     <button class="iconbtn" onclick="refreshCatalog()" title="רענון קטלוג">⟳</button>
+    <button class="iconbtn" onclick="openHelp()" title="איך סופרים">?</button>
   </div>
   <div id="barWrap"><div id="bar"></div></div>
 </div>
@@ -289,6 +290,25 @@
   <div id="pickerList"></div>
 </div>
 
+<!-- ============ HELP ============ -->
+<div id="helpOverlay" class="overlay">
+  <div class="row">
+    <span style="padding:12px; font-size:18px; color:var(--teal); font-weight:700">איך סופרים</span>
+    <button class="btn-secondary" style="flex:0 0 80px" onclick="closeHelp()">סגור</button>
+  </div>
+  <ol style="line-height:1.7; padding-inline-start:22px; font-size:16px">
+    <li><b>סורקים</b> את הברקוד. אין ברקוד או הסורק לא קולט? מקלידים ברקוד או קוד פריט ולוחצים חפש, או 🔎 לפי שם.</li>
+    <li><b>מקלידים כמה יש על המדף</b> ולוחצים Enter או שמור. הפריט בכמה מקומות? "+ מיקום נוסף" ומחלקים.</li>
+    <li>"<b>בכספית (אמש)</b>" = הכמות שבקופה אתמול בלילה. לא מתקנים לפיה — סופרים מה שיש באמת.</li>
+    <li><b>תמונה:</b> יש כבר תמונה? לא חובה לצלם. אין? מצלמים, או "אין צורך בתמונה" ובוחרים סיבה.</li>
+    <li><b>שם לא נכון בקופה</b> או <b>מחלקה שגויה</b>? מסמנים בתיבה וכותבים את הנכון — המשרד מתקן בכספית.</li>
+    <li><b>פריט שהקופה לא מכירה</b> נפתח כ"פריט לא נמצא": שם מהאריזה + תמונה חובה.</li>
+    <li><b>נספר כבר היום</b> על ידי מישהו אחר? רואים את זה בירוק. מצאתם עוד במקום אחר? מוסיפים שורת מיקום ושומרים.</li>
+    <li><b>אין רשת?</b> ממשיכים לספור. הכל נשמר בטלפון ונשלח כשיש רשת (המספר הכתום למעלה = ממתין לשליחה).</li>
+    <li>המספר למעלה (למשל 120 / 888) = כמה פריטים נספרו היום מתוך הפריטים שיש להם כמות בכספית. הפס מתחת הופך מאדום לירוק.</li>
+  </ol>
+</div>
+
 <!-- ============ NO-PHOTO REASON ============ -->
 <div id="reasonOverlay" class="overlay">
   <div class="row">
@@ -320,7 +340,7 @@
 
 <script>
 /* ================= CONFIG ================= */
-const BUILD = 'v2.0';
+const BUILD = 'v2.1';
 const API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live"
 const TOKEN = 'freak-count-T9tfjr2xKzlZ6ylhQM96Fg';
 const TZ = 'Asia/Jerusalem';
@@ -637,6 +657,8 @@ function openReason(){
   $('reasonOverlay').style.display='block';
 }
 function closeReason(){ $('reasonOverlay').style.display='none'; }
+function openHelp(){ pauseScan(); $('helpOverlay').style.display='block'; }
+function closeHelp(){ $('helpOverlay').style.display='none'; if($('screen-scan').classList.contains('active')) ensureScanning(); }
 
 /* ==================================================================
    CAMERA — the till's scanner (v6), one tap to switch lenses, friendly
@@ -770,7 +792,7 @@ async function tuneFocus(){
 }
 function onScanScreen(){
   return $('screen-scan').classList.contains('active') && $('shotOverlay').style.display!=='flex'
-      && $('searchOverlay').style.display!=='block';
+      && $('searchOverlay').style.display!=='block' && $('helpOverlay').style.display!=='block';
 }
 let trackWatched = false;
 function watchTrack(){
@@ -970,7 +992,7 @@ async function openItem(it, scannedCode){
   setLocRows(rows);
   show('screen-item');
   const firstQty = $('locRows').querySelector('input');
-  if(firstQty && firstQty.value==='') firstQty.focus();     // after show(): a hidden field cannot take focus
+  if(firstQty){ firstQty.focus(); firstQty.select(); }     // after show(): a hidden field cannot take focus; a prefilled count is selected so typing replaces it
 
   /* live check — somebody else may have counted it minutes ago */
   try{
