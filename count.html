@@ -345,10 +345,13 @@
 
 <script>
 /* ================= CONFIG ================= */
-const BUILD = 'v2.2';
+const BUILD = 'v2.3';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live"
-// ?api=<deployment url> reroutes the page to another deployment (tests against TEST); anything else is ignored
-const API = (function(){ const v = new URLSearchParams(location.search).get('api') || ''; return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(v) ? v : LIVE_API; })();
+// ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the
+// address bar, so no link can send the page (and what it shows) to a backend of someone else's
+const DEPLOYMENTS = { live: LIVE_API, test: 'https://script.google.com/macros/s/AKfycbwem7TUlt0TW2QJHqJ8c4G7ZMkDm9zaYe97mqsI3bzTeyOq0eonV3J2W6bD9_udZft2/exec' };
+const API = DEPLOYMENTS[new URLSearchParams(location.search).get('api') || 'live'] || LIVE_API;
+const OFF_LIVE = API !== LIVE_API;   // nothing a test backend answers is kept on the phone
 const TOKEN = 'freak-count-T9tfjr2xKzlZ6ylhQM96Fg';
 const TZ = 'Asia/Jerusalem';
 const LS = { user:'fc2_user', catalog:'fc2_catalog', catTime:'fc2_catTime', catAt:'fc2_catAt', latest:'fc2_latest',
@@ -532,11 +535,11 @@ async function fetchCatalog(showToast){
       const r = await fetchT(API+'?action=catalog&token='+encodeURIComponent(TOKEN), {}, fuses[i]);
       const js = await r.json();
       if(!js.ok) throw new Error(js.error||'catalog');
-      try{ localStorage.setItem(LS.catalog, JSON.stringify(js.rows)); localStorage.setItem(LS.catTime, String(Date.now())); localStorage.setItem(LS.catAt, js.catalogAt||''); }catch(e){}
+      if(!OFF_LIVE) try{ localStorage.setItem(LS.catalog, JSON.stringify(js.rows)); localStorage.setItem(LS.catTime, String(Date.now())); localStorage.setItem(LS.catAt, js.catalogAt||''); }catch(e){}
       buildCatalog(js.rows);
       mergeLatest(js.latest||{});
-      if(js.lookups){ lookups = js.lookups; try{ localStorage.setItem(LS.lookups, JSON.stringify(lookups)); }catch(e){} fillLookupUIs(); }
-      if(js.tasks){ teamTasks = js.tasks; try{ localStorage.setItem(LS.tasks, JSON.stringify(teamTasks)); }catch(e){} }
+      if(js.lookups){ lookups = js.lookups; if(!OFF_LIVE) try{ localStorage.setItem(LS.lookups, JSON.stringify(lookups)); }catch(e){} fillLookupUIs(); }
+      if(js.tasks){ teamTasks = js.tasks; if(!OFF_LIVE) try{ localStorage.setItem(LS.tasks, JSON.stringify(teamTasks)); }catch(e){} }
       if(showToast) toast('קטלוג עודכן — '+items.size+' פריטים');
       return true;
     }catch(e){
@@ -1261,9 +1264,11 @@ function runSearch(){
 }
 
 /* ================= BOOT ================= */
+const NAME_OK = /^[\p{L}\p{N} .'\-]{1,30}$/u;   // a name: letters, digits, space, . ' - (the list is shared by every phone)
 function setName(name){
   const v=String(name || $('nameInput').value).trim();
   if(!v) return;
+  if(!NAME_OK.test(v)){ toast('שם: אותיות ומספרים בלבד, עד 30 תווים', 'warn', 3000); return; }
   const known=(lookups['צוות']||[]);
   if(!known.some(n=>n.toLowerCase()===v.toLowerCase())) addLookupValue('צוות', v);   // a new name joins the list for everyone
   user=v; localStorage.setItem(LS.user, v);
@@ -1272,8 +1277,13 @@ function setName(name){
 }
 function renderNameChips(){
   const box=$('nameChips'); if(!box) return;
-  const names=(lookups['צוות']||[]);
-  box.innerHTML = names.map(n=>'<span class="chip'+(n===user?' onc':'')+'" onclick="setName('+JSON.stringify(n).replace(/"/g,'&quot;')+')">'+esc(n)+'</span>').join('');
+  box.innerHTML='';
+  // DOM nodes with a closure — no HTML is built from a name that any phone could have added to the list
+  for(const n of (lookups['צוות']||[])){
+    if(!NAME_OK.test(String(n))) continue;
+    const c=document.createElement('span'); c.className='chip'+(n===user?' onc':''); c.textContent=n; c.onclick=()=>setName(n);
+    box.appendChild(c);
+  }
 }
 function openNameGate(){ renderNameChips(); $('nameInput').value=''; $('nameGate').style.display='flex'; }
 async function boot(){

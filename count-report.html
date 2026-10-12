@@ -16,7 +16,7 @@
   fix in the register (the card today vs the level the inventory sheet computes, nightly) · the ghost cards (tab רפאים)
   · items without a barcode still to count by hand.
 
-  ?api=<deployment url> reroutes the page to another backend deployment (tests against the TEST deployment).
+  ?api=test reroutes the page to the TEST deployment (the tests use it) — a name, never a URL; nothing a test backend answers is kept.
 -->
 <style>
   :root{
@@ -142,11 +142,12 @@
 </main>
 
 <script>
-const BUILD = 'r1';
+const BUILD = 'r2';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live" — count.html uses the same
 const TOKEN = 'freak-count-T9tfjr2xKzlZ6ylhQM96Fg';
-const qs = new URLSearchParams(location.search);
-const API = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(qs.get('api') || '') ? qs.get('api') : LIVE_API;
+// ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the address bar
+const DEPLOYMENTS = { live: LIVE_API, test: 'https://script.google.com/macros/s/AKfycbwem7TUlt0TW2QJHqJ8c4G7ZMkDm9zaYe97mqsI3bzTeyOq0eonV3J2W6bD9_udZft2/exec' };
+const API = DEPLOYMENTS[new URLSearchParams(location.search).get('api') || 'live'] || LIVE_API;
 const CACHE_KEY = 'freak-count-report-v1';
 
 const $ = id => document.getElementById(id);
@@ -236,7 +237,7 @@ function render() {
   $('rep').classList.remove('hide'); $('status').classList.add('hide');
 }
 
-function cacheSave(r) { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), r })); } catch (e) {} }
+function cacheSave(r) { if (API !== LIVE_API) return; try { localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), r })); } catch (e) {} }
 function cacheLoad() { try { const o = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); return o && o.r && o.r.ok ? o : null; } catch (e) { return null; } }
 
 let loading = false, autoRetries = 0, retryTimer = null;
@@ -274,7 +275,7 @@ $('gMore').onclick = () => { view.ghostN += 60; render(); };
 $('fixChips').onclick = e => { const c = e.target.closest('.chip'); if (!c) return; view.fix = c.dataset.f; view.fixN = 40; [...$('fixChips').children].forEach(x => x.classList.toggle('on', x === c)); render(); };
 $('ghostChips').onclick = e => { const c = e.target.closest('.chip'); if (!c) return; view.ghost = c.dataset.g; view.ghostN = 40; [...$('ghostChips').children].forEach(x => x.classList.toggle('on', x === c)); render(); };
 
-const cached = cacheLoad();
+const cached = API === LIVE_API ? cacheLoad() : null;
 if (cached) { report = cached.r; render(); $('stamp').textContent = `נתונים מ-${dayTime(cached.r.generatedAt)} (שמור במכשיר)`; }
 load();
 </script>
