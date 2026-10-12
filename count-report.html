@@ -83,7 +83,7 @@
       <div class="box"><div class="t">לא נסרקו, בגיליון 0</div><div class="n" id="pZero">—</div><div class="s">קיבלו 0 בסיום הספירה</div></div>
       <div class="box"><div class="t">נשאר: בלי ברקוד</div><div class="n warn" id="pOpenNoBc">—</div><div class="s">לספור ביד</div></div>
       <div class="box"><div class="t">לא נסרקו, הגיליון לא 0</div><div class="n" id="pOpenBc">—</div><div class="s">נספרו ביד בגיליון, או עדיין לבדוק</div></div>
-      <div class="box"><div class="t">יעד: פריטים במעקב עם כמות בכספית</div><div class="n" id="pTarget">—</div><div class="s" id="pTargetS">לפי הקטלוג של הבוקר</div></div>
+      <div class="box"><div class="t">יעד: פריטים במעקב עם מלאי (בכספית או בגיליון)</div><div class="n" id="pTarget">—</div><div class="s" id="pTargetS">לפי הקטלוג של הבוקר</div></div>
       <div class="box"><div class="t">הושלם</div><div class="n" id="pPct">—</div><div id="barWrap"><div id="bar"></div></div><div class="s" id="pDone"></div></div>
     </div>
     <table id="openRows" class="hide"><thead><tr><th>לא נסרקו באפליקציה והגיליון עוד מראה מלאי (נספרו ביד, או לבדוק)</th><th class="num">כרטיס</th><th class="num">גיליון</th><th>סטטוס</th></tr></thead><tbody></tbody></table>
@@ -146,7 +146,7 @@
 </main>
 
 <script>
-const BUILD = 'r4';
+const BUILD = 'r5';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live" — count.html uses the same
 const TOKEN = 'freak-count-T9tfjr2xKzlZ6ylhQM96Fg';
 // ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the address bar
