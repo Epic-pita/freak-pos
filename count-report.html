@@ -105,11 +105,11 @@
   </section>
 
   <section class="card" id="fixCard">
-    <h2>מה נשאר לתקן בכספית</h2>
-    <div class="sub">הכרטיס בכספית היום מול המלאי שהגיליון מחשב (מתעדכן בלילה). מתקנים בקופה, כרטיס אחר כרטיס, לפי הברקוד</div>
+    <h2>פערים מול כספית — לספור ולתקן בקופה</h2>
+    <div class="sub">הכרטיס בכספית היום מול המלאי שבגיליון (מתעדכן בלילה). פער = הולכים למדף, סופרים, ומתקנים את הכרטיס באותו ביקור. לא מעתיקים את מספר הגיליון לכספית</div>
     <div class="big">
-      <div class="box"><div class="t">הכרטיס מראה יותר ממה שיש</div><div class="n warn" id="fAbove">—</div><div class="s" id="fAboveS"></div></div>
-      <div class="box"><div class="t">הכרטיס מראה פחות ממה שיש</div><div class="n" id="fBelow">—</div><div class="s" id="fBelowS"></div></div>
+      <div class="box"><div class="t">הכרטיס גבוה מהגיליון</div><div class="n warn" id="fAbove">—</div><div class="s" id="fAboveS"></div></div>
+      <div class="box"><div class="t">הכרטיס נמוך מהגיליון</div><div class="n" id="fBelow">—</div><div class="s" id="fBelowS"></div></div>
     </div>
     <div class="chips" id="fixChips">
       <span class="chip on" data-f="all">הכל</span><span class="chip" data-f="above">כרטיס גבוה</span><span class="chip" data-f="below">כרטיס נמוך</span>
@@ -146,7 +146,7 @@
 </main>
 
 <script>
-const BUILD = 'r5';
+const BUILD = 'r6';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live" — count.html uses the same
 const TOKEN = 'freak-count-T9tfjr2xKzlZ6ylhQM96Fg';
 // ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the address bar

@@ -346,7 +346,7 @@
 
 <script>
 /* ================= CONFIG ================= */
-const BUILD = 'v2.6';
+const BUILD = 'v2.7';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live"
 // ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the
 // address bar, so no link can send the page (and what it shows) to a backend of someone else's
@@ -989,7 +989,8 @@ async function openItem(it, scannedCode){
   renderTeamTask(teamTasks[it.code] || null);
   $('caspitQty').textContent = it.caspitQty==null ? '—' : it.caspitQty;
   $('caspitAt').textContent = it.caspitAt ? 'נכון ל-'+it.caspitAt : 'אין תמונת כרטיס מ-3 הימים האחרונים';
-  $('compBox').style.display = it.computed==null ? 'none' : 'block';
+  // v2.7 (D-125, Chris 13/10): the counter is not shown the sheet's number — the shelf decides, the card is fixed from the count
+  $('compBox').style.display = 'none';
   $('compQty').textContent = it.computed==null ? '—' : it.computed;
   $('eqBtn').textContent = '= כספית ('+(it.caspitQty==null?'—':it.caspitQty)+')';
   $('eqBtn').disabled = it.caspitQty==null;
