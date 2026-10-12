@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f1a20">
+<title>FREAK — מדריך ספירת מלאי</title>
+<link rel="icon" href="./icon-192.png">
+<!--
+  Staff guide for the count app (phase B). The pictures are the real app at phone size, made by
+  tools/test/make_count_guide_shots.py (numbered red markers). No web fonts, no CDN, nothing outside this folder.
+-->
+<style>
+  :root{ --bg:#0f1a20; --surface:#16262e; --surface2:#1d323c; --line:#2a4450; --teal:#3d7a94; --green-hi:#43a047; --amber-hi:#ffd479; --ink:#e8eef1; --dim:#8fa6b0; --mono:'Roboto Mono',Consolas,monospace }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,'Segoe UI',Roboto,'Heebo',Arial,sans-serif; font-size:17px; line-height:1.55}
+  header{position:sticky; top:0; background:var(--surface); border-bottom:1px solid var(--line); padding:12px 16px; z-index:5}
+  header h1{margin:0; font-size:20px; color:var(--teal)}
+  header p{margin:4px 0 0; color:var(--dim); font-size:14px}
+  main{max-width:760px; margin:0 auto; padding:14px 16px 60px}
+  nav{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px 16px; margin-bottom:14px; font-size:15px}
+  nav a{color:var(--teal); text-decoration:none; display:inline-block; margin:3px 0 3px 14px}
+  section{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:14px}
+  h2{font-size:19px; color:var(--teal); margin:0 0 10px; display:flex; align-items:center; gap:10px}
+  h2 .n{background:var(--teal); color:#fff; border-radius:50%; width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; font-size:16px; flex:none}
+  figure{margin:10px 0 14px; text-align:center}
+  figure img{max-width:100%; width:330px; border:1px solid var(--line); border-radius:14px; background:#000}
+  figure.wide img{width:100%}
+  figcaption{font-size:13px; color:var(--dim); margin-top:6px}
+  ol,ul{padding-inline-start:22px; margin:8px 0}
+  li{margin:6px 0}
+  b.mark{background:#dc2626; color:#fff; border-radius:50%; display:inline-block; width:22px; height:22px; text-align:center; line-height:22px; font-size:13px; margin-inline-end:4px}
+  .tip{background:#10303a; color:#9fd8ea; border-radius:10px; padding:10px 12px; font-size:15px; margin-top:8px}
+  .warn{background:#3a2c10; color:var(--amber-hi); border-radius:10px; padding:10px 12px; font-size:15px; margin-top:8px}
+  .rule{background:var(--surface2); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin:8px 0}
+  code{font-family:var(--mono); font-size:14px; color:var(--amber-hi)}
+  a{color:var(--teal)}
+  @media print{ body{background:#fff; color:#000} section,nav,header{border-color:#ccc; background:#fff} h2,header h1,a{color:#1a4f66} figure img{border-color:#ccc} .tip,.warn,.rule{background:#f3f3f3; color:#000} }
+</style>
+</head>
+<body>
+<header>
+  <h1>מדריך לצוות · ספירת מלאי</h1>
+  <p>האפליקציה: <a href="./count.html">epic-pita.github.io/freak-pos/count.html</a> · דף מהיר: <a href="./count-quickstart.html">count-quickstart.html</a> · דוח: <a href="./count-report.html">count-report.html</a></p>
+</header>
+<main>
+<nav>
+  <a href="#s1">1 התקנה</a><a href="#s2">2 שם</a><a href="#s3">3 סריקה</a><a href="#s4">4 הפריט</a><a href="#s5">5 משימה מלצוות</a><a href="#s6">6 תמונה</a><a href="#s7">7 תיקונים ושמירה</a><a href="#s8">8 חיפוש</a><a href="#s9">9 פריט לא בכספית</a><a href="#s10">10 הסרגל</a><a href="#s11">11 הדוח</a><a href="#s12">12 כללים</a>
+</nav>
+
+<section id="s1">
+  <h2><span class="n">1</span>התקנה על הטלפון</h2>
+  <ol>
+    <li>פותחים בדפדפן את <code>epic-pita.github.io/freak-pos/count.html</code>.</li>
+    <li>אייפון: שיתוף ← "הוסף למסך הבית". אנדרואיד: תפריט ⋮ ← "הוסף למסך הבית" / "התקן אפליקציה".</li>
+    <li>מעכשיו פותחים מהאייקון. האפליקציה עובדת גם בלי רשת ושולחת כשהרשת חוזרת.</li>
+  </ol>
+</section>
+
+<section id="s2">
+  <h2><span class="n">2</span>בחירת שם</h2>
+  <figure><img src="./guide/c01-gate.jpg" alt="מסך הפתיחה: בחירת שם"><figcaption>מסך הפתיחה</figcaption></figure>
+  <ul>
+    <li><b class="mark">1</b>לוחצים על השם שלכם. <b class="mark">2</b><b class="mark">3</b>אין? כותבים שם אחר ו"התחל לספור" — השם מצטרף לרשימה.</li>
+    <li>השם נשמר בטלפון. להחליף: לוחצים על השם בסרגל העליון.</li>
+  </ul>
+</section>
+
+<section id="s3">
+  <h2><span class="n">3</span>מסך הסריקה</h2>
+  <figure><img src="./guide/c02-scan.jpg" alt="מסך הסריקה"><figcaption>מסך הסריקה</figcaption></figure>
+  <ul>
+    <li><b class="mark">1</b>מכוונים את הברקוד לתוך המסגרת. ברקוד קטן? לא מתקרבים — מגדילים זום.</li>
+    <li><b class="mark">2</b>המצלמה מטושטשת? "החלף מצלמה" — בטלפון עם כמה עדשות אחוריות בוחרים את הרגילה (לא הרחבה).</li>
+    <li><b class="mark">3</b>אין ברקוד או שהסורק לא קולט: מקלידים את הברקוד או את קוד הפריט ולוחצים "חפש".</li>
+    <li><b class="mark">4</b>🔎 חיפוש לפי שם. <b class="mark">5</b>כמה נספרו היום מתוך הפריטים שיש להם כמות בכספית. <b class="mark">6</b>? — העזרה בתוך האפליקציה.</li>
+  </ul>
+  <figure><img src="./guide/c11-camera.jpg" alt="המצלמה עם ברקוד במסגרת"><figcaption>ברקוד במסגרת — הפריט נפתח לבד</figcaption></figure>
+</section>
+
+<section id="s4">
+  <h2><span class="n">4</span>הפריט נפתח — סופרים</h2>
+  <figure><img src="./guide/c03-item.jpg" alt="מסך הפריט"><figcaption>מסך הפריט</figcaption></figure>
+  <ul>
+    <li><b class="mark">1</b><b>בכספית (אמש)</b> — מה הכרטיס הראה הלילה, לפני מכירות היום. רק להתמצאות.</li>
+    <li><b class="mark">2</b>מקלידים <b>כמה יש על המדף</b>. הסמן כבר שם; Enter שומר.</li>
+    <li><b class="mark">3</b>"= כספית" ממלא את הכמות של הכרטיס כשספרתם ויצא אותו דבר.</li>
+    <li><b class="mark">4</b>סה"כ בפועל — הסכום של כל המיקומים.</li>
+    <li><b class="mark">5</b><b class="mark">6</b>תמונה — ראו סעיף 6.</li>
+  </ul>
+  <figure><img src="./guide/c05-locations.jpg" alt="ספירה לפי מיקום"><figcaption>אותו פריט בכמה מקומות: שורה לכל מיקום</figcaption></figure>
+  <ul>
+    <li><b class="mark">1</b>המיקום (תצוגה, מחסן, דיספליי…). <b class="mark">2</b>הכמות באותו מיקום. <b class="mark">3</b>"+ מיקום נוסף" פותח שורה. <b class="mark">4</b>הסה"כ מתעדכן לבד.</li>
+  </ul>
+  <div class="tip">ספרתם לא נכון? סופרים שוב. הספירה האחרונה היא הקובעת — שום דבר לא נמחק.</div>
+</section>
+
+<section id="s5">
+  <h2><span class="n">5</span>משימה מ"לצוות" — הכתום</h2>
+  <figure><img src="./guide/c04-task.jpg" alt="משימה מלצוות על מסך הפריט"><figcaption>פריט שיש לו שורה ברשימת "לצוות"</figcaption></figure>
+  <ul>
+    <li><b class="mark">1</b>אם לפריט יש משימה ברשימת הצוות, היא מופיעה כאן בכתום. עושים מה שכתוב, וסופרים כרגיל.</li>
+  </ul>
+  <div class="rule"><b>רפאים</b> — כרטיס שמראה כמות בכספית אבל אף ספירה לא ראתה את הפריט. שלוש תשובות בגיליון "לצוות":
+    <ul>
+      <li><b>אין ממנו על המדף:</b> מאפסים את הכמות בקופה ומסמנים "בוצע".</li>
+      <li><b>יש ממנו על המדף:</b> מתקנים את הכרטיס בקופה לכמות האמיתית ורושמים אותה ב"כמה ספרת" (או סופרים כאן באפליקציה).</li>
+      <li><b>הקופה לא מוצאת את הפריט:</b> מסמנים "לא נמצא בקופה".</li>
+    </ul>
+  </div>
+</section>
+
+<section id="s6">
+  <h2><span class="n">6</span>תמונה</h2>
+  <ul>
+    <li>יש כבר תמונה לפריט? לא חובה לצלם. אין? מצלמים פעם אחת — את המוצר, שרואים מה הוא.</li>
+    <li>"אין צורך בתמונה" — רק עם סיבה (למשל מוצר גנרי). הסיבה נשמרת.</li>
+    <li>פריט שלא קיים בכספית (סעיף 9) — תמונה <b>חובה</b>.</li>
+  </ul>
+</section>
+
+<section id="s7">
+  <h2><span class="n">7</span>תיקונים לקופה ושמירה</h2>
+  <figure><img src="./guide/c06-save.jpg" alt="תיקונים לקופה ושמור"><figcaption>תחתית מסך הפריט</figcaption></figure>
+  <ul>
+    <li><b class="mark">1</b>השם בקופה שגוי? מסמנים וכותבים את הנכון. <b class="mark">2</b>מחלקה שגויה? מסמנים ובוחרים. המשרד מתקן בכספית.</li>
+    <li><b class="mark">3</b><b>שמור ✓</b> — או Enter בשדה הכמות. נשמר מיד, גם בלי רשת (נשלח כשהרשת חוזרת).</li>
+  </ul>
+</section>
+
+<section id="s8">
+  <h2><span class="n">8</span>חיפוש לפי שם</h2>
+  <figure><img src="./guide/c07-search.jpg" alt="חיפוש לפי שם"><figcaption>🔎 — שם, ברקוד או קוד פריט</figcaption></figure>
+  <ul><li><b class="mark">1</b>מקלידים חלק מהשם. <b class="mark">2</b>לוחצים על הפריט — נפתח כמו אחרי סריקה.</li></ul>
+</section>
+
+<section id="s9">
+  <h2><span class="n">9</span>פריט שלא קיים בכספית</h2>
+  <figure><img src="./guide/c08-unknown.jpg" alt="פריט לא נמצא בכספית"><figcaption>ברקוד שהקטלוג לא מכיר</figcaption></figure>
+  <ul>
+    <li><b class="mark">1</b>בודקים שהברקוד שנקלט תואם למה שמודפס על המוצר. <b class="mark">2</b>שם מהאריזה. <b class="mark">3</b>כמה יש. <b class="mark">4</b>תמונה — חובה.</li>
+    <li>"שמור לרשימת טיפול" — המשרד פותח כרטיס בכספית. הפריט לא נספר כאן, רק נרשם.</li>
+  </ul>
+</section>
+
+<section id="s10">
+  <h2><span class="n">10</span>הסרגל העליון</h2>
+  <figure class="wide"><img src="./guide/c09-header.jpg" alt="הסרגל העליון"><figcaption>הסרגל העליון</figcaption></figure>
+  <ul>
+    <li><b class="mark">1</b>נקודה ירוקה = יש רשת, אדומה = אין. סופרים כרגיל גם באדום.</li>
+    <li><b class="mark">2</b>השם — לחיצה מחליפה. <b class="mark">3</b>נספרו היום / יעד. <b class="mark">4</b>מספר כתום = ספירות שמחכות לשליחה; נעלם לבד כשהרשת חוזרת.</li>
+  </ul>
+</section>
+
+<section id="s11">
+  <h2><span class="n">11</span>דוח הספירה</h2>
+  <figure><img src="./guide/c12-report.jpg" alt="דוח הספירה"><figcaption><a href="./count-report.html">count-report.html</a> — ההתקדמות</figcaption></figure>
+  <figure><img src="./guide/c13-report-fix.jpg" alt="מה נשאר לתקן בכספית"><figcaption>מה נשאר לתקן בקופה, עם הברקוד</figcaption></figure>
+  <ul>
+    <li><b>התקדמות</b> — כמה נספר, לפי יום ולפי סופר.</li>
+    <li><b>מה הספירה מצאה</b> — הפער ברגע הספירה מול הכרטיס.</li>
+    <li><b>מה נשאר לתקן בכספית</b> — הכרטיס היום מול המלאי שהגיליון מחשב. מתקנים בקופה כרטיס אחר כרטיס, לפי הברקוד.</li>
+    <li><b>רפאים</b> ו<b>בלי ברקוד</b> — הרשימות שמחכות לטיפול.</li>
+  </ul>
+</section>
+
+<section id="s12">
+  <h2><span class="n">12</span>הכללים</h2>
+  <div class="rule">הספירה האחרונה קובעת. טעות? סופרים שוב. שום ספירה לא נמחקת.</div>
+  <div class="rule">הכמות שרואים "בכספית" היא מאמש. הפער האמיתי מחושב בלילה ומופיע בדוח ובגיליון המלאי למחרת.</div>
+  <div class="rule">משלוח שמגיע ביום שבו הפריט כבר נסרק: מסדרים על המדף <b>וסורקים את הפריט שוב</b>.</div>
+  <div class="rule">פריט בלי ברקוד: מחפשים לפי קוד או שם (🔎) וסופרים — הוא לא נספר לבד.</div>
+  <div class="rule">ספרתם ויצא שונה מהכרטיס? מתקנים גם את הכרטיס בקופה באותו יום.</div>
+</section>
+</main>
+</body>
+</html>
