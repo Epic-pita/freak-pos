@@ -138,7 +138,7 @@
 <div id="topbar">
   <div id="topline">
     <div id="dot"></div>
-    <span id="userTag"></span>
+    <span id="userTag" onclick="openNameGate()" title="להחליף שם"></span>
     <span id="ver"></span>
     <span id="queueBadge">0</span>
     <span id="progress">—</span>
@@ -181,6 +181,7 @@
       <span>מחיר <b id="itemPrice"></b> ₪</span>
     </div>
     <div id="itemBadges"></div>
+    <div id="teamTask" class="banner"></div>
     <div id="countedInfo"></div>
     <div class="sysgrid">
       <div class="sysbox"><div class="t">בכספית (אמש)</div><div class="n" id="caspitQty">—</div><div class="s" id="caspitAt"></div></div>
@@ -306,6 +307,8 @@
     <li><b>נספר כבר היום</b> על ידי מישהו אחר? רואים את זה בירוק. מצאתם עוד במקום אחר? מוסיפים שורת מיקום ושומרים.</li>
     <li><b>אין רשת?</b> ממשיכים לספור. הכל נשמר בטלפון ונשלח כשיש רשת (המספר הכתום למעלה = ממתין לשליחה).</li>
     <li>המספר למעלה (למשל 120 / 888) = כמה פריטים נספרו היום מתוך הפריטים שיש להם כמות בכספית. הפס מתחת הופך מאדום לירוק.</li>
+    <li><b>דוח הספירה</b> — <a href="./count-report.html" style="color:var(--teal)">התקדמות, פערים, מה נשאר לתקן בכספית, רפאים</a>.</li>
+    <li><b>משימה מ"לצוות"</b> — אם לפריט יש שורה ברשימת הצוות, ההוראה מופיעה במסך הפריט (כתום). עושים מה שכתוב וסופרים כרגיל.</li>
   </ol>
 </div>
 
@@ -331,7 +334,9 @@
 <div id="nameGate">
   <h1>FREAK — ספירת מלאי</h1>
   <p>סורקים כל מוצר, מקלידים כמה יש על המדף, שומרים. הכמות שבכספית מופיעה ליד — היא מאמש, לפני מכירות היום.</p>
-  <label>שם פרטי (פעם אחת)</label>
+  <label>מי סופר? לוחצים על השם</label>
+  <div id="nameChips" class="chips" style="margin:0 0 6px"></div>
+  <label>שם אחר</label>
   <input id="nameInput" placeholder="השם שלך" onkeydown="if(event.key==='Enter')setName()">
   <button class="btn-primary" onclick="setName()">התחל לספור</button>
 </div>
@@ -340,12 +345,14 @@
 
 <script>
 /* ================= CONFIG ================= */
-const BUILD = 'v2.1';
-const API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live"
+const BUILD = 'v2.2';
+const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live"
+// ?api=<deployment url> reroutes the page to another deployment (tests against TEST); anything else is ignored
+const API = (function(){ const v = new URLSearchParams(location.search).get('api') || ''; return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(v) ? v : LIVE_API; })();
 const TOKEN = 'freak-count-T9tfjr2xKzlZ6ylhQM96Fg';
 const TZ = 'Asia/Jerusalem';
 const LS = { user:'fc2_user', catalog:'fc2_catalog', catTime:'fc2_catTime', catAt:'fc2_catAt', latest:'fc2_latest',
-             lookups:'fc2_lookups', failed:'fc2_failed', hist:'fc2_hist', cam:'fc2_cam', zoom:'fc2_zoom' };
+             lookups:'fc2_lookups', failed:'fc2_failed', hist:'fc2_hist', cam:'fc2_cam', zoom:'fc2_zoom', tasks:'fc2_tasks' };
 const DEFAULT_LOC = 'תצוגה';
 const CATALOG_MAX_AGE_MIN = 10;   // on open, a catalog older than this is fetched again
 const NEW_CARD_DAYS = 7;
@@ -356,6 +363,7 @@ let items = new Map();                       // code → item
 let byBarcode = new Map(), byBc0 = new Map();
 let latest = {};                             // code → { at, by, counted, locations, photo, noPhoto, uuid }
 let lookups = {};
+let teamTasks = {};                          // code → { block, todo, caspit } from the inventory sheet's לצוות (phase B)
 let user = localStorage.getItem(LS.user) || '';
 let currentItem = null, scannedBc = '', currentPhotoB64 = null, pendingPhotoB64 = null, noPhotoReason = '';
 let locRowsData = [], locTouched = false;
@@ -528,6 +536,7 @@ async function fetchCatalog(showToast){
       buildCatalog(js.rows);
       mergeLatest(js.latest||{});
       if(js.lookups){ lookups = js.lookups; try{ localStorage.setItem(LS.lookups, JSON.stringify(lookups)); }catch(e){} fillLookupUIs(); }
+      if(js.tasks){ teamTasks = js.tasks; try{ localStorage.setItem(LS.tasks, JSON.stringify(teamTasks)); }catch(e){} }
       if(showToast) toast('קטלוג עודכן — '+items.size+' פריטים');
       return true;
     }catch(e){
@@ -557,6 +566,7 @@ function histPush(it, counted){
 
 /* ================= LOOKUP UIs ================= */
 function fillLookupUIs(){
+  renderNameChips();
   const cond=$('selCond'); const c0=cond.value;
   cond.innerHTML='<option value=""></option>'+sorted('מצב פריט').map(v=>'<option>'+esc(v)+'</option>').join('');
   cond.value=c0;
@@ -969,6 +979,7 @@ async function openItem(it, scannedCode){
   if(it.status && it.status!=='תקין') badges.push('<span class="chip st">'+esc(it.status)+'</span>');
   if(it.barcodes.length===0) badges.push('<span class="chip st">ללא ברקוד בכספית</span>');
   $('itemBadges').innerHTML = badges.join('');
+  renderTeamTask(teamTasks[it.code] || null);
   $('caspitQty').textContent = it.caspitQty==null ? '—' : it.caspitQty;
   $('caspitAt').textContent = it.caspitAt ? 'נכון ל-'+it.caspitAt : 'אין תמונת כרטיס מ-3 הימים האחרונים';
   $('compBox').style.display = it.computed==null ? 'none' : 'block';
@@ -998,6 +1009,7 @@ async function openItem(it, scannedCode){
   try{
     const r = await fetchT(API+'?action=item&code='+encodeURIComponent(it.code)+'&token='+encodeURIComponent(TOKEN), {}, 4500);
     const js = await r.json();
+    if(js.ok && currentItem===it && ('task' in js)){ teamTasks[it.code] = js.task || undefined; if(!js.task) delete teamTasks[it.code]; renderTeamTask(js.task||null); }
     if(js.ok && js.found && currentItem===it){
       const cur = latest[it.code];
       if(!cur || js.at > cur.at){
@@ -1008,6 +1020,14 @@ async function openItem(it, scannedCode){
       }
     }
   }catch(e){}
+}
+/** phase B: the row this item has on the inventory sheet's לצוות — the team's instruction, on the screen where the count happens */
+function renderTeamTask(t){
+  const el=$('teamTask');
+  if(!t || !t.todo){ el.className='banner'; el.innerHTML=''; el.style.display='none'; return; }
+  const lines=String(t.todo).split('\n').filter(Boolean).map(esc).join('<br>');
+  el.className='banner warn'; el.style.display='block';
+  el.innerHTML='<b>משימה מ"לצוות"'+(t.block?' · '+esc(t.block):'')+'</b><br>'+lines;
 }
 function setEq(){
   if(currentItem.caspitQty==null) return;
@@ -1241,13 +1261,21 @@ function runSearch(){
 }
 
 /* ================= BOOT ================= */
-function setName(){
-  const v=$('nameInput').value.trim();
+function setName(name){
+  const v=String(name || $('nameInput').value).trim();
   if(!v) return;
+  const known=(lookups['צוות']||[]);
+  if(!known.some(n=>n.toLowerCase()===v.toLowerCase())) addLookupValue('צוות', v);   // a new name joins the list for everyone
   user=v; localStorage.setItem(LS.user, v);
   $('nameGate').style.display='none'; $('userTag').textContent=v;
   startCamSafe();
 }
+function renderNameChips(){
+  const box=$('nameChips'); if(!box) return;
+  const names=(lookups['צוות']||[]);
+  box.innerHTML = names.map(n=>'<span class="chip'+(n===user?' onc':'')+'" onclick="setName('+JSON.stringify(n).replace(/"/g,'&quot;')+')">'+esc(n)+'</span>').join('');
+}
+function openNameGate(){ renderNameChips(); $('nameInput').value=''; $('nameGate').style.display='flex'; }
 async function boot(){
   $('ver').textContent = BUILD;
   db = await idbOpen();
@@ -1260,6 +1288,7 @@ async function boot(){
     const ltCached = localStorage.getItem(LS.latest);
     if(ltCached) latest = JSON.parse(ltCached) || {};
     if(lkCached){ lookups=JSON.parse(lkCached); fillLookupUIs(); }
+    try{ const tk = localStorage.getItem(LS.tasks); if(tk) teamTasks = JSON.parse(tk) || {}; }catch(e){}
     if(cached){ buildCatalog(JSON.parse(cached)); }
   }catch(e){}
 
