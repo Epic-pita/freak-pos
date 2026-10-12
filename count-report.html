@@ -146,7 +146,7 @@
 </main>
 
 <script>
-const BUILD = 'r3';
+const BUILD = 'r4';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live" — count.html uses the same
 const TOKEN = 'freak-count-T9tfjr2xKzlZ6ylhQM96Fg';
 // ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the address bar
@@ -266,9 +266,8 @@ async function load(opts) {
     const r = await apiGetRetry('action=report' + (opts && opts.fresh ? '&fresh=1' : ''), (i, n) => {
       if (i > 1) { const t = `השרת של גוגל איטי כרגע. מנסה שוב (${i} מתוך ${n})…`; if (onScreen) netMsg(t); else $('status').textContent = t; }
     });
-    report = r; render(); cacheSave(r);
-    const when = new Date(r.generatedAt);
-    $('stamp').textContent = `נתונים מ-${dayTime(r.generatedAt)}${r.cached ? ' (מהמטמון)' : ''}`;
+    report = r; render(); cacheSave(r); lastLoadAt = Date.now();
+    $('stamp').textContent = `נתונים מ-${dayTime(r.generatedAt)}${r.cached ? ' (מהמטמון)' : ''} · מתעדכן לבד`;
     $('stamp').title = `התשובה הגיעה תוך ${(r._roundtrip / 1000).toFixed(1)} שנ׳, מתוכן ${((r.ms || 0) / 1000).toFixed(1)} שנ׳ עבודה בשרת · קטלוג מ-${dayTime(r.catalogAt)}`;
     netMsg(''); autoRetries = 0;
   } catch (err) {
@@ -284,6 +283,16 @@ async function load(opts) {
 }
 
 $('reload').onclick = () => { autoRetries = 0; load({ fresh: true }); };
+$('reload').title = 'לרענן עכשיו — הדף מתעדכן לבד כל 5 דקות כשהוא על המסך';
+
+/* r4 — the page keeps itself current (Chris, 12/10: "אפשר לעשות אותו LIVE?"). The backend answer is cached 5 minutes, so a
+   reload every 5 minutes while the page is on screen shows every count within ten minutes of its save; a tab that comes back
+   to the foreground after a while reloads at once. A hidden tab never polls. The card quantities and the sheet's levels still
+   change once a night (the catalog job); the counts, variances and the progress are what moves during the day. */
+const AUTO_MS = 5 * 60 * 1000;
+let lastLoadAt = 0;
+setInterval(() => { if (!document.hidden && Date.now() - lastLoadAt >= AUTO_MS - 5000) load(); }, 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - lastLoadAt > 2 * 60 * 1000) load(); });
 $('vMore').onclick = () => { view.varN += 50; render(); };
 $('fMore').onclick = () => { view.fixN += 60; render(); };
 $('gMore').onclick = () => { view.ghostN += 60; render(); };
