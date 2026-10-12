@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f1a20">
+<title>FREAK — דוח ספירת מלאי</title>
+<link rel="icon" href="./icon-192.png">
+<!--
+  Inventory count report (phase B of the count app). Same rules as the till and count.html: no web fonts, no CDN,
+  nothing outside this folder. ONE call (?action=report) to the count backend returns everything; the page draws the
+  last report it saw at once (localStorage) and replaces it when the fresh one arrives. Google can hold a request for
+  a long time, so the fetch is patient and retried with a plain-language note.
+
+  Sections: progress of the count · variances the count found (counted vs the card at that moment) · what is still to
+  fix in the register (the card today vs the level the inventory sheet computes, nightly) · the ghost cards (tab רפאים)
+  · items without a barcode still to count by hand.
+
+  ?api=<deployment url> reroutes the page to another backend deployment (tests against the TEST deployment).
+-->
+<style>
+  :root{
+    --bg:#0f1a20; --surface:#16262e; --surface2:#1d323c; --line:#2a4450;
+    --teal:#3d7a94; --green:#2E7D32; --green-hi:#43a047; --amber:#c77f14; --amber-hi:#ffd479;
+    --red:#c0392b; --red-hi:#f0b4ac; --ink:#e8eef1; --dim:#8fa6b0; --mono:'Roboto Mono',Consolas,monospace;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,'Segoe UI',Roboto,'Heebo',Arial,sans-serif; font-size:16px; line-height:1.4}
+  button{font-family:inherit; font-size:15px; border:none; border-radius:10px; cursor:pointer; color:var(--ink); background:var(--surface2); padding:9px 14px}
+  button:disabled{opacity:.5}
+  .hide{display:none !important}
+  header{position:sticky; top:0; z-index:50; background:var(--surface); border-bottom:1px solid var(--line); padding:10px 14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  header h1{font-size:18px; margin:0; color:var(--teal)}
+  #stamp{font-size:13px; color:var(--dim)}
+  #ver{font-size:11px; color:var(--dim); opacity:.7; margin-inline-start:auto}
+  #net{font-size:13px; color:var(--amber-hi); padding:6px 14px; display:none; background:#3a2c10}
+  #net.show{display:block}
+  main{max-width:720px; margin:0 auto; padding:12px 14px 40px}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px}
+  .card h2{font-size:17px; color:var(--teal); margin:0 0 10px}
+  .card .sub{font-size:13px; color:var(--dim); margin:-6px 0 10px}
+  .big{display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; margin-bottom:10px}
+  .box{background:var(--surface2); border:1px solid var(--line); border-radius:12px; padding:10px 12px}
+  .box .t{font-size:13px; color:var(--dim)}
+  .box .n{font-family:var(--mono); font-size:26px; font-weight:700; color:var(--teal)}
+  .box .n.bad{color:var(--red-hi)} .box .n.good{color:var(--green-hi)} .box .n.warn{color:var(--amber-hi)}
+  .box .s{font-size:12px; color:var(--dim)}
+  #barWrap{height:8px; background:var(--surface2); border-radius:4px; overflow:hidden; margin:6px 0 2px}
+  #bar{height:8px; width:0; background:var(--red); transition:width .5s, background .5s}
+  table{width:100%; border-collapse:collapse; font-size:14px}
+  th{font-size:12px; color:var(--dim); text-align:start; padding:6px 6px; border-bottom:1px solid var(--line); font-weight:600}
+  td{padding:7px 6px; border-bottom:1px solid var(--line); vertical-align:top}
+  td.num, th.num{font-family:var(--mono); text-align:center; white-space:nowrap}
+  td.bc{font-family:var(--mono); font-size:12px; color:var(--dim); direction:ltr; text-align:end}
+  td .nm{display:block} td .meta{font-size:12px; color:var(--dim)}
+  .pos{color:var(--green-hi)} .neg{color:var(--red-hi)}
+  .chips{display:flex; gap:8px; flex-wrap:wrap; margin:0 0 10px}
+  .chip{background:var(--surface2); border:1px solid var(--line); border-radius:20px; padding:7px 13px; font-size:14px; cursor:pointer}
+  .chip.on{background:var(--teal); border-color:var(--teal)}
+  .more{width:100%; margin-top:8px}
+  .note{font-size:13px; color:var(--dim); line-height:1.6}
+  .empty{color:var(--dim); font-size:14px; padding:8px 0}
+  #status{padding:30px 14px; text-align:center; color:var(--dim)}
+  .act{font-size:12px; color:var(--amber-hi); display:block; margin-top:2px}
+</style>
+</head>
+<body>
+<header>
+  <h1>דוח ספירת מלאי</h1>
+  <span id="stamp"></span>
+  <button id="reload" title="לרענן">⟳ רענון</button>
+  <span id="ver"></span>
+</header>
+<div id="net"></div>
+<div id="status">טוען דוח…</div>
+<main id="rep" class="hide">
+
+  <section class="card" id="progressCard">
+    <h2>התקדמות הספירה</h2>
+    <div class="sub" id="progressSub"></div>
+    <div class="big">
+      <div class="box"><div class="t">נספרו (פריטים שונים)</div><div class="n" id="pCounted">—</div><div class="s" id="pRows"></div></div>
+      <div class="box"><div class="t">יעד: פריטים עם כמות בכספית</div><div class="n" id="pTarget">—</div><div class="s">לפי הקטלוג של הבוקר</div></div>
+      <div class="box"><div class="t">אחוז</div><div class="n" id="pPct">—</div><div id="barWrap"><div id="bar"></div></div></div>
+    </div>
+    <table id="days"><thead><tr><th>יום</th><th class="num">פריטים</th><th class="num">ספירות</th></tr></thead><tbody></tbody></table>
+    <h2 style="margin-top:14px">לפי סופר</h2>
+    <table id="users"><thead><tr><th>מי</th><th class="num">פריטים</th><th class="num">ספירות</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section class="card" id="varianceCard">
+    <h2>מה הספירה מצאה</h2>
+    <div class="sub">הספירה האחרונה של כל פריט מול מה שהכרטיס בכספית הראה באותו רגע</div>
+    <div class="big">
+      <div class="box"><div class="t">תואם לכרטיס</div><div class="n good" id="vSame">—</div><div class="s">פריטים</div></div>
+      <div class="box"><div class="t">נמצא יותר מהכרטיס</div><div class="n" id="vOver">—</div><div class="s" id="vOverS"></div></div>
+      <div class="box"><div class="t">נמצא פחות מהכרטיס</div><div class="n bad" id="vUnder">—</div><div class="s" id="vUnderS"></div></div>
+    </div>
+    <table id="variance"><thead><tr><th>פריט</th><th class="num">נספר</th><th class="num">כרטיס אז</th><th class="num">פער</th><th class="num">₪</th></tr></thead><tbody></tbody></table>
+    <button class="more hide" id="vMore">להציג עוד</button>
+  </section>
+
+  <section class="card" id="fixCard">
+    <h2>מה נשאר לתקן בכספית</h2>
+    <div class="sub">הכרטיס בכספית היום מול המלאי שהגיליון מחשב (מתעדכן בלילה). מתקנים בקופה, כרטיס אחר כרטיס, לפי הברקוד</div>
+    <div class="big">
+      <div class="box"><div class="t">הכרטיס מראה יותר ממה שיש</div><div class="n warn" id="fAbove">—</div><div class="s" id="fAboveS"></div></div>
+      <div class="box"><div class="t">הכרטיס מראה פחות ממה שיש</div><div class="n" id="fBelow">—</div><div class="s" id="fBelowS"></div></div>
+    </div>
+    <div class="chips" id="fixChips">
+      <span class="chip on" data-f="all">הכל</span><span class="chip" data-f="above">כרטיס גבוה</span><span class="chip" data-f="below">כרטיס נמוך</span>
+    </div>
+    <table id="fixlist"><thead><tr><th>פריט</th><th class="num">כרטיס</th><th class="num">אצלנו</th><th class="num">פער</th><th class="num">₪</th></tr></thead><tbody></tbody></table>
+    <button class="more hide" id="fMore">להציג עוד</button>
+  </section>
+
+  <section class="card" id="ghostCard">
+    <h2>רפאים</h2>
+    <div class="sub">כרטיסים עם כמות בכספית שאף ספירה לא ראתה. הצוות מאפס אותם בקופה מרשימת "לצוות"</div>
+    <table id="ghostClasses"><thead><tr><th>סוג</th><th class="num">כרטיסים</th><th class="num">יחידות</th><th class="num">₪</th></tr></thead><tbody></tbody></table>
+    <div class="chips" id="ghostChips" style="margin-top:10px">
+      <span class="chip on" data-g="רפאים חדש">רפאים חדשים</span><span class="chip" data-g="שירות / כרטיס מת עם כמות">שירות / כרטיס מת</span><span class="chip" data-g="כרטיס מקולקל ידוע (09/09)">מקולקלים</span>
+    </div>
+    <table id="ghosts"><thead><tr><th>כרטיס</th><th class="num">כמות</th><th class="num">₪</th></tr></thead><tbody></tbody></table>
+    <button class="more hide" id="gMore">להציג עוד</button>
+    <div class="empty hide" id="ghostNone">לשונית "רפאים" עוד לא נכתבה בגיליון הספירה.</div>
+  </section>
+
+  <section class="card" id="noBarcodeCard">
+    <h2>בלי ברקוד — לספירה ביד</h2>
+    <div class="sub">פריטים במעקב בלי ברקוד, עם כמות בכרטיס או אצלנו, שלא נספרו מתחילת הספירה</div>
+    <table id="noBarcode"><thead><tr><th>פריט</th><th class="num">כרטיס</th><th class="num">אצלנו</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>איך לקרוא את הדוח</h2>
+    <div class="note">
+      "מה הספירה מצאה" הוא הפער ברגע הספירה. "מה נשאר לתקן" הוא המצב היום: הגיליון כבר קיזז מכירות אחרי הספירה, והכרטיס בכספית זז עם כל מכירה. הרשימה מתעדכנת פעם ביום בלילה.<br>
+      האמת היא הגיליון. כספית מתוקנת על ידי אדם בקופה. כרטיס שהקופה לא מוצאת מסומן ברשימת "לצוות" כ"לא נמצא בקופה".
+    </div>
+  </section>
+</main>
+
+<script>
+const BUILD = 'r1';
+const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live" — count.html uses the same
+const TOKEN = 'freak-count-T9tfjr2xKzlZ6ylhQM96Fg';
+const qs = new URLSearchParams(location.search);
+const API = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(qs.get('api') || '') ? qs.get('api') : LIVE_API;
+const CACHE_KEY = 'freak-count-report-v1';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const num = n => (Number(n) || 0).toLocaleString('he-IL');
+const ils = n => '₪' + Math.round(Number(n) || 0).toLocaleString('he-IL');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const DAYNAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+const fmtDay = s => { if (!s) return ''; const d = new Date(s + 'T12:00:00'); return `${DAYNAMES[d.getDay()] || ''} ${s.slice(8, 10)}/${s.slice(5, 7)}`; };
+const hhmm = iso => { const d = new Date(iso); return isNaN(d) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+const dayTime = iso => { const d = new Date(iso); return isNaN(d) ? '' : `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${hhmm(iso)}`; };
+const signed = n => (n > 0 ? '+' : n < 0 ? '−' : '') + num(Math.abs(n));
+$('ver').textContent = BUILD + (API !== LIVE_API ? ' · TEST' : '');
+
+function netMsg(t) { const el = $('net'); el.textContent = t || ''; el.classList.toggle('show', !!t); }
+function fetchT(url, ms) { const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms); return fetch(url, { signal: ctl.signal }).finally(() => clearTimeout(t)); }
+async function apiGet(query, ms) {
+  const t0 = performance.now();
+  let res;
+  try { res = await fetchT(`${API}?${query}&token=${encodeURIComponent(TOKEN)}`, ms || 60000); }
+  catch (e) { throw new Error(e && e.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK'); }
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  let j; try { j = await res.json(); } catch (e) { throw new Error('BAD_REPLY'); }
+  if (!j.ok) throw new Error(j.error || 'API_ERROR');
+  j._roundtrip = Math.round(performance.now() - t0);
+  return j;
+}
+async function apiGetRetry(query, onAttempt) {
+  const waits = [45000, 60000, 75000];
+  let last;
+  for (let i = 0; i < waits.length; i++) {
+    if (onAttempt) onAttempt(i + 1, waits.length);
+    try { return await apiGet(query, waits[i]); }
+    catch (err) { last = err; if (/BAD_TOKEN|unknown action/.test(err.message)) break; if (i < waits.length - 1) await sleep(1500); }
+  }
+  throw last;
+}
+const friendly = err => ({ TIMEOUT: 'השרת של גוגל לא ענה בזמן', NETWORK: 'אין חיבור לרשת', BAD_REPLY: 'תשובה לא תקינה מהשרת' }[err.message] || err.message);
+
+let report = null;
+const view = { fix: 'all', fixN: 40, ghost: 'רפאים חדש', ghostN: 40, varN: 25 };
+
+function render() {
+  const r = report;
+  // progress
+  const p = r.progress, c = r.counts;
+  $('pCounted').textContent = num(p.counted);
+  $('pRows').textContent = `${num(c.rows)} ספירות מ-${fmtDay(r.countStart)}${c.lastAt ? ` · אחרונה ${dayTime(c.lastAt)}` : ''}`;
+  $('pTarget').textContent = num(p.target);
+  const pct = p.target ? Math.min(100, Math.round(100 * p.counted / p.target)) : 0;
+  $('pPct').textContent = pct + '%';
+  $('bar').style.width = pct + '%';
+  $('bar').style.background = pct >= 90 ? 'var(--green-hi)' : pct >= 50 ? 'var(--amber)' : 'var(--red)';
+  $('progressSub').textContent = c.firstAt ? `הספירה החלה ${dayTime(c.firstAt)}` : '';
+  $('days').querySelector('tbody').innerHTML = c.days.map(d => `<tr><td>${esc(fmtDay(d.day))}</td><td class="num">${num(d.items)}</td><td class="num">${num(d.rows)}</td></tr>`).join('') || `<tr><td colspan="3" class="empty">אין ספירות עדיין</td></tr>`;
+  $('users').querySelector('tbody').innerHTML = c.byUser.map(u => `<tr><td>${esc(u.name)}</td><td class="num">${num(u.items)}</td><td class="num">${num(u.rows)}</td></tr>`).join('');
+  // variance
+  const v = r.variance;
+  $('vSame').textContent = num(v.same);
+  $('vOver').textContent = num(v.over.items); $('vOverS').textContent = `${num(v.over.units)} יח' · ${ils(v.over.ils)}`;
+  $('vUnder').textContent = num(v.under.items); $('vUnderS').textContent = `${num(v.under.units)} יח' · ${ils(v.under.ils)}`;
+  const vrows = v.rows.slice(0, view.varN);
+  $('variance').querySelector('tbody').innerHTML = vrows.map(x => `<tr><td><span class="nm">${esc(x.name || x.code)}</span><span class="meta">${esc(x.by)} · ${esc(dayTime(x.at))}</span></td><td class="num">${num(x.counted)}</td><td class="num">${num(x.card)}</td><td class="num ${x.diff > 0 ? 'pos' : 'neg'}">${signed(x.diff)}</td><td class="num">${ils(x.ils)}</td></tr>`).join('') || `<tr><td colspan="5" class="empty">כל הפריטים שנספרו תאמו לכרטיס</td></tr>`;
+  $('vMore').classList.toggle('hide', v.rows.length <= view.varN);
+  $('vMore').textContent = `להציג עוד (${num(v.rows.length - vrows.length)} מתוך ${num(v.total)})`;
+  // fix list
+  const f = r.fixlist;
+  $('fAbove').textContent = num(f.above.items); $('fAboveS').textContent = `${num(f.above.units)} יח' · ${ils(f.above.ils)}`;
+  $('fBelow').textContent = num(f.below.items); $('fBelowS').textContent = `${num(f.below.units)} יח' · ${ils(f.below.ils)}`;
+  const fAll = f.rows.filter(x => view.fix === 'all' || (view.fix === 'above' ? x.diff > 0 : x.diff < 0));
+  const frows = fAll.slice(0, view.fixN);
+  $('fixlist').querySelector('tbody').innerHTML = frows.map(x => `<tr><td><span class="nm">${esc(x.name || x.code)}</span><span class="meta">${esc(x.code)}${x.barcode ? ' · ' : ''}<span style="direction:ltr;unicode-bidi:embed">${esc(x.barcode)}</span>${x.location ? ' · ' + esc(x.location) : ''}</span></td><td class="num">${num(x.card)}</td><td class="num">${num(x.level)}</td><td class="num ${x.diff > 0 ? 'neg' : 'pos'}">${signed(x.diff)}</td><td class="num">${ils(x.ils)}</td></tr>`).join('') || `<tr><td colspan="5" class="empty">אין פערים בין הכרטיסים לגיליון</td></tr>`;
+  $('fMore').classList.toggle('hide', fAll.length <= view.fixN);
+  $('fMore').textContent = `להציג עוד (${num(fAll.length - frows.length)}${f.total > f.rows.length ? `, הדוח מראה ${num(f.rows.length)} מתוך ${num(f.total)}` : ''})`;
+  // ghosts
+  const g = r.ghosts;
+  $('ghostNone').classList.toggle('hide', g.present);
+  $('ghostClasses').querySelector('tbody').innerHTML = g.classes.map(k => `<tr><td>${esc(k.cls)}</td><td class="num">${num(k.cards)}</td><td class="num">${num(k.units)}</td><td class="num">${ils(k.ils)}</td></tr>`).join('');
+  const gAll = g.rows.filter(x => x.cls === view.ghost);
+  const grows = gAll.slice(0, view.ghostN);
+  $('ghosts').querySelector('tbody').innerHTML = grows.map(x => `<tr><td><span class="nm">${esc(x.name || x.code)}</span><span class="meta">${esc(x.code)}${x.barcode ? ' · ' : ''}<span style="direction:ltr;unicode-bidi:embed">${esc(x.barcode)}</span>${x.dept ? ' · ' + esc(x.dept) : ''}${x.lastSale && !/אין/.test(x.lastSale) ? ' · מכירה אחרונה ' + esc(x.lastSale) : ''}</span>${x.action ? `<span class="act">${esc(x.action)}</span>` : ''}</td><td class="num">${num(x.qty)}</td><td class="num">${ils(x.ils)}</td></tr>`).join('') || `<tr><td colspan="3" class="empty">אין כרטיסים מהסוג הזה</td></tr>`;
+  $('gMore').classList.toggle('hide', gAll.length <= view.ghostN);
+  $('gMore').textContent = `להציג עוד (${num(gAll.length - grows.length)})`;
+  // no barcode
+  $('noBarcode').querySelector('tbody').innerHTML = r.noBarcode.map(x => `<tr><td><span class="nm">${esc(x.name || x.code)}</span><span class="meta">${esc(x.code)}${x.location ? ' · ' + esc(x.location) : ''}</span></td><td class="num">${x.card === null ? '—' : num(x.card)}</td><td class="num">${x.level === null ? '—' : num(x.level)}</td></tr>`).join('') || `<tr><td colspan="3" class="empty">אין</td></tr>`;
+  $('noBarcodeCard').querySelector('h2').textContent = `בלי ברקוד — לספירה ביד (${num(r.noBarcodeTotal)})`;
+  $('rep').classList.remove('hide'); $('status').classList.add('hide');
+}
+
+function cacheSave(r) { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), r })); } catch (e) {} }
+function cacheLoad() { try { const o = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); return o && o.r && o.r.ok ? o : null; } catch (e) { return null; } }
+
+let loading = false, autoRetries = 0, retryTimer = null;
+async function load(opts) {
+  if (loading) return;
+  loading = true; clearTimeout(retryTimer); $('reload').disabled = true;
+  const onScreen = !!report;
+  if (!onScreen) { $('status').textContent = 'טוען דוח…'; }
+  netMsg(onScreen ? 'מרענן…' : '');
+  try {
+    const r = await apiGetRetry('action=report' + (opts && opts.fresh ? '&fresh=1' : ''), (i, n) => {
+      if (i > 1) { const t = `השרת של גוגל איטי כרגע. מנסה שוב (${i} מתוך ${n})…`; if (onScreen) netMsg(t); else $('status').textContent = t; }
+    });
+    report = r; render(); cacheSave(r);
+    const when = new Date(r.generatedAt);
+    $('stamp').textContent = `נתונים מ-${dayTime(r.generatedAt)}${r.cached ? ' (מהמטמון)' : ''}`;
+    $('stamp').title = `התשובה הגיעה תוך ${(r._roundtrip / 1000).toFixed(1)} שנ׳, מתוכן ${((r.ms || 0) / 1000).toFixed(1)} שנ׳ עבודה בשרת · קטלוג מ-${dayTime(r.catalogAt)}`;
+    netMsg(''); autoRetries = 0;
+  } catch (err) {
+    const why = friendly(err);
+    if (report) {
+      const again = autoRetries < 4 && !document.hidden;
+      netMsg(`לא הצלחתי להתעדכן: ${why}. מוצג הדוח הקודם.${again ? ' מנסה שוב בעוד רגע.' : ''}`);
+      if (again) { autoRetries++; retryTimer = setTimeout(() => load(), 40000); }
+    } else {
+      $('status').textContent = `הטעינה לא הצליחה: ${why}. אפשר לנסות שוב. התשובה מגוגל יכולה לקחת עד דקה.`;
+    }
+  } finally { loading = false; $('reload').disabled = false; }
+}
+
+$('reload').onclick = () => { autoRetries = 0; load({ fresh: true }); };
+$('vMore').onclick = () => { view.varN += 50; render(); };
+$('fMore').onclick = () => { view.fixN += 60; render(); };
+$('gMore').onclick = () => { view.ghostN += 60; render(); };
+$('fixChips').onclick = e => { const c = e.target.closest('.chip'); if (!c) return; view.fix = c.dataset.f; view.fixN = 40; [...$('fixChips').children].forEach(x => x.classList.toggle('on', x === c)); render(); };
+$('ghostChips').onclick = e => { const c = e.target.closest('.chip'); if (!c) return; view.ghost = c.dataset.g; view.ghostN = 40; [...$('ghostChips').children].forEach(x => x.classList.toggle('on', x === c)); render(); };
+
+const cached = cacheLoad();
+if (cached) { report = cached.r; render(); $('stamp').textContent = `נתונים מ-${dayTime(cached.r.generatedAt)} (שמור במכשיר)`; }
+load();
+</script>
+</body>
+</html>
