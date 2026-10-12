@@ -346,7 +346,7 @@
 
 <script>
 /* ================= CONFIG ================= */
-const BUILD = 'v2.4';
+const BUILD = 'v2.5';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live"
 // ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the
 // address bar, so no link can send the page (and what it shows) to a backend of someone else's
@@ -553,7 +553,9 @@ function refreshCatalog(){ toast('מרענן קטלוג…','warn',3000); fetchC
 function updateProgress(){
   const today = todayStr();
   let target=0, done=0;
-  for(const it of items.values()) if((it.caspitQty||0) > 0) target++;
+  // the target is what a person can count: items the inventory sheet tracks (not גנרי) whose card shows a quantity.
+  // Cards nobody tracks (ghosts, service cards) are not on the shelf — v2.5, Chris 12/10: 905 cards was no target.
+  for(const it of items.values()) if(it.status && it.status!=='גנרי' && (it.caspitQty||0) > 0) target++;
   for(const code in latest) if(dayOf(latest[code].at)===today) done++;
   $('progress').textContent = done + ' / ' + target;
   const pct = target ? Math.min(100, done/target*100) : 0;

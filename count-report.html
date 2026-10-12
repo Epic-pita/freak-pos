@@ -79,10 +79,14 @@
     <h2>התקדמות הספירה</h2>
     <div class="sub" id="progressSub"></div>
     <div class="big">
-      <div class="box"><div class="t">נספרו (פריטים שונים)</div><div class="n" id="pCounted">—</div><div class="s" id="pRows"></div></div>
-      <div class="box"><div class="t">יעד: פריטים עם כמות בכספית</div><div class="n" id="pTarget">—</div><div class="s">לפי הקטלוג של הבוקר</div></div>
-      <div class="box"><div class="t">אחוז</div><div class="n" id="pPct">—</div><div id="barWrap"><div id="bar"></div></div></div>
+      <div class="box"><div class="t">נספרו באפליקציה</div><div class="n" id="pCounted">—</div><div class="s" id="pRows"></div></div>
+      <div class="box"><div class="t">לא נסרקו, בגיליון 0</div><div class="n" id="pZero">—</div><div class="s">קיבלו 0 בסיום הספירה</div></div>
+      <div class="box"><div class="t">נשאר: בלי ברקוד</div><div class="n warn" id="pOpenNoBc">—</div><div class="s">לספור ביד</div></div>
+      <div class="box"><div class="t">לא נסרקו, הגיליון לא 0</div><div class="n" id="pOpenBc">—</div><div class="s">נספרו ביד בגיליון, או עדיין לבדוק</div></div>
+      <div class="box"><div class="t">יעד: פריטים במעקב עם כמות בכספית</div><div class="n" id="pTarget">—</div><div class="s" id="pTargetS">לפי הקטלוג של הבוקר</div></div>
+      <div class="box"><div class="t">הושלם</div><div class="n" id="pPct">—</div><div id="barWrap"><div id="bar"></div></div><div class="s" id="pDone"></div></div>
     </div>
+    <table id="openRows" class="hide"><thead><tr><th>לא נסרקו באפליקציה והגיליון עוד מראה מלאי (נספרו ביד, או לבדוק)</th><th class="num">כרטיס</th><th class="num">גיליון</th><th>סטטוס</th></tr></thead><tbody></tbody></table>
     <table id="days"><thead><tr><th>יום</th><th class="num">פריטים</th><th class="num">ספירות</th></tr></thead><tbody></tbody></table>
     <h2 style="margin-top:14px">לפי סופר</h2>
     <table id="users"><thead><tr><th>מי</th><th class="num">פריטים</th><th class="num">ספירות</th></tr></thead><tbody></tbody></table>
@@ -142,7 +146,7 @@
 </main>
 
 <script>
-const BUILD = 'r2';
+const BUILD = 'r3';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live" — count.html uses the same
 const TOKEN = 'freak-count-T9tfjr2xKzlZ6ylhQM96Fg';
 // ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the address bar
@@ -197,7 +201,18 @@ function render() {
   $('pCounted').textContent = num(p.counted);
   $('pRows').textContent = `${num(c.rows)} ספירות מ-${fmtDay(r.countStart)}${c.lastAt ? ` · אחרונה ${dayTime(c.lastAt)}` : ''}`;
   $('pTarget').textContent = num(p.target);
-  const pct = p.target ? Math.min(100, Math.round(100 * p.counted / p.target)) : 0;
+  // r3: the target is tracked items with a card quantity; done = counted in the app + not scanned but 0 on the sheet
+  const done = p.done !== undefined ? p.done : p.counted;
+  $('pZero').textContent = num(p.sheetZero || 0);
+  $('pOpenNoBc').textContent = num(p.openNoBarcode || 0);
+  $('pOpenBc').textContent = num(p.openWithBarcode || 0);
+  $('pOpenBc').classList.toggle('bad', (p.openWithBarcode || 0) > 0);
+  if (p.cardsWithQty !== undefined) $('pTargetS').textContent = `מתוך ${num(p.cardsWithQty)} כרטיסים עם כמות · ${num(p.cardsOnly)} בלי מוצר במעקב (רפאים, שירות)`;
+  $('pDone').textContent = `${num(done)} מתוך ${num(p.target)}`;
+  const orows = p.openRows || [];
+  $('openRows').classList.toggle('hide', !orows.length);
+  $('openRows').querySelector('tbody').innerHTML = orows.map(x => `<tr><td><span class="nm">${esc(x.name || x.code)}</span><span class="meta">${esc(x.code)}${x.barcode ? ' · ' + esc(x.barcode) : ''}${x.location ? ' · ' + esc(x.location) : ''}</span></td><td class="num">${num(x.card)}</td><td class="num">${num(x.level)}</td><td>${esc(x.status || '')}</td></tr>`).join('');
+  const pct = p.target ? Math.min(100, Math.round(100 * done / p.target)) : 0;
   $('pPct').textContent = pct + '%';
   $('bar').style.width = pct + '%';
   $('bar').style.background = pct >= 90 ? 'var(--green-hi)' : pct >= 50 ? 'var(--amber)' : 'var(--red)';
