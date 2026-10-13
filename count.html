@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#0f1a20">
 <title>FREAK — ספירת מלאי</title>
 <script src="./html5-qrcode.min.js"></script>
+<script src="./barcode.js"></script>
 <style>
   :root{
     --bg:#0f1a20; --surface:#16262e; --surface2:#1d323c; --line:#2a4450;
@@ -282,6 +283,7 @@
   <div class="card" style="padding:10px 12px 12px">
     <div style="display:flex; align-items:center; gap:8px">
       <h2 class="sect" style="margin:0; flex:1">משימות לצוות</h2>
+      <a class="iconbtn" id="printLink" href="./count-tasks-print.html" target="_blank" rel="noopener" title="דף להדפסה — אותן משימות עם הברקודים, לסורק שלא קורא מסך" style="text-decoration:none">🖨</a>
       <button class="iconbtn" id="tasksReload" onclick="loadTasks(true)" title="רענון משימות">⟳</button>
     </div>
     <div id="tasksMeta"></div>
@@ -358,7 +360,7 @@
     <li><b>דוח הספירה</b> — <a href="./count-report.html" style="color:var(--teal)">התקדמות, פערים, מה נשאר לתקן בכספית, רפאים</a>.</li>
     <li><b>מדריך</b> — <a href="./count-guide.html" style="color:var(--teal)">המדריך המלא עם צילומי מסך</a> · <a href="./count-quickstart.html" style="color:var(--teal)">דף מהיר</a>.</li>
     <li><b>משימה מ"לצוות"</b> — אם לפריט יש שורה ברשימת הצוות, ההוראה מופיעה במסך הפריט (כתום). עושים מה שכתוב וסופרים כרגיל.</li>
-    <li><b>📋 משימות לצוות</b> — כל רשימת "לצוות" בטלפון: לפי סוג משימה, עם חיפוש. על כל משימה: <b>ספור</b> (פותח את הפריט לספירה), <b>בוצע</b>, <b>הערה</b>, או סימון "לא צריך". מה שמסמנים נכתב לגיליון; הרשימה מתעדכנת לבד כל דקה. סימנתם בטעות? "בטל" בהודעה הירוקה, תוך 5 שניות.</li>
+    <li><b>📋 משימות לצוות</b> — כל רשימת "לצוות" בטלפון: לפי סוג משימה, עם חיפוש. על כל משימה: <b>ספור</b> (פותח את הפריט לספירה), <b>בוצע</b>, <b>הערה</b>, או סימון "לא צריך". מה שמסמנים נכתב לגיליון; הרשימה מתעדכנת לבד כל דקה. סימנתם בטעות? "בטל" בהודעה הירוקה, תוך 5 שניות. מתחת לכל משימה הברקוד של הפריט; סורק לייזר לא קורא מסך — 🖨 במסך המשימות פותח <a href="./count-tasks-print.html" style="color:var(--teal)">דף להדפסה</a> עם אותן משימות והברקודים.</li>
   </ol>
 </div>
 
@@ -395,7 +397,7 @@
 
 <script>
 /* ================= CONFIG ================= */
-const BUILD = 'v3.1';
+const BUILD = 'v3.2';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live"
 // ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the
 // address bar, so no link can send the page (and what it shows) to a backend of someone else's
@@ -464,48 +466,7 @@ function driveThumb(url){
   const m = String(url).match(/\/d\/([\w-]{20,})/) || String(url).match(/[?&]id=([\w-]{20,})/);
   return m ? 'https://drive.google.com/thumbnail?id='+m[1]+'&sz=w400' : null;
 }
-/* barcode-encoder-start — v3.1: the row's barcode drawn on the task card, for the register's scanner (tools/test/barcode_test.py
-   proves the drawing: the EAN bits equal the test writer's, and the app's own scanner decodes the drawn Code 128 / EAN / UPC) */
-const EAN_L=['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];
-const EAN_G=['0100111','0110011','0011011','0100001','0011101','0111001','0000101','0010001','0001001','0010111'];
-const EAN_R=['1110010','1100110','1101100','1000010','1011100','1001110','1010000','1000100','1001000','1110100'];
-const EAN_PARITY=['LLLLLL','LLGLGG','LLGGLG','LLGGGL','LGLLGG','LGGLLG','LGGGLL','LGLGLG','LGLGGL','LGGLGL'];
-const C128=['212222','222122','222221','121223','121322','131222','122213','122312','132212','221213','221312','231212','112232','122132','122231','113222','123122','123221','223211','221132','221231','213212','223112','312131','311222','321122','321221','312212','322112','322211','212123','212321','232121','111323','131123','131321','112313','132113','132311','211313','231113','231311','112133','112331','132131','113123','113321','133121','313121','211331','231131','213113','213311','213131','311123','311321','331121','312113','312311','332111','314111','221411','431111','111224','111422','121124','121421','141122','141221','112214','112412','122114','122411','142112','142211','241211','221114','413111','241112','134111','111242','121142','121241','114212','124112','124211','411212','421112','421211','212141','214121','412121','111143','111341','131141','114113','114311','411113','411311','113141','114131','311141','411131','211412','211214','211232'];
-const C128_STOP='2331112';
-function eanBits(digits){           // 13 digits (a UPC-A gets its leading 0 first) or 8 digits — the check digit already verified
-  const d=digits.split('').map(Number);
-  if(d.length===13){ let bits='101'; const par=EAN_PARITY[d[0]]; for(let i=0;i<6;i++) bits+=(par[i]==='L'?EAN_L:EAN_G)[d[1+i]]; bits+='01010'; for(let i=0;i<6;i++) bits+=EAN_R[d[7+i]]; return bits+'101'; }
-  if(d.length===8){ let bits='101'; for(let i=0;i<4;i++) bits+=EAN_L[d[i]]; bits+='01010'; for(let i=4;i<8;i++) bits+=EAN_R[d[i]]; return bits+'101'; }
-  return null;
-}
-function code128Bits(text){        // subset C for an even run of digits, else subset B (printable ASCII); a Hebrew barcode cannot be drawn
-  if(!/^[\x20-\x7e]{1,40}$/.test(text)) return null;
-  const pairs=/^\d+$/.test(text) && text.length%2===0;
-  const vals=[]; const start=pairs?105:104;
-  if(pairs){ for(let i=0;i<text.length;i+=2) vals.push(Number(text.slice(i,i+2))); }
-  else { for(const ch of text) vals.push(ch.charCodeAt(0)-32); }
-  let sum=start; vals.forEach((v,i)=>{ sum+=v*(i+1); });
-  let bits='';
-  for(const v of [start,...vals,sum%103]){ const w=C128[v]; for(let i=0;i<w.length;i++) bits+=(i%2===0?'1':'0').repeat(Number(w[i])); }
-  for(let i=0;i<C128_STOP.length;i++) bits+=(i%2===0?'1':'0').repeat(Number(C128_STOP[i]));
-  return bits;
-}
-function barcodeBits(text){
-  const t=String(text||'').trim();
-  if(!t) return null;
-  if(/^\d{12}$/.test(t) && gtinValid(t)) return {bits:eanBits('0'+t), kind:'UPC-A'};
-  if(/^\d{13}$/.test(t) && gtinValid(t)) return {bits:eanBits(t), kind:'EAN-13'};
-  if(/^\d{8}$/.test(t) && gtinValid(t)) return {bits:eanBits(t), kind:'EAN-8'};
-  const b=code128Bits(t); return b ? {bits:b, kind:'Code 128'} : null;
-}
-function barcodeSvg(text){          // bars as rects on a transparent background (the box behind it is white), 10 modules of quiet zone each side
-  const bc=barcodeBits(text); if(!bc) return '';
-  const quiet=10, n=bc.bits.length, w=n+2*quiet, h=60;
-  let rects='', run=0, at=0;
-  for(let i=0;i<=n;i++){ const on=i<n && bc.bits[i]==='1'; if(on){ if(!run) at=i; run++; } else if(run){ rects+='<rect x="'+(quiet+at)+'" y="0" width="'+run+'" height="'+h+'"/>'; run=0; } }
-  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+w+' '+h+'" width="'+(w*2)+'" height="'+h+'" preserveAspectRatio="none" shape-rendering="crispEdges" fill="#000" aria-label="'+esc(text)+'">'+rects+'</svg>';
-}
-/* barcode-encoder-end */
+/* the barcode encoder lives in barcode.js (v3.2) — shared with count-tasks-print.html; window.FreakBarcode.svg(text) */
 function fetchT(url, opts, ms){
   const ctl = new AbortController();
   const t = setTimeout(()=>ctl.abort(), ms);
@@ -1315,6 +1276,7 @@ async function saveItem(){
 /* ================= TASKS (v3.0) — the team's list on the phone ================= */
 function openTasks(){
   pauseScan();
+  $('printLink').href = './count-tasks-print.html' + (OFF_LIVE ? '?api=test' : '');   // v3.2: the printable sheet, on the same backend
   returnScreen='screen-scan';
   show('screen-tasks');
   renderTasks();
@@ -1431,7 +1393,7 @@ function taskCard(r){
   d.querySelector('.chip').textContent = r[T.block]||'';
   d.querySelector('.todo').textContent = r[T.todo]||'';
   // v3.1: the barcode itself, to scan the phone's screen with the register's scanner instead of searching by hand
-  const bcBox=d.querySelector('.bc'), svg=barcodeSvg(r[T.barcode]);
+  const bcBox=d.querySelector('.bc'), svg=(window.FreakBarcode ? FreakBarcode.svg(r[T.barcode]) : '');
   if(svg){ bcBox.innerHTML = svg+'<div class="num"></div><div class="hint">לסריקה בקופה · לחיצה מגדילה</div>'; bcBox.querySelector('.num').textContent = r[T.barcode]; bcBox.onclick=()=>bcBox.classList.toggle('big'); }
   else bcBox.remove();
   const d1=d.querySelector('.d1'), d2=d.querySelector('.d2');

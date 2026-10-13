@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FREAK — משימות לצוות להדפסה</title>
+<script src="./barcode.js"></script>
+<style>
+  /* the printable task sheet (p1, 13/10/2026): the same open rows of לצוות as the phone's 📋 screen, in the same order, with the
+     item's barcode drawn beside each — for a register scanner that cannot read a phone screen (a laser reads paper, not light).
+     Three columns on A4; a block heading per task type; a box to tick with a pen. Light theme: it is a sheet of paper. */
+  :root{ --ink:#111; --dim:#666; --line:#bbb; --teal:#2b6f8a; --mono:'Roboto Mono',Consolas,monospace }
+  *{box-sizing:border-box}
+  body{margin:0; background:#f2f4f5; color:var(--ink); font-family:-apple-system,'Segoe UI',Roboto,'Heebo',Arial,sans-serif; font-size:14px}
+  #bar{position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid var(--line); padding:10px 14px; display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+  #bar h1{font-size:18px; margin:0; color:var(--teal); flex:1 1 auto}
+  #bar button{font-family:inherit; font-size:14px; border:1px solid var(--line); background:#fff; border-radius:8px; padding:8px 12px; cursor:pointer}
+  #bar button.primary{background:var(--teal); color:#fff; border-color:var(--teal); font-weight:700}
+  #bar input{font-family:inherit; font-size:14px; border:1px solid var(--line); border-radius:8px; padding:8px 10px; min-width:220px}
+  #meta{width:100%; font-size:13px; color:var(--dim)}
+  #chips{width:100%; display:flex; flex-wrap:wrap; gap:6px}
+  .chip{border:1px solid var(--line); background:#fff; border-radius:20px; padding:5px 12px; font-size:13px; cursor:pointer}
+  #bar .chip.on{background:var(--teal); color:#fff; border-color:var(--teal)}   /* beats #bar button */
+  #sheet{max-width:210mm; margin:10px auto; background:#fff; padding:8mm; box-shadow:0 2px 12px rgba(0,0,0,.08)}
+  #head{display:flex; justify-content:space-between; font-size:12px; color:var(--dim); border-bottom:1px solid var(--line); padding-bottom:3mm; margin-bottom:3mm}
+  .grid{display:grid; grid-template-columns:repeat(3, 1fr); gap:3mm}
+  h2.block{grid-column:1 / -1; font-size:13px; margin:3mm 0 0; padding:1.5mm 2mm; background:#eee; border-radius:1.5mm; break-after:avoid}
+  .card{border:1px solid #000; border-radius:1.5mm; padding:1.5mm 2mm 1mm; break-inside:avoid; page-break-inside:avoid; min-height:30mm; display:flex; flex-direction:column}
+  .card .nm{font-weight:700; font-size:10.5pt; line-height:1.2; max-height:2.4em; overflow:hidden}
+  .card .sub{font-family:var(--mono); font-size:8.5pt; color:#333; margin-top:0.5mm; word-break:break-word}
+  .card .todo{font-size:8pt; color:#444; margin-top:0.7mm; line-height:1.25; max-height:3.75em; overflow:hidden}
+  .card .bc{text-align:center; margin-top:auto; padding-top:1.5mm; direction:ltr}
+  .card .bc svg{display:block; margin:0 auto; max-width:100%}
+  .card .num{font-family:var(--mono); font-size:9pt; letter-spacing:1.5px; margin-top:0.5mm}
+  .card .none{font-size:9pt; color:var(--dim); text-align:center; margin-top:auto; padding:3mm 0}
+  .card .box{position:absolute; top:1.5mm; left:2mm; width:5mm; height:5mm; border:1px solid #000; border-radius:1mm}
+  .card{position:relative}
+  #empty{padding:30px; text-align:center; color:var(--dim)}
+  @page{ size:A4; margin:9mm }
+  @media print{
+    body{background:#fff}
+    #bar{display:none}
+    #sheet{max-width:none; margin:0; padding:0; box-shadow:none}
+    h2.block{background:#eee; -webkit-print-color-adjust:exact; print-color-adjust:exact}
+  }
+</style>
+</head>
+<body>
+<div id="bar">
+  <h1>משימות לצוות — להדפסה</h1>
+  <button class="primary" onclick="window.print()">🖨 הדפס</button>
+  <button id="reload" onclick="load(true)">⟳ רענן</button>
+  <input id="q" placeholder="חיפוש: שם / ברקוד / קוד / מיקום" oninput="render()">
+  <div id="meta">טוען את הרשימה…</div>
+  <div id="chips"></div>
+</div>
+<div id="sheet">
+  <div id="head"><span id="headTitle">משימות לצוות</span><span id="headStamp"></span></div>
+  <div class="grid" id="grid"></div>
+  <div id="empty" class="hide"></div>
+</div>
+<script>
+const BUILD = 'p1';
+const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';
+const DEPLOYMENTS = { live: LIVE_API, test: 'https://script.google.com/macros/s/AKfycbwem7TUlt0TW2QJHqJ8c4G7ZMkDm9zaYe97mqsI3bzTeyOq0eonV3J2W6bD9_udZft2/exec' };
+const PARAMS = new URLSearchParams(location.search);
+const API = DEPLOYMENTS[PARAMS.get('api') || 'live'] || LIVE_API;
+const TOKEN = 'freak-count-T9tfjr2xKzlZ6ylhQM96Fg';
+const T = { code:0, kind:1, block:2, barcode:3, name:4, location:5, caspit:6, image:7, photo:8, todo:9, who:10, note:11, n:12 };
+const $ = id => document.getElementById(id);
+let rows = [], meta = {}, block = PARAMS.get('block') || '';
+function fetchT(url, ms){ const c=new AbortController(); const t=setTimeout(()=>c.abort(), ms); return fetch(url, {signal:c.signal}).finally(()=>clearTimeout(t)); }
+async function load(manual){
+  $('reload').disabled = true;
+  try{
+    const r = await fetchT(API+'?action=tasks&token='+encodeURIComponent(TOKEN), 60000);
+    const js = await r.json();
+    if(!js.ok) throw new Error(js.error||'tasks');
+    rows = Array.isArray(js.rows) ? js.rows : [];
+    meta = { sheetAt: js.sheetAt||'', total: js.total||0, at: new Date() };
+    render();
+    if(PARAMS.get('print')==='1' && !manual) setTimeout(()=>window.print(), 600);
+  }catch(e){
+    $('meta').textContent = 'הרשימה לא נטענה (גוגל איטי?) — ⟳ לנסות שוב. '+String(e.message||e);
+  }finally{ $('reload').disabled = false; }
+}
+function render(){
+  const q = $('q').value.trim().toLowerCase();
+  const counts = new Map();
+  for(const r of rows){ const b=r[T.block]||'אחר'; counts.set(b, (counts.get(b)||0)+1); }
+  if(block && !counts.has(block)) block = '';
+  const chips=$('chips'); chips.innerHTML='';
+  for(const [val,label,n] of [['', 'הכל', rows.length], ...[...counts.entries()].map(([b,n])=>[b,b,n])]){
+    const c=document.createElement('button'); c.className='chip'+(block===val?' on':''); c.textContent=label+' ('+n+')';
+    c.onclick=()=>{ block=val; render(); }; chips.appendChild(c);
+  }
+  let list = rows.filter(r => !block || (r[T.block]||'אחר')===block);
+  if(q) list = list.filter(r => [r[T.name], r[T.barcode], r[T.code], r[T.location]].some(v => String(v||'').toLowerCase().includes(q)));
+  const drawable = list.filter(r => r[T.barcode] && FreakBarcode.bits(r[T.barcode])).length;
+  $('meta').textContent = list.length+' משימות'+(block?' · '+block:'')+(q?' · "'+q+'"':'')+' · '+drawable+' עם ברקוד להדפסה · הרשימה מהגיליון של '+(meta.sheetAt||'?')+' · נטען '+(meta.at ? meta.at.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}) : '');
+  $('headTitle').textContent = 'משימות לצוות'+(block?' — '+block:'')+' · '+list.length;
+  $('headStamp').textContent = 'הרשימה מהגיליון של '+(meta.sheetAt||'?')+' · הודפס '+new Date().toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const grid=$('grid'); grid.innerHTML='';
+  $('empty').style.display = list.length ? 'none' : 'block';
+  $('empty').textContent = rows.length ? 'אין משימות שמתאימות לסינון.' : '';
+  let cur = null;
+  for(const r of list){
+    const b = r[T.block]||'אחר';
+    if(b !== cur){ cur = b; const h=document.createElement('h2'); h.className='block'; h.textContent = b+' ('+(list.filter(x=>(x[T.block]||'אחר')===b).length)+')'; grid.appendChild(h); }
+    const d=document.createElement('div'); d.className='card';
+    const nm=document.createElement('div'); nm.className='nm'; nm.textContent = r[T.name]||r[T.code];
+    const sub=document.createElement('div'); sub.className='sub'; sub.textContent = ['קוד '+r[T.code], r[T.location], r[T.caspit]==null ? '' : 'בכספית '+r[T.caspit]].filter(Boolean).join(' · ');
+    const todo=document.createElement('div'); todo.className='todo'; todo.textContent = String(r[T.todo]||'').split('\n')[0];
+    const box=document.createElement('div'); box.className='box';
+    d.append(box, nm, sub, todo);
+    const svg = r[T.barcode] ? FreakBarcode.svg(r[T.barcode], {mm:true, hmm:12}) : '';
+    if(svg){ const bc=document.createElement('div'); bc.className='bc'; bc.innerHTML = svg; const num=document.createElement('div'); num.className='num'; num.textContent = r[T.barcode]; bc.appendChild(num); d.appendChild(bc); }
+    else { const none=document.createElement('div'); none.className='none'; none.textContent = r[T.barcode] ? 'ברקוד שאי אפשר לצייר: '+r[T.barcode] : 'ללא ברקוד — לחפש בקופה לפי השם'; d.appendChild(none); }
+    grid.appendChild(d);
+  }
+}
+load(false);
+</script>
+</body>
+</html>
