@@ -131,6 +131,32 @@
   #failedBox{display:none; background:#3a1512; border:1px solid var(--red); border-radius:10px;
              padding:10px; font-size:13px; margin-top:10px; color:#f0b4ac}
   #catInfo{text-align:center; color:var(--dim); font-size:12px; margin-top:12px}
+
+  /* v3.0 — the team's tasks on the phone */
+  #tasksBadge{background:var(--teal); color:#fff; font-size:11px; font-weight:700; border-radius:9px; padding:1px 6px; margin-inline-start:4px}
+  #tasksBadge:empty{display:none}
+  #tasksMeta{font-size:13px; color:var(--dim); margin-top:6px; line-height:1.5}
+  #tasksMeta.stale{color:#ffd479}
+  #taskBlocks .chip{padding:6px 12px; font-size:13px}
+  .task{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px; margin-bottom:10px}
+  .task .head{display:flex; gap:10px; align-items:flex-start}
+  .task .head img{width:56px; height:56px; object-fit:cover; border-radius:8px; flex:none; background:var(--surface2)}
+  .task .nm{font-size:16px; font-weight:700; line-height:1.3}
+  .task .nm.link{color:var(--teal); text-decoration:underline; cursor:pointer}
+  .task .sub{font-size:13px; color:var(--dim); font-family:var(--mono); margin-top:3px; word-break:break-word}
+  .task .todo{white-space:pre-line; font-size:14px; color:#ffd479; background:#3a2c10; border-radius:8px; padding:8px 10px; margin-top:8px; line-height:1.45}
+  .task .draft{font-size:13px; color:#9fd8ea; margin-top:6px}
+  .task .draft.refused{color:#f0b4ac}
+  .task .acts{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap}
+  .task .acts button{flex:1; padding:11px 8px; font-size:15px; min-width:96px}
+  .task .b-count{background:var(--teal)} .task .b-done{background:var(--green)} .task .b-note{background:var(--surface2)}
+  .task .b-flag{background:var(--surface2); color:#ffd479; font-size:13px}
+  .task .confirm{margin-top:10px; border-top:1px solid var(--line); padding-top:10px}
+  .task .confirm textarea, .task .confirm input{margin-top:6px}
+  .task .confirm .acts{margin-top:8px}
+  .task .counted{display:inline-block; background:#10301c; color:#9fe0b0; border-radius:20px; padding:3px 10px; font-size:12px; margin-top:6px}
+  #taskMore{text-align:center; margin:8px 0 30px}
+  #toast button{background:#fff; color:#000; font-size:14px; font-weight:700; padding:6px 12px; margin-inline-start:12px; border-radius:8px}
 </style>
 </head>
 <body>
@@ -143,6 +169,7 @@
     <span id="queueBadge">0</span>
     <span id="progress">—</span>
     <button class="iconbtn" onclick="openSearch()" title="חיפוש">🔎</button>
+    <button class="iconbtn" id="tasksBtn" onclick="openTasks()" title="משימות לצוות">📋<span id="tasksBadge"></span></button>
     <button class="iconbtn" onclick="refreshCatalog()" title="רענון קטלוג">⟳</button>
     <button class="iconbtn" onclick="openHelp()" title="איך סופרים">?</button>
   </div>
@@ -171,7 +198,7 @@
 
 <!-- ============ ITEM ============ -->
 <div id="screen-item" class="screen">
-  <button class="backbtn" onclick="backToScan()">→ חזרה לסריקה</button>
+  <button class="backbtn" id="itemBack" onclick="backToScan()">→ חזרה לסריקה</button>
   <div class="card">
     <h3 id="itemName"></h3>
     <div class="meta">
@@ -244,6 +271,22 @@
   <div style="height:30px"></div>
 </div>
 
+<!-- ============ TASKS (v3.0) — the team's list, Live/לצוות, on the phone ============ -->
+<div id="screen-tasks" class="screen">
+  <button class="backbtn" onclick="backToScan()">→ חזרה לסריקה</button>
+  <div class="card" style="padding:10px 12px 12px">
+    <div style="display:flex; align-items:center; gap:8px">
+      <h2 class="sect" style="margin:0; flex:1">משימות לצוות</h2>
+      <button class="iconbtn" id="tasksReload" onclick="loadTasks(true)" title="רענון משימות">⟳</button>
+    </div>
+    <div id="tasksMeta"></div>
+    <input id="taskSearch" placeholder="חיפוש: שם / ברקוד / קוד / מיקום" oninput="closeTaskConfirms();taskShown=60;renderTasks()" style="margin-top:8px">
+    <div id="taskBlocks" class="chips"></div>
+  </div>
+  <div id="taskList"></div>
+  <div id="taskMore"></div>
+</div>
+
 <!-- ============ PENDING ============ -->
 <div id="screen-pending" class="screen">
   <button class="backbtn" onclick="backToScan()">→ חזרה לסריקה</button>
@@ -310,6 +353,7 @@
     <li><b>דוח הספירה</b> — <a href="./count-report.html" style="color:var(--teal)">התקדמות, פערים, מה נשאר לתקן בכספית, רפאים</a>.</li>
     <li><b>מדריך</b> — <a href="./count-guide.html" style="color:var(--teal)">המדריך המלא עם צילומי מסך</a> · <a href="./count-quickstart.html" style="color:var(--teal)">דף מהיר</a>.</li>
     <li><b>משימה מ"לצוות"</b> — אם לפריט יש שורה ברשימת הצוות, ההוראה מופיעה במסך הפריט (כתום). עושים מה שכתוב וסופרים כרגיל.</li>
+    <li><b>📋 משימות לצוות</b> — כל רשימת "לצוות" בטלפון: לפי סוג משימה, עם חיפוש. על כל משימה: <b>ספור</b> (פותח את הפריט לספירה), <b>בוצע</b>, <b>הערה</b>, או סימון "לא צריך". מה שמסמנים נכתב לגיליון; הרשימה מתעדכנת לבד כל דקה. סימנתם בטעות? "בטל" בהודעה הירוקה, תוך 5 שניות.</li>
   </ol>
 </div>
 
@@ -346,7 +390,7 @@
 
 <script>
 /* ================= CONFIG ================= */
-const BUILD = 'v2.8';
+const BUILD = 'v3.0';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live"
 // ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the
 // address bar, so no link can send the page (and what it shows) to a backend of someone else's
@@ -356,7 +400,8 @@ const OFF_LIVE = API !== LIVE_API;   // nothing a test backend answers is kept o
 const TOKEN = 'freak-count-T9tfjr2xKzlZ6ylhQM96Fg';
 const TZ = 'Asia/Jerusalem';
 const LS = { user:'fc2_user', catalog:'fc2_catalog', catTime:'fc2_catTime', catAt:'fc2_catAt', latest:'fc2_latest',
-             lookups:'fc2_lookups', failed:'fc2_failed', hist:'fc2_hist', cam:'fc2_cam', zoom:'fc2_zoom', tasks:'fc2_tasks' };
+             lookups:'fc2_lookups', failed:'fc2_failed', hist:'fc2_hist', cam:'fc2_cam', zoom:'fc2_zoom', tasks:'fc2_tasks',
+             taskRows:'fc2_taskRows', taskMeta:'fc2_taskMeta', taskAns:'fc2_taskAns' };
 const DEFAULT_LOC = 'תצוגה';
 const CATALOG_MAX_AGE_MIN = 10;   // on open, a catalog older than this is fetched again
 const NEW_CARD_DAYS = 7;
@@ -367,7 +412,20 @@ let items = new Map();                       // code → item
 let byBarcode = new Map(), byBc0 = new Map();
 let latest = {};                             // code → { at, by, counted, locations, photo, noPhoto, uuid }
 let lookups = {};
-let teamTasks = {};                          // code → { block, todo, caspit } from the inventory sheet's לצוות (phase B)
+let teamTasks = {};                          // code → { block, todo, caspit, kind } — the first open row of each code on לצוות (phase B)
+/* v3.0 — the team's tasks (Live/לצוות) on the phone */
+let taskRows = [];                           // [code, kind, block, barcode, name, location, caspit, image, photo, todo, who, note, n] — the OPEN rows
+let tasksMeta = { stamp:'', sheetAt:'', sheetAtIso:'', at:'', total:0, fetchedAt:0, error:'' };
+let taskAnswers = {};                        // key kind|code → { done, note, counted, flag, hide, at, uuid } — answered from this phone; hidden until the list drops the row
+let taskBlock = '';                          // the block chip chosen ('' = all)
+let taskShown = 60;
+let tasksTimer = null, tasksLoading = false, tasksDirty = false;   // dirty: a re-render waited while a confirm panel was open
+let returnScreen = 'screen-scan';            // where the item screen's back button goes — the tasks screen opens items too
+const TASKS_POLL_MS = 60000, TASK_UNDO_MS = 5000;
+const T = { code:0, kind:1, block:2, barcode:3, name:4, location:5, caspit:6, image:7, photo:8, todo:9, who:10, note:11, n:12 };
+const taskKey = r => r[T.kind]+'|'+r[T.code];
+// the 'לא צריך' tick a row offers — the brain's rule (render/staff.ts STAFF_FLAGS): by the words of the row's block
+const TASK_FLAGS = [ ['ספירה','qty','לא צריך כמות'], ['ברקוד','barcode','לא צריך ברקוד'], ['מחיר','price','לא צריך מחיר'], ['רפאים','pos','לא נמצא בקופה'] ];
 let user = localStorage.getItem(LS.user) || '';
 let currentItem = null, scannedBc = '', currentPhotoB64 = null, pendingPhotoB64 = null, noPhotoReason = '';
 let locRowsData = [], locTouched = false;
@@ -434,8 +492,10 @@ function qDel(id){ return new Promise((res,rej)=>{
   const tx=db.transaction('q','readwrite'); tx.objectStore('q').delete(id);
   tx.oncomplete=res; tx.onerror=()=>rej(tx.error);
 });}
+const API_TAG = OFF_LIVE ? 'test' : 'live';   // v3.0: a job is sent only to the backend the page that queued it was using
+const cancelledJobs = new Set();                // v3.0: an undone task answer is never sent, even if the loop already held it
 async function enqueue(payload, forcedUuid){
-  payload.uuid = forcedUuid || uuid(); payload.user = user; payload.ts = Date.now(); payload.att = 0;
+  payload.uuid = forcedUuid || uuid(); payload.user = user; payload.ts = Date.now(); payload.att = 0; payload.api = API_TAG;
   await qAdd(payload); updateQueueBadge(); sync();
   return payload.uuid;
 }
@@ -451,7 +511,10 @@ async function sync(){
   try{
     const jobs = await qAll();
     for(const job of jobs){
-      const body = {...job, token: TOKEN}; delete body.ts; delete body.att;
+      if(job.api && job.api !== API_TAG){ if(job.api==='test') await qDel(job.uuid); continue; }   // a test page's job never reaches the live backend (and the reverse)
+      if(cancelledJobs.has(job.uuid)){ await qDel(job.uuid); continue; }
+      if(job.notBefore && job.notBefore > Date.now()) continue;   // v3.0: a task answer waits out its undo window
+      const body = {...job, token: TOKEN}; delete body.ts; delete body.att; delete body.notBefore; delete body.api;
       let js;
       try{
         // Apps Script is usually 1–5 s and now and then 20–60 s (Google re-dispatching); a photo is ~150 KB
@@ -464,20 +527,29 @@ async function sync(){
           if(lt && (lt.photo==='pending' || !lt.photo)){ lt.photo = js.url; saveLatestLS(); }
           if(currentItem && currentItem.code===job.itemCode) renderPhotoState();
         }
+        if(job.action==='answerTask'){
+          const key = job.kind+'|'+job.code;
+          if(js.gone && $('screen-tasks').classList.contains('active')) toast('המשימה כבר לא ברשימה: '+(job.code||''), 'warn', 3000);
+          if(js.changed){ delete taskAnswers[key]; saveTaskAnswers(); toast('המשימה של '+(job.code||'')+' השתנתה בינתיים — לבדוק שוב ברשימה', 'warn', 4500); }   // nothing was written
+          setTimeout(()=>loadTasks(false), 800);   // the backend dropped its cache — the list now shows the row answered
+        }
         await qDel(job.uuid);
       }
       else if(js && js.error==='BAD_TOKEN'){
         // Google sometimes re-dispatches a POST as a bare GET — the body is gone; just try again
-        job.att = (job.att||0)+1; await qAdd(job);
+        job.att = (job.att||0)+1; if(!cancelledJobs.has(job.uuid)) await qAdd(job);
       }
       else{
-        job.att = (job.att||0)+1;
-        if(job.att >= 6){
+        // a write the backend could not finish (RACE / write failed) is not the phone's fault: its own counter, 30 s apart, 20 tries
+        const soft = !!(js && /^RACE|^write failed/.test(String(js.error||'')));
+        if(soft){ job.soft = (job.soft||0)+1; job.notBefore = Date.now()+30000; } else job.att = (job.att||0)+1;
+        if(job.att >= 6 || (job.soft||0) >= 20){
           const f = JSON.parse(localStorage.getItem(LS.failed)||'[]');
-          f.push({action:job.action, code:job.itemCode||job.barcode||'', err:(js&&js.error)||'?'});
+          f.push({action:job.action, code:job.itemCode||job.barcode||'', err:(js&&js.error)||'?', note: job.action==='answerTask' ? [job.done?'בוצע':'', job.counted!=null?'ספרתי '+job.counted:'', job.flag||'', job.note||''].filter(Boolean).join(' · ') : ''});
           localStorage.setItem(LS.failed, JSON.stringify(f));
+          if(job.action==='answerTask'){ delete taskAnswers[job.kind+'|'+job.code]; saveTaskAnswers(); renderTasks(); }   // the row is open again on this phone, with the failure shown
           await qDel(job.uuid); renderFailed();
-        } else await qAdd(job);
+        } else if(!cancelledJobs.has(job.uuid)) await qAdd(job);
       }
     }
   } finally { syncing=false; updateQueueBadge(); }
@@ -491,7 +563,7 @@ function renderFailed(){
   if(!f.length){ box.style.display='none'; return; }
   box.style.display='block';
   box.innerHTML = '<b>שגיאות שמירה ('+f.length+'):</b> ' +
-    f.map(x=>esc(x.code)+' — '+esc(x.err)).join(' · ') +
+    f.map(x=>esc(x.code)+(x.note?' ('+esc(x.note)+')':'')+' — '+esc(x.err)).join(' · ') +
     ' <button class="backbtn" onclick="clearFailed()">נקה</button>';
 }
 function clearFailed(){ localStorage.removeItem(LS.failed); renderFailed(); }
@@ -540,7 +612,7 @@ async function fetchCatalog(showToast){
       buildCatalog(js.rows);
       mergeLatest(js.latest||{});
       if(js.lookups){ lookups = js.lookups; if(!OFF_LIVE) try{ localStorage.setItem(LS.lookups, JSON.stringify(lookups)); }catch(e){} fillLookupUIs(); }
-      if(js.tasks){ teamTasks = js.tasks; if(!OFF_LIVE) try{ localStorage.setItem(LS.tasks, JSON.stringify(teamTasks)); }catch(e){} }
+      if(js.tasks && !taskRows.length){ teamTasks = js.tasks; if(!OFF_LIVE) try{ localStorage.setItem(LS.tasks, JSON.stringify(teamTasks)); }catch(e){} }   // v3.0: the task list is the source once loaded
       if(showToast) toast('קטלוג עודכן — '+items.size+' פריטים');
       return true;
     }catch(e){
@@ -939,7 +1011,10 @@ function show(id){
   $(id).classList.add('active');
   window.scrollTo(0,0);
 }
-function backToScan(){ show('screen-scan'); ensureScanning(); }
+function backToScan(){
+  if(returnScreen==='screen-tasks'){ returnScreen='screen-scan'; show('screen-tasks'); renderTasks(); return; }   // v3.0: back to the task list
+  show('screen-scan'); ensureScanning();
+}
 
 function renderCountedInfo(lt){
   const box=$('countedInfo');
@@ -976,6 +1051,7 @@ async function openItem(it, scannedCode){
   pauseScan();
   currentItem = it; scannedBc = scannedCode||''; currentPhotoB64=null; noPhotoReason=''; supSelected=new Set();
   fieldVals = { ptype:'', brand:'', subbrand:'', correctDept:'' };
+  $('itemBack').textContent = returnScreen==='screen-tasks' ? '→ חזרה למשימות' : '→ חזרה לסריקה';
   $('itemName').textContent = it.name || '(ללא שם)';
   $('itemBc').textContent = (scannedCode && it.barcodes.includes(scannedCode)) ? scannedCode : (it.barcodes[0] || '—');
   $('itemCode').textContent = it.code;
@@ -1017,7 +1093,7 @@ async function openItem(it, scannedCode){
   try{
     const r = await fetchT(API+'?action=item&code='+encodeURIComponent(it.code)+'&token='+encodeURIComponent(TOKEN), {}, 4500);
     const js = await r.json();
-    if(js.ok && currentItem===it && ('task' in js)){ teamTasks[it.code] = js.task || undefined; if(!js.task) delete teamTasks[it.code]; renderTeamTask(js.task||null); }
+    if(js.ok && currentItem===it && js.taskKnown){ teamTasks[it.code] = js.task || undefined; if(!js.task) delete teamTasks[it.code]; renderTeamTask(js.task||null); }   // v3.0: the task list on the phone is the source when the backend's cache is cold
     if(js.ok && js.found && currentItem===it){
       const cur = latest[it.code];
       if(!cur || js.at > cur.at){
@@ -1189,6 +1265,190 @@ async function saveItem(){
   backToScan();
 }
 
+/* ================= TASKS (v3.0) — the team's list on the phone ================= */
+function openTasks(){
+  pauseScan();
+  returnScreen='screen-scan';
+  show('screen-tasks');
+  renderTasks();
+  loadTasks(false);
+  if(!tasksTimer) tasksTimer = setInterval(()=>{ if(!document.hidden && $('screen-tasks').classList.contains('active')) loadTasks(false); }, TASKS_POLL_MS);
+}
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && $('screen-tasks').classList.contains('active')) loadTasks(false); });
+/** the open rows of לצוות from the backend (cached there 60 s); with the stamp of the list we hold, an unchanged list costs nothing */
+async function loadTasks(manual){
+  if(tasksLoading) return;
+  if(!navigator.onLine){ tasksMeta.error='offline'; renderTasks(); return; }
+  tasksLoading = true;
+  $('tasksReload').textContent='…';
+  try{
+    const q = API+'?action=tasks&token='+encodeURIComponent(TOKEN)+(tasksMeta.stamp && taskRows.length ? '&stamp='+encodeURIComponent(tasksMeta.stamp) : '');
+    const r = await fetchT(q, {}, 45000);
+    const js = await r.json();
+    if(!js.ok) throw new Error(js.error||'tasks');
+    tasksMeta.error=''; tasksMeta.fetchedAt=Date.now(); tasksMeta.sheetAt=js.sheetAt||tasksMeta.sheetAt; tasksMeta.sheetAtIso=js.sheetAtIso||tasksMeta.sheetAtIso; tasksMeta.at=js.at||''; tasksMeta.total=js.total||0;
+    if(!js.same){
+      taskRows = Array.isArray(js.rows) ? js.rows : [];
+      tasksMeta.stamp = js.stamp||'';
+      // a row this phone answered is no longer on the list → the answer was consumed (or the row left): forget it.
+      // A row still listed after the sheet's rebuild that followed the answer was NOT consumed (refused, or a fresh task
+      // under the same key): show it again, with whatever the sheet now says on it
+      const live = new Set(taskRows.map(taskKey));
+      const rebuilt = tasksMeta.sheetAtIso ? Date.parse(tasksMeta.sheetAtIso) : 0;
+      for(const k in taskAnswers){
+        const a = taskAnswers[k];
+        if(!live.has(k) || (rebuilt && a.at < rebuilt) || Date.now()-a.at > 6*3600000) delete taskAnswers[k];
+      }
+      teamTasks = {};
+      for(const row of taskRows) if(!teamTasks[row[T.code]]) teamTasks[row[T.code]] = { block:row[T.block], todo:row[T.todo], caspit:row[T.caspit], kind:row[T.kind] };
+      if(!OFF_LIVE) try{ localStorage.setItem(LS.taskRows, JSON.stringify(taskRows)); localStorage.setItem(LS.tasks, JSON.stringify(teamTasks)); saveTaskAnswers(); }catch(e){}
+      if(currentItem && $('screen-item').classList.contains('active')) renderTeamTask(teamTasks[currentItem.code]||null);
+    }
+    if(!OFF_LIVE) try{ localStorage.setItem(LS.taskMeta, JSON.stringify(tasksMeta)); }catch(e){}
+    if(manual) toast(js.same ? 'הרשימה עדכנית' : 'רשימת המשימות עודכנה');
+    if(js.same) renderTasksMeta(); else renderTasks();   // an unchanged list does not rebuild the cards under a person's fingers
+  }catch(e){
+    tasksMeta.error = 'fail';
+    if(manual) toast('הרשימה לא נטענה (גוגל איטי). מציג את העותק שבטלפון.', 'warn', 3500);
+    renderTasksMeta();
+  }finally{
+    tasksLoading=false; $('tasksReload').textContent='⟳';
+  }
+}
+const openTaskRows = () => taskRows.filter(r => { const a = taskAnswers[taskKey(r)]; return !(a && a.hide); });
+function renderTasksMeta(){
+  const open = openTaskRows().length;
+  $('tasksBadge').textContent = open ? String(open) : '';
+  const el=$('tasksMeta');
+  const parts=[ open ? open+' משימות פתוחות' : (taskRows.length || tasksMeta.fetchedAt ? 'אין משימות פתוחות' : 'הרשימה עוד לא נטענה') ];
+  if(tasksMeta.sheetAt){
+    const [d, t] = tasksMeta.sheetAt.split(' ');                       // dd/MM/yyyy HH:mm — the brain's last rebuild of the list
+    const todayDM = new Date().toLocaleDateString('en-GB', {timeZone: TZ, day:'2-digit', month:'2-digit', year:'numeric'});   // dd/MM/yyyy with slashes, like the sheet's stamp
+    parts.push('הרשימה מהגיליון של '+(d===todayDM ? t : d.slice(0,5)+' '+t));
+  }
+  if(tasksMeta.fetchedAt) parts.push((tasksMeta.error ? 'לא מעודכן — נבדק לאחרונה ' : 'נבדק ')+hhmm(new Date(tasksMeta.fetchedAt).toISOString()));
+  if(tasksMeta.error==='offline') parts.push('אין רשת');
+  el.className = tasksMeta.error ? 'stale' : '';
+  el.textContent = parts.join(' · ');
+}
+function renderTasks(){
+  renderTasksMeta();
+  if(!$('screen-tasks').classList.contains('active')) return;
+  if(document.querySelector('#taskList .confirm:not(.hide)')){ tasksDirty = true; return; }   // someone is typing on a card: rebuild when the panel closes
+  tasksDirty = false;
+  const open = openTaskRows();
+  const counts = new Map();
+  for(const r of open){ const b=r[T.block]||'אחר'; counts.set(b, (counts.get(b)||0)+1); }   // the rows come in the sheet's order: smallest block first
+  if(taskBlock && !counts.has(taskBlock)) taskBlock='';
+  const wrap=$('taskBlocks'); wrap.innerHTML='';
+  for(const [val,label,n] of [['', 'הכל', open.length], ...[...counts.entries()].map(([b,n])=>[b,b,n])]){
+    const c=document.createElement('button'); c.className='chip'+(taskBlock===val?' onc':''); c.textContent=label+' ('+n+')';
+    c.onclick=()=>{ closeTaskConfirms(); taskBlock=val; taskShown=60; renderTasks(); };
+    wrap.appendChild(c);
+  }
+  const q=$('taskSearch').value.trim().toLowerCase();
+  let list = open.filter(r => !taskBlock || (r[T.block]||'אחר')===taskBlock);
+  if(q) list = list.filter(r => [r[T.name], r[T.barcode], r[T.code], r[T.location]].some(v => String(v||'').toLowerCase().includes(q)));
+  const box=$('taskList'); box.innerHTML='';
+  if(!list.length){
+    const d=document.createElement('div'); d.className='card'; d.style.color='var(--dim)';
+    d.textContent = taskRows.length ? (open.length ? 'אין משימות שמתאימות לחיפוש.' : 'כל המשימות סומנו 🎉') : tasksMeta.error ? 'הרשימה עוד לא נטענה — ⟳ לנסות שוב.' : tasksMeta.fetchedAt ? 'אין משימות פתוחות 🎉' : 'טוען את הרשימה…';
+    box.appendChild(d); $('taskMore').innerHTML=''; return;
+  }
+  list.slice(0, taskShown).forEach(r => box.appendChild(taskCard(r)));
+  $('taskMore').innerHTML = list.length > taskShown ? '<button class="btn-secondary" onclick="closeTaskConfirms();taskShown+=60;renderTasks()">הצג עוד ('+(list.length-taskShown)+')</button>' : '';
+}
+const COUNT_ASKED = /^ספור כמה יש במדף/m;   // the brain's own test (compute/tasks.ts): a bare tick on such a row is refused — the count is the answer
+const isCountTask = r => COUNT_ASKED.test(r[T.todo]||'') || /ספור|לספור/.test(r[T.todo]||'') || /^ספירה/.test(r[T.block]||'');
+const isRefused = r => /^לא נקלט: /.test(r[T.note]||'');
+function taskFlags(r){
+  const blocks = String(r[T.block]||'').split(' + ').map(b=>b.trim());
+  return TASK_FLAGS.filter(([b])=>blocks.includes(b)).map(([,which,label])=>({which,label}));
+}
+function taskCard(r){
+  const key=taskKey(r), it=items.get(r[T.code]), a=taskAnswers[key];
+  const d=document.createElement('div'); d.className='task'; d.dataset.key=key;
+  const lt=latest[r[T.code]], countedToday = lt && dayOf(lt.at)===todayStr();
+  const img = r[T.image] || driveThumb(r[T.photo]);
+  const sub=[r[T.barcode] ? 'ברקוד '+r[T.barcode] : 'ללא ברקוד', 'קוד '+r[T.code], r[T.location], r[T.caspit]==null ? '' : 'בכספית '+(r[T.caspit]<0 ? '‎'+r[T.caspit] : r[T.caspit])].filter(Boolean).join(' · ');   // a negative card keeps its minus on the left in RTL text
+  d.innerHTML = '<div class="head">'+(img ? '<img alt="" loading="lazy">' : '')+
+    '<div style="flex:1;min-width:0"><div class="nm'+(it?' link':'')+'"></div><div class="sub"></div></div>'+
+    '<span class="chip st"></span></div>'+
+    '<div class="todo"></div><div class="draft d1"></div><div class="draft d2"></div>'+
+    (countedToday ? '<span class="counted"></span>' : '')+
+    '<div class="acts"></div><div class="confirm hide"></div>';
+  // text from the sheet (the brain's words, and what people typed) goes in as TEXT, never as markup
+  if(img){ const im=d.querySelector('img'); im.src=img; im.onerror=()=>{ im.style.display='none'; }; }
+  d.querySelector('.nm').textContent = r[T.name]||r[T.code];
+  d.querySelector('.sub').textContent = sub;
+  d.querySelector('.chip').textContent = r[T.block]||'';
+  d.querySelector('.todo').textContent = r[T.todo]||'';
+  const d1=d.querySelector('.d1'), d2=d.querySelector('.d2');
+  if(r[T.who]||r[T.note]){ d1.textContent = (r[T.who] ? 'מי: '+r[T.who] : '')+(r[T.who]&&r[T.note] ? ' · ' : '')+(r[T.note] ? (isRefused(r) ? '' : 'הערה: ')+r[T.note] : ''); if(isRefused(r)) d1.classList.add('refused'); } else d1.remove();
+  if(a && a.note && !a.hide) d2.textContent = 'ההערה שלך נשלחה: '+a.note; else d2.remove();
+  if(countedToday) d.querySelector('.counted').textContent = '✓ נספר היום '+lt.counted+' ע"י '+(lt.by||'');
+  if(it) d.querySelector('.nm').onclick = ()=>openItemFromTasks(it);
+  const acts=d.querySelector('.acts');
+  const btn=(cls,text,fn)=>{ const b=document.createElement('button'); b.className=cls; b.textContent=text; b.onclick=fn; acts.appendChild(b); return b; };
+  if(it && (isCountTask(r) || r[T.kind]==='ghost')) btn('b-count', '🔢 ספור', ()=>openItemFromTasks(it));       // the count flow answers a count task (the ledger → the sheet)
+  else if(r[T.kind]==='ghost') btn('b-count', '🔢 ספרתי…', ()=>taskConfirm(d, r, 'count'));                       // a card the catalog does not know: the count goes on the row itself
+  // a count row (not a ghost) takes no bare 'בוצע' — the brain refuses it and the person would never know; the count is the answer
+  if((r[T.kind]==='ghost' || !COUNT_ASKED.test(r[T.todo]||'')) && !isRefused(r)) btn('b-done', '✓ בוצע', ()=>taskConfirm(d, r, 'done'));   // a refused row already carries a tick; a count, a flag or a note is the way
+  btn('b-note', '💬 הערה', ()=>taskConfirm(d, r, 'note'));
+  for(const f of taskFlags(r)) btn('b-flag', f.label, ()=>taskConfirm(d, r, 'flag', f));
+  return d;
+}
+function openItemFromTasks(it){ returnScreen='screen-tasks'; openItem(it); }
+function closeTaskConfirms(){ document.querySelectorAll('#taskList .confirm').forEach(x=>{ x.classList.add('hide'); x.innerHTML=''; }); }
+function taskConfirm(d, r, mode, flag){
+  closeTaskConfirms();
+  const box=d.querySelector('.confirm'); box.classList.remove('hide');
+  const name=r[T.name]||r[T.code];
+  const title = mode==='done' ? 'לסמן שבוצע — '+name+'? נרשם על שם '+user+'.' : mode==='note' ? 'הערה על '+name+' (בלי לסמן בוצע):' : mode==='count' ? 'כמה ספרת מ-'+name+'? (נרשם בשורה, הכרטיס לא בקטלוג הספירה)' : 'לסמן "'+flag.label+'" על '+name+'?';
+  const t=document.createElement('div'); t.style.fontSize='14px'; t.textContent=title; box.appendChild(t);
+  let cnt=null;
+  if(mode==='count'){ cnt=document.createElement('input'); cnt.type='number'; cnt.inputMode='numeric'; cnt.min='0'; cnt.step='1'; cnt.placeholder='כמות'; cnt.className='cnt'; box.appendChild(cnt); }
+  const nt=document.createElement('textarea'); nt.rows=2; nt.className='nt'; nt.placeholder = mode==='note' ? 'ההערה' : 'הערה (לא חובה)'; box.appendChild(nt);
+  const acts=document.createElement('div'); acts.className='acts';
+  const ok=document.createElement('button'); ok.className='b-done ok'; ok.textContent = mode==='done' ? '✓ כן, בוצע' : mode==='note' ? 'שמור הערה' : mode==='count' ? 'שמור ספירה' : '✓ כן, לסמן';
+  const cancel=document.createElement('button'); cancel.className='b-note cancel'; cancel.textContent='ביטול';
+  acts.append(ok, cancel); box.appendChild(acts);
+  cancel.onclick=()=>{ box.classList.add('hide'); box.innerHTML=''; if(tasksDirty) renderTasks(); };
+  ok.onclick=()=>{
+    const note=nt.value.trim();
+    const ans={ done: mode==='done', note };
+    if(mode==='note' && !note){ toast('כתבו הערה, או ביטול','warn'); return; }
+    if(mode==='count'){ const v=cnt.value.trim(); if(!/^\d{1,4}$/.test(v) || Number(v) > 5000){ toast('כמות: מספר שלם עד 5000','warn'); return; } ans.counted=Number(v); }
+    if(mode==='flag') ans.flag=flag.which;
+    box.classList.add('hide'); box.innerHTML='';
+    answerTask(r, ans);
+  };
+  (cnt||nt).focus();
+}
+/** the answer goes to the backend as a queued job (offline-safe, repeat-safe by uuid); a hiding answer waits 5 s so 'בטל' can take it back */
+async function answerTask(r, ans){
+  const key=taskKey(r);
+  const hide = !!(ans.done || ans.counted!=null || ans.flag);
+  const job={ action:'answerTask', itemCode:r[T.code], code:r[T.code], kind:r[T.kind], block:r[T.block]||'', done:!!ans.done, note:ans.note||'', build:BUILD };   // the block = the task the person saw
+  if(ans.counted!=null) job.counted=ans.counted;
+  if(ans.flag) job.flag=ans.flag;
+  if(hide) job.notBefore = Date.now()+TASK_UNDO_MS;
+  const id = await enqueue(job);
+  taskAnswers[key] = { ...ans, hide, at:Date.now(), uuid:id };
+  saveTaskAnswers(); renderTasks();
+  const flagLabel = ans.flag ? (TASK_FLAGS.find(f=>f[1]===ans.flag)||[])[2] : '';
+  const what = ans.done ? 'סומן בוצע ✓' : ans.counted!=null ? 'נרשם: ספרתי '+ans.counted : ans.flag ? 'סומן: '+flagLabel : 'ההערה נשלחה';
+  if(hide) toastUndo(what+' — '+(r[T.name]||r[T.code]), async ()=>{ cancelledJobs.add(id); await qDel(id); delete taskAnswers[key]; saveTaskAnswers(); updateQueueBadge(); renderTasks(); toast('בוטל'); });
+  else toast(what);
+}
+function saveTaskAnswers(){ if(!OFF_LIVE) try{ localStorage.setItem(LS.taskAns, JSON.stringify(taskAnswers)); }catch(e){} }
+function toastUndo(msg, onUndo){
+  const t=$('toast'); t.className=''; t.textContent=msg;
+  const b=document.createElement('button'); b.textContent='בטל'; b.onclick=()=>{ t.style.display='none'; clearTimeout(t._h); onUndo(); };
+  t.appendChild(b); t.style.display='block';
+  clearTimeout(t._h); t._h=setTimeout(()=>{ t.style.display='none'; }, TASK_UNDO_MS);
+}
+
 /* ================= PENDING ================= */
 function openPending(code){
   pauseScan(); pendingPhotoB64=null;
@@ -1294,6 +1554,7 @@ function openNameGate(){ renderNameChips(); $('nameInput').value=''; $('nameGate
 async function boot(){
   $('ver').textContent = BUILD;
   db = await idbOpen();
+  if(!OFF_LIVE){ for(const j of await qAll()) if(j.api==='test') await qDel(j.uuid); }   // v3.0: the queue is shared by origin — a test page's job never drains to the live backend
   if(navigator.onLine) $('dot').classList.add('on');
   if(!user){ $('nameGate').style.display='flex'; } else $('userTag').textContent=user;
 
@@ -1304,12 +1565,19 @@ async function boot(){
     if(ltCached) latest = JSON.parse(ltCached) || {};
     if(lkCached){ lookups=JSON.parse(lkCached); fillLookupUIs(); }
     try{ const tk = localStorage.getItem(LS.tasks); if(tk) teamTasks = JSON.parse(tk) || {}; }catch(e){}
+    try{   // v3.0: the task list this phone saw last, and what it answered — shown at once, refreshed from the backend
+      const tr = localStorage.getItem(LS.taskRows); if(tr) taskRows = JSON.parse(tr) || [];
+      const tm = localStorage.getItem(LS.taskMeta); if(tm) tasksMeta = {...tasksMeta, ...(JSON.parse(tm)||{})};
+      const ta = localStorage.getItem(LS.taskAns); if(ta) taskAnswers = JSON.parse(ta) || {};
+      if(!Array.isArray(taskRows)) taskRows = [];
+    }catch(e){ taskRows=[]; taskAnswers={}; }
     if(cached){ buildCatalog(JSON.parse(cached)); }
   }catch(e){}
 
   const age = Date.now() - Number(localStorage.getItem(LS.catTime)||0);
   if(!items.size || age > CATALOG_MAX_AGE_MIN*60000) fetchCatalog(!items.size);
-  setInterval(()=>{ if(navigator.onLine && onScanScreen()) fetchCatalog(false); }, 15*60000);
+  setInterval(()=>{ if(navigator.onLine && onScanScreen()){ fetchCatalog(false); loadTasks(false); } }, 15*60000);
+  renderTasksMeta(); loadTasks(false);   // v3.0: the badge on 📋 — the open rows of לצוות
 
   fetchT(API+'?action=ping', {}, 20000).then(r=>r.json()).then(js=>{ if(js.ok) $('dot').classList.add('on'); }).catch(()=>{});
 
