@@ -360,7 +360,7 @@
     <li><b>דוח הספירה</b> — <a href="./count-report.html" style="color:var(--teal)">התקדמות, פערים, מה נשאר לתקן בכספית, רפאים</a>.</li>
     <li><b>מדריך</b> — <a href="./count-guide.html" style="color:var(--teal)">המדריך המלא עם צילומי מסך</a> · <a href="./count-quickstart.html" style="color:var(--teal)">דף מהיר</a>.</li>
     <li><b>משימה מ"לצוות"</b> — אם לפריט יש שורה ברשימת הצוות, ההוראה מופיעה במסך הפריט (כתום). עושים מה שכתוב וסופרים כרגיל.</li>
-    <li><b>📋 משימות לצוות</b> — כל רשימת "לצוות" בטלפון: לפי סוג משימה, עם חיפוש. על כל משימה: <b>ספור</b> (פותח את הפריט לספירה), <b>בוצע</b>, <b>הערה</b>, או סימון "לא צריך". מה שמסמנים נכתב לגיליון; הרשימה מתעדכנת לבד כל דקה. סימנתם בטעות? "בטל" בהודעה הירוקה, תוך 5 שניות. מתחת לכל משימה הברקוד של הפריט; סורק לייזר לא קורא מסך — 🖨 במסך המשימות פותח <a href="./count-tasks-print.html" style="color:var(--teal)">דף להדפסה</a> עם אותן משימות והברקודים.</li>
+    <li><b>📋 משימות לצוות</b> — כל רשימת "לצוות" בטלפון: לפי סוג משימה, עם חיפוש. על כל משימה: <b>ספור</b> (פותח את הפריט לספירה), <b>בוצע</b>, <b>הערה</b>, או סימון "לא צריך". מה שמסמנים נכתב לגיליון; הרשימה מתעדכנת לבד כל דקה. סימנתם בטעות? "בטל" בהודעה הירוקה, תוך 5 שניות. הרשימה מראה רק משימות שאף אחד לא נגע בהן; מה שסומן, נספר או קיבל הערה יורד ממנה (הצ'יפ "נגעו בהם" מראה אותן). 🖨 פותח <a href="./count-tasks-print.html" style="color:var(--teal)">דף להדפסה</a> עם אותן משימות והברקודים, לסורק הקופה.</li>
   </ol>
 </div>
 
@@ -397,7 +397,7 @@
 
 <script>
 /* ================= CONFIG ================= */
-const BUILD = 'v3.2';
+const BUILD = 'v3.3';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live"
 // ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the
 // address bar, so no link can send the page (and what it shows) to a backend of someone else's
@@ -424,9 +424,10 @@ let teamTasks = {};                          // code → { block, todo, caspit, 
 let taskRows = [];                           // [code, kind, block, barcode, name, location, caspit, image, photo, todo, who, note, n] — the OPEN rows
 let tasksMeta = { stamp:'', sheetAt:'', sheetAtIso:'', at:'', total:0, fetchedAt:0, error:'' };
 let taskAnswers = {};                        // key kind|code → { done, note, counted, flag, hide, at, uuid } — answered from this phone; hidden until the list drops the row
-let taskBlock = '';                          // the block chip chosen ('' = all)
+let taskBlock = '';                          // the block chip chosen ('' = all; 'נגעו' = the touched rows: a name, a note, a refused reply)
+const TOUCHED = 'נגעו';
 let taskShown = 60;
-let tasksTimer = null, tasksLoading = false, tasksDirty = false;   // dirty: a re-render waited while a confirm panel was open
+let tasksLoading = false, tasksDirty = false;   // dirty: a re-render waited while a confirm panel was open
 let returnScreen = 'screen-scan';            // where the item screen's back button goes — the tasks screen opens items too
 const TASKS_POLL_MS = 60000, TASK_UNDO_MS = 5000;
 const T = { code:0, kind:1, block:2, barcode:3, name:4, location:5, caspit:6, image:7, photo:8, todo:9, who:10, note:11, n:12 };
@@ -1281,9 +1282,10 @@ function openTasks(){
   show('screen-tasks');
   renderTasks();
   loadTasks(false);
-  if(!tasksTimer) tasksTimer = setInterval(()=>{ if(!document.hidden && $('screen-tasks').classList.contains('active')) loadTasks(false); }, TASKS_POLL_MS);
 }
-document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && $('screen-tasks').classList.contains('active')) loadTasks(false); });
+// v3.3: the list is checked every minute whichever screen is open (the stamp makes an unchanged list cost ~1 KB), and when the app comes back
+setInterval(()=>{ if(!document.hidden && navigator.onLine) loadTasks(false); }, TASKS_POLL_MS);
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) loadTasks(false); });
 /** the open rows of לצוות from the backend (cached there 60 s); with the stamp of the list we hold, an unchanged list costs nothing */
 async function loadTasks(manual){
   if(tasksLoading) return;
@@ -1324,12 +1326,17 @@ async function loadTasks(manual){
     tasksLoading=false; $('tasksReload').textContent='⟳';
   }
 }
-const openTaskRows = () => taskRows.filter(r => { const a = taskAnswers[taskKey(r)]; return !(a && a.hide); });
+// v3.3 (Chris: "רק להציג את מה שלא נגענו בו"): a row somebody wrote on (a name, a note, the brain's refusal) is touched — out of the
+// working list, under the 'נגעו בהם' chip; a row answered from this phone is hidden at once (until the list confirms)
+const isTouched = r => !!(r[T.who] || r[T.note]);
+const openTaskRows = () => taskRows.filter(r => { const a = taskAnswers[taskKey(r)]; return !(a && (a.hide || a.note)) && !isTouched(r); });
+const touchedTaskRows = () => taskRows.filter(r => { const a = taskAnswers[taskKey(r)]; return !(a && a.hide) && (isTouched(r) || (a && a.note)); });
 function renderTasksMeta(){
   const open = openTaskRows().length;
   $('tasksBadge').textContent = open ? String(open) : '';
   const el=$('tasksMeta');
-  const parts=[ open ? open+' משימות פתוחות' : (taskRows.length || tasksMeta.fetchedAt ? 'אין משימות פתוחות' : 'הרשימה עוד לא נטענה') ];
+  const touchedN = touchedTaskRows().length;
+  const parts=[ (open ? open+' משימות שאף אחד לא נגע בהן' : (taskRows.length || tasksMeta.fetchedAt ? 'אין משימות שלא נגעו בהן' : 'הרשימה עוד לא נטענה'))+(touchedN ? ' · '+touchedN+' נגעו בהן' : '') ];
   if(tasksMeta.sheetAt){
     const [d, t] = tasksMeta.sheetAt.split(' ');                       // dd/MM/yyyy HH:mm — the brain's last rebuild of the list
     const todayDM = new Date().toLocaleDateString('en-GB', {timeZone: TZ, day:'2-digit', month:'2-digit', year:'numeric'});   // dd/MM/yyyy with slashes, like the sheet's stamp
@@ -1345,23 +1352,25 @@ function renderTasks(){
   if(!$('screen-tasks').classList.contains('active')) return;
   if(document.querySelector('#taskList .confirm:not(.hide)')){ tasksDirty = true; return; }   // someone is typing on a card: rebuild when the panel closes
   tasksDirty = false;
-  const open = openTaskRows();
+  const open = openTaskRows(), touched = touchedTaskRows();
   const counts = new Map();
   for(const r of open){ const b=r[T.block]||'אחר'; counts.set(b, (counts.get(b)||0)+1); }   // the rows come in the sheet's order: smallest block first
-  if(taskBlock && !counts.has(taskBlock)) taskBlock='';
+  if(taskBlock && taskBlock!==TOUCHED && !counts.has(taskBlock)) taskBlock='';
   const wrap=$('taskBlocks'); wrap.innerHTML='';
-  for(const [val,label,n] of [['', 'הכל', open.length], ...[...counts.entries()].map(([b,n])=>[b,b,n])]){
+  const chips = [['', 'הכל', open.length], ...[...counts.entries()].map(([b,n])=>[b,b,n])];
+  if(touched.length || taskBlock===TOUCHED) chips.push([TOUCHED, 'נגעו בהם', touched.length]);
+  for(const [val,label,n] of chips){
     const c=document.createElement('button'); c.className='chip'+(taskBlock===val?' onc':''); c.textContent=label+' ('+n+')';
     c.onclick=()=>{ closeTaskConfirms(); taskBlock=val; taskShown=60; renderTasks(); };
     wrap.appendChild(c);
   }
   const q=$('taskSearch').value.trim().toLowerCase();
-  let list = open.filter(r => !taskBlock || (r[T.block]||'אחר')===taskBlock);
+  let list = taskBlock===TOUCHED ? touched : open.filter(r => !taskBlock || (r[T.block]||'אחר')===taskBlock);
   if(q) list = list.filter(r => [r[T.name], r[T.barcode], r[T.code], r[T.location]].some(v => String(v||'').toLowerCase().includes(q)));
   const box=$('taskList'); box.innerHTML='';
   if(!list.length){
     const d=document.createElement('div'); d.className='card'; d.style.color='var(--dim)';
-    d.textContent = taskRows.length ? (open.length ? 'אין משימות שמתאימות לחיפוש.' : 'כל המשימות סומנו 🎉') : tasksMeta.error ? 'הרשימה עוד לא נטענה — ⟳ לנסות שוב.' : tasksMeta.fetchedAt ? 'אין משימות פתוחות 🎉' : 'טוען את הרשימה…';
+    d.textContent = taskRows.length ? (list.length===0 && (q || taskBlock) ? 'אין משימות שמתאימות לחיפוש.' : 'כל המשימות סומנו 🎉') : tasksMeta.error ? 'הרשימה עוד לא נטענה — ⟳ לנסות שוב.' : tasksMeta.fetchedAt ? 'אין משימות פתוחות 🎉' : 'טוען את הרשימה…';
     box.appendChild(d); $('taskMore').innerHTML=''; return;
   }
   list.slice(0, taskShown).forEach(r => box.appendChild(taskCard(r)));
@@ -1383,7 +1392,7 @@ function taskCard(r){
   d.innerHTML = '<div class="head">'+(img ? '<img alt="" loading="lazy">' : '')+
     '<div style="flex:1;min-width:0"><div class="nm'+(it?' link':'')+'"></div><div class="sub"></div></div>'+
     '<span class="chip st"></span></div>'+
-    '<div class="todo"></div><div class="bc"></div><div class="draft d1"></div><div class="draft d2"></div>'+
+    '<div class="todo"></div><div class="draft d1"></div><div class="draft d2"></div>'+
     (countedToday ? '<span class="counted"></span>' : '')+
     '<div class="acts"></div><div class="confirm hide"></div>';
   // text from the sheet (the brain's words, and what people typed) goes in as TEXT, never as markup
@@ -1392,10 +1401,7 @@ function taskCard(r){
   d.querySelector('.sub').textContent = sub;
   d.querySelector('.chip').textContent = r[T.block]||'';
   d.querySelector('.todo').textContent = r[T.todo]||'';
-  // v3.1: the barcode itself, to scan the phone's screen with the register's scanner instead of searching by hand
-  const bcBox=d.querySelector('.bc'), svg=(window.FreakBarcode ? FreakBarcode.svg(r[T.barcode]) : '');
-  if(svg){ bcBox.innerHTML = svg+'<div class="num"></div><div class="hint">לסריקה בקופה · לחיצה מגדילה</div>'; bcBox.querySelector('.num').textContent = r[T.barcode]; bcBox.onclick=()=>bcBox.classList.toggle('big'); }
-  else bcBox.remove();
+  // v3.3: no barcode picture on the phone — the register's scanner reads paper, not a screen (the printable sheet has them)
   const d1=d.querySelector('.d1'), d2=d.querySelector('.d2');
   if(r[T.who]||r[T.note]){ d1.textContent = (r[T.who] ? 'מי: '+r[T.who] : '')+(r[T.who]&&r[T.note] ? ' · ' : '')+(r[T.note] ? (isRefused(r) ? '' : 'הערה: ')+r[T.note] : ''); if(isRefused(r)) d1.classList.add('refused'); } else d1.remove();
   if(a && a.note && !a.hide) d2.textContent = 'ההערה שלך נשלחה: '+a.note; else d2.remove();
