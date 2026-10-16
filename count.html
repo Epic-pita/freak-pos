@@ -152,6 +152,8 @@
   .task .bc .num{font-family:var(--mono); color:#000; font-size:13px; letter-spacing:2px; margin-top:3px}
   .task .bc .hint{font-size:11px; color:#555; margin-top:1px}
   .task .draft{font-size:13px; color:#9fd8ea; margin-top:6px}
+  .divider{display:flex; align-items:center; gap:10px; color:var(--dim); font-size:13px; margin:14px 0 10px}
+  .divider::before,.divider::after{content:''; flex:1; border-top:1px solid var(--line)}
   .task .draft.refused{color:#f0b4ac}
   .task .acts{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap}
   .task .acts button{flex:1; padding:11px 8px; font-size:15px; min-width:96px}
@@ -397,7 +399,7 @@
 
 <script>
 /* ================= CONFIG ================= */
-const BUILD = 'v3.3';
+const BUILD = 'v3.4';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live"
 // ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the
 // address bar, so no link can send the page (and what it shows) to a backend of someone else's
@@ -1367,13 +1369,21 @@ function renderTasks(){
   const q=$('taskSearch').value.trim().toLowerCase();
   let list = taskBlock===TOUCHED ? touched : open.filter(r => !taskBlock || (r[T.block]||'אחר')===taskBlock);
   if(q) list = list.filter(r => [r[T.name], r[T.barcode], r[T.code], r[T.location]].some(v => String(v||'').toLowerCase().includes(q)));
+  // v3.4: the printed sheet's order — the rows with a barcode to scan first, then the rows to find by name; each part keeps the
+  // sheet's block order (a stable partition), so the phone and the paper walk the same way
+  const scannable = r => !!(r[T.barcode] && window.FreakBarcode && FreakBarcode.bits(r[T.barcode]));
+  const withBc = list.filter(scannable), noBc = list.filter(r => !scannable(r));
+  list = withBc.concat(noBc);
   const box=$('taskList'); box.innerHTML='';
   if(!list.length){
     const d=document.createElement('div'); d.className='card'; d.style.color='var(--dim)';
     d.textContent = taskRows.length ? (list.length===0 && (q || taskBlock) ? 'אין משימות שמתאימות לחיפוש.' : 'כל המשימות סומנו 🎉') : tasksMeta.error ? 'הרשימה עוד לא נטענה — ⟳ לנסות שוב.' : tasksMeta.fetchedAt ? 'אין משימות פתוחות 🎉' : 'טוען את הרשימה…';
     box.appendChild(d); $('taskMore').innerHTML=''; return;
   }
-  list.slice(0, taskShown).forEach(r => box.appendChild(taskCard(r)));
+  list.slice(0, taskShown).forEach((r, i) => {
+    if(withBc.length && i === withBc.length){ const dv=document.createElement('div'); dv.className='divider'; dv.textContent='בלי ברקוד — לחפש בקופה לפי השם ('+noBc.length+')'; box.appendChild(dv); }
+    box.appendChild(taskCard(r));
+  });
   $('taskMore').innerHTML = list.length > taskShown ? '<button class="btn-secondary" onclick="closeTaskConfirms();taskShown+=60;renderTasks()">הצג עוד ('+(list.length-taskShown)+')</button>' : '';
 }
 const COUNT_ASKED = /^ספור כמה יש במדף/m;   // the brain's own test (compute/tasks.ts): a bare tick on such a row is refused — the count is the answer
