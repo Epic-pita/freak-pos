@@ -18,6 +18,10 @@
   #bar button.primary{background:var(--teal); color:#fff; border-color:var(--teal); font-weight:700}
   #bar input{font-family:inherit; font-size:14px; border:1px solid var(--line); border-radius:8px; padding:8px 10px; min-width:220px}
   #meta{width:100%; font-size:13px; color:var(--dim)}
+  .sw{font-size:13px; display:flex; align-items:center; gap:6px; cursor:pointer}
+  .sw input{width:16px; height:16px}
+  h2.part{grid-column:1 / -1; font-size:15px; margin:4mm 0 0; padding:2mm 3mm; background:#222; color:#fff; border-radius:1.5mm; break-after:avoid; -webkit-print-color-adjust:exact; print-color-adjust:exact}
+  h2.part:first-child{margin-top:0}
   #chips{width:100%; display:flex; flex-wrap:wrap; gap:6px}
   .chip{border:1px solid var(--line); background:#fff; border-radius:20px; padding:5px 12px; font-size:13px; cursor:pointer}
   #bar .chip.on{background:var(--teal); color:#fff; border-color:var(--teal)}   /* beats #bar button */
@@ -51,6 +55,8 @@
   <button class="primary" onclick="window.print()">🖨 הדפס</button>
   <button id="reload" onclick="load(true)">⟳ רענן</button>
   <input id="q" placeholder="חיפוש: שם / ברקוד / קוד / מיקום" oninput="render()">
+  <label class="sw"><input type="checkbox" id="bcFirst" checked onchange="render()"> ברקודים קודם, אחר כך בלי ברקוד</label>
+  <label class="sw"><input type="checkbox" id="withTouched" onchange="render()"> כולל משימות שמישהו כבר כתב עליהן</label>
   <div id="meta">טוען את הרשימה…</div>
   <div id="chips"></div>
 </div>
@@ -60,7 +66,7 @@
   <div id="empty" class="hide"></div>
 </div>
 <script>
-const BUILD = 'p1';
+const BUILD = 'p2';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';
 const DEPLOYMENTS = { live: LIVE_API, test: 'https://script.google.com/macros/s/AKfycbwem7TUlt0TW2QJHqJ8c4G7ZMkDm9zaYe97mqsI3bzTeyOq0eonV3J2W6bD9_udZft2/exec' };
 const PARAMS = new URLSearchParams(location.search);
@@ -69,6 +75,8 @@ const TOKEN = 'freak-count-T9tfjr2xKzlZ6ylhQM96Fg';
 const T = { code:0, kind:1, block:2, barcode:3, name:4, location:5, caspit:6, image:7, photo:8, todo:9, who:10, note:11, n:12 };
 const $ = id => document.getElementById(id);
 let rows = [], meta = {}, block = PARAMS.get('block') || '';
+const drawable = r => !!(r[T.barcode] && FreakBarcode.bits(r[T.barcode]));   // a barcode the scanner can read off the paper
+const touched = r => !!(r[T.who] || r[T.note]);                               // somebody already wrote on the row (the phone's rule)
 function fetchT(url, ms){ const c=new AbortController(); const t=setTimeout(()=>c.abort(), ms); return fetch(url, {signal:c.signal}).finally(()=>clearTimeout(t)); }
 async function load(manual){
   $('reload').disabled = true;
@@ -86,27 +94,34 @@ async function load(manual){
 }
 function render(){
   const q = $('q').value.trim().toLowerCase();
+  const bcFirst = $('bcFirst').checked, withTouched = $('withTouched').checked;
+  const base = withTouched ? rows : rows.filter(r => !touched(r));
   const counts = new Map();
-  for(const r of rows){ const b=r[T.block]||'אחר'; counts.set(b, (counts.get(b)||0)+1); }
+  for(const r of base){ const b=r[T.block]||'אחר'; counts.set(b, (counts.get(b)||0)+1); }
   if(block && !counts.has(block)) block = '';
   const chips=$('chips'); chips.innerHTML='';
-  for(const [val,label,n] of [['', 'הכל', rows.length], ...[...counts.entries()].map(([b,n])=>[b,b,n])]){
+  for(const [val,label,n] of [['', 'הכל', base.length], ...[...counts.entries()].map(([b,n])=>[b,b,n])]){
     const c=document.createElement('button'); c.className='chip'+(block===val?' on':''); c.textContent=label+' ('+n+')';
     c.onclick=()=>{ block=val; render(); }; chips.appendChild(c);
   }
-  let list = rows.filter(r => !block || (r[T.block]||'אחר')===block);
+  let list = base.filter(r => !block || (r[T.block]||'אחר')===block);
   if(q) list = list.filter(r => [r[T.name], r[T.barcode], r[T.code], r[T.location]].some(v => String(v||'').toLowerCase().includes(q)));
-  const drawable = list.filter(r => r[T.barcode] && FreakBarcode.bits(r[T.barcode])).length;
-  $('meta').textContent = list.length+' משימות'+(block?' · '+block:'')+(q?' · "'+q+'"':'')+' · '+drawable+' עם ברקוד להדפסה · הרשימה מהגיליון של '+(meta.sheetAt||'?')+' · נטען '+(meta.at ? meta.at.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}) : '');
+  const nBc = list.filter(drawable).length, nTouched = rows.length - base.length;
+  $('meta').textContent = list.length+' משימות'+(block?' · '+block:'')+(q?' · "'+q+'"':'')+' · '+nBc+' עם ברקוד לסריקה · '+(list.length-nBc)+' בלי'+(nTouched?' · '+nTouched+' שמישהו כבר כתב עליהן לא בדף':'')+' · הרשימה מהגיליון של '+(meta.sheetAt||'?')+' · נטען '+(meta.at ? meta.at.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}) : '');
   $('headTitle').textContent = 'משימות לצוות'+(block?' — '+block:'')+' · '+list.length;
   $('headStamp').textContent = 'הרשימה מהגיליון של '+(meta.sheetAt||'?')+' · הודפס '+new Date().toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
   const grid=$('grid'); grid.innerHTML='';
   $('empty').style.display = list.length ? 'none' : 'block';
   $('empty').textContent = rows.length ? 'אין משימות שמתאימות לסינון.' : '';
-  let cur = null;
-  for(const r of list){
+  // p2: two parts — the rows to scan first, then the rows to find by name — each in the sheet's block order
+  const parts = bcFirst ? [['עם ברקוד — לסרוק בקופה', list.filter(drawable)], ['בלי ברקוד — לחפש בקופה לפי השם', list.filter(r => !drawable(r))]] : [['', list]];
+  for(const [title, part] of parts){
+    if(!part.length) continue;
+    if(title){ const h=document.createElement('h2'); h.className='part'; h.textContent = title+' ('+part.length+')'; grid.appendChild(h); }
+    let cur = null;
+    for(const r of part){
     const b = r[T.block]||'אחר';
-    if(b !== cur){ cur = b; const h=document.createElement('h2'); h.className='block'; h.textContent = b+' ('+(list.filter(x=>(x[T.block]||'אחר')===b).length)+')'; grid.appendChild(h); }
+    if(b !== cur){ cur = b; const h=document.createElement('h2'); h.className='block'; h.textContent = b+' ('+(part.filter(x=>(x[T.block]||'אחר')===b).length)+')'; grid.appendChild(h); }
     const d=document.createElement('div'); d.className='card';
     const nm=document.createElement('div'); nm.className='nm'; nm.textContent = r[T.name]||r[T.code];
     const sub=document.createElement('div'); sub.className='sub'; sub.textContent = ['קוד '+r[T.code], r[T.location], r[T.caspit]==null ? '' : 'בכספית '+r[T.caspit]].filter(Boolean).join(' · ');
@@ -117,6 +132,7 @@ function render(){
     if(svg){ const bc=document.createElement('div'); bc.className='bc'; bc.innerHTML = svg; const num=document.createElement('div'); num.className='num'; num.textContent = r[T.barcode]; bc.appendChild(num); d.appendChild(bc); }
     else { const none=document.createElement('div'); none.className='none'; none.textContent = r[T.barcode] ? 'ברקוד שאי אפשר לצייר: '+r[T.barcode] : 'ללא ברקוד — לחפש בקופה לפי השם'; d.appendChild(none); }
     grid.appendChild(d);
+    }
   }
 }
 load(false);
