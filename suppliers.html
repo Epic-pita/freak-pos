@@ -422,7 +422,7 @@ function renderOrder(){
     const ap = approvedIn(s), b = bsk.find(x => x.sup === s), total = b ? b.total : ap.reduce((a,l)=>a+(l.total||0),0);
     const others = ap.filter(l => l.source !== 'מוצרים');
     html.push('<div class="group"><div class="ghead"><div class="gt"><span class="gn">'+esc(s)+'</span><span class="gs">'+(leadOf(s)!=null?'אספקה '+esc(leadOf(s))+' ימים · ':'')+rs.length+' הצעות</span></div>' +
-      '<div class="gsum">'+(ap.length ? 'אושרו <b>'+ap.length+'</b> שורות · <b>'+ils(total)+'</b>' + (b && b.aboveMin && b.aboveMin !== 'לא הוגדר' ? ' · מינימום: '+esc(b.aboveMin) : '') : 'עוד לא אושר כלום')+'</div>' +
+      '<div class="gsum">'+(ap.length ? 'אושרו <b>'+ap.length+'</b> שורות · <b>'+(total > 0 ? ils(total) : 'בלי מחיר')+'</b>' + (total > 0 && ap.some(l => !(l.total > 0)) ? ' (חלק בלי מחיר)' : '') + (b && b.aboveMin && b.aboveMin !== 'לא הוגדר' ? ' · מינימום: '+esc(b.aboveMin) : '') : 'עוד לא אושר כלום')+'</div>' +
       (others.length ? '<div class="other-lines">מלשוניות הספק: '+others.map(l=>esc(l.name)+' ×'+l.qty).join(' · ')+'</div>' : '') +
       (ap.length ? '<div class="gbtns"><button data-doc="'+esc(s)+'">📄 מסמך הזמנה</button><button data-send="'+esc(s)+'">✓ סמן נשלח</button></div>' : '') + '</div>');
     const n = shown['order|'+s] || (sub ? 200 : 8);
