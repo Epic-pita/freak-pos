@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1a20">
+<link rel="manifest" href="./suppliers.webmanifest">
+<link rel="icon" href="./icon-192.png">
+<title>FREAK — ספקים</title>
+<style>
+  :root{
+    --bg:#0f1a20; --surface:#16262e; --surface2:#1d323c; --line:#2a4450;
+    --teal:#3d7a94; --teal-hi:#5aa3c2; --green:#2E7D32; --green-hi:#43a047; --amber:#c77f14;
+    --red:#c0392b; --red-soft:#3a1512; --ink:#e8eef1; --dim:#8fa6b0; --mono:'Roboto Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0; background:var(--bg); color:var(--ink)}
+  body{font-family:-apple-system,'Segoe UI',Roboto,'Heebo',Arial,sans-serif; font-size:16px; line-height:1.4; padding-bottom:40px}
+  button{font-family:inherit; font-size:15px; border:none; border-radius:10px; cursor:pointer; color:var(--ink); background:var(--surface2); padding:10px 12px}
+  button:disabled{opacity:.45; cursor:default}
+  input,select,textarea{font-family:inherit; font-size:16px; color:var(--ink); background:var(--surface2); border:1px solid var(--line); border-radius:10px; padding:10px; width:100%}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--teal)}
+  a{color:var(--teal-hi)}
+  .hide{display:none !important}
+  .wrap{max-width:640px; margin:0 auto; padding:0 12px}
+
+  #top{position:sticky; top:0; z-index:50; background:var(--surface); border-bottom:1px solid var(--line)}
+  #topline{display:flex; align-items:center; gap:10px; padding:9px 12px; max-width:640px; margin:0 auto}
+  #dot{width:10px; height:10px; border-radius:50%; background:var(--red); flex:none}
+  #dot.on{background:var(--green-hi)}
+  #title{font-weight:700; font-size:16px}
+  #ver{font-size:11px; color:var(--dim)}
+  #upd{margin-inline-start:auto; font-size:12px; color:var(--dim); text-align:end}
+  #upd.stale{color:#ffd479}
+  #queueBadge{background:var(--amber); color:#000; font-size:12px; font-weight:700; border-radius:9px; padding:2px 8px}
+  #refreshBtn{padding:7px 11px; font-size:15px}
+  #tabs{display:flex; gap:6px; overflow-x:auto; padding:8px 12px 10px; max-width:640px; margin:0 auto; scrollbar-width:none}
+  #tabs::-webkit-scrollbar{display:none}
+  .tab{flex:none; background:var(--surface2); border:1px solid var(--line); border-radius:20px; padding:7px 12px; font-size:14px; white-space:nowrap}
+  .tab.on{background:var(--teal); border-color:var(--teal)}
+  .tab .n{font-family:var(--mono); font-size:12px; margin-inline-start:4px; opacity:.85}
+  .tab .n.red{color:#ffb4a8}
+
+  .banner{border-radius:12px; padding:10px 12px; font-size:14px; margin:10px 0}
+  .banner.red{background:var(--red-soft); color:#f0b4ac; border:1px solid var(--red)}
+  .banner.amber{background:#3a2c10; color:#ffd479; border:1px solid #5a4418}
+  .banner.info{background:#10303a; color:#9fd8ea; border:1px solid #1f5a6a}
+  .banner b{color:var(--ink)}
+  .banner .row{margin-top:8px}
+
+  .tools{display:flex; gap:8px; margin:10px 0}
+  .tools input{flex:1; padding:8px 10px; font-size:15px}
+  .chipline{display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 2px}
+  .chip{background:var(--surface2); border:1px solid var(--line); border-radius:16px; padding:5px 10px; font-size:13px}
+  .chip.on{background:var(--teal); border-color:var(--teal)}
+
+  .group{margin:14px 0 6px}
+  .ghead{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px}
+  .ghead .gt{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap}
+  .ghead .gn{font-size:18px; font-weight:700}
+  .ghead .gs{font-size:13px; color:var(--dim)}
+  .ghead .gsum{margin-top:6px; font-size:14px}
+  .ghead .gsum b{font-family:var(--mono)}
+  .ghead .gbtns{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap}
+  .ghead .gbtns button{flex:1; min-width:130px}
+  .other-lines{font-size:13px; color:var(--dim); margin-top:6px}
+
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px; margin:8px 0}
+  .card.ok{border-color:var(--green)}
+  .card.pend{opacity:.6}
+  .card.urgent{border-inline-start:4px solid var(--red)}
+  .card .nm{font-size:16px; font-weight:700}
+  .card .cd{font-family:var(--mono); font-size:12px; color:var(--dim); margin-inline-start:6px; font-weight:400}
+  .meta{display:flex; flex-wrap:wrap; gap:4px 14px; color:var(--dim); font-size:13px; margin-top:4px}
+  .meta b{color:var(--ink); font-family:var(--mono); font-weight:600}
+  .rec{margin-top:8px; font-size:14px}
+  .rec b{color:var(--teal-hi)}
+  .warn{color:#ffb4a8; font-size:13px; margin-top:6px}
+  .why{color:var(--dim); font-size:12px; margin-top:4px}
+  .offers{width:100%; border-collapse:collapse; margin-top:8px; font-size:13px}
+  .offers td{padding:4px 2px; border-top:1px solid var(--line)}
+  .offers td.p{font-family:var(--mono); text-align:end}
+  .offers tr.out td{color:var(--dim); text-decoration:line-through}
+  .offers tr.best td{color:#9fe0b0}
+  .acts{display:flex; gap:6px; margin-top:10px; flex-wrap:wrap}
+  .acts button{flex:1; min-width:92px; padding:10px 8px; font-size:14px}
+  .acts .go{background:var(--green); font-weight:700}
+  .acts .alt{background:var(--surface2); border:1px solid var(--teal)}
+  .acts .no{background:none; border:1px solid var(--line); color:var(--dim)}
+  .okline{margin-top:8px; background:#10301c; color:#9fe0b0; border-radius:10px; padding:8px 10px; font-size:14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .okline b{font-family:var(--mono)}
+  .okline button{padding:6px 10px; font-size:13px; margin-inline-start:auto}
+  .pendline{margin-top:8px; font-size:13px; color:#ffd479}
+  .editor{margin-top:10px; background:var(--surface2); border-radius:12px; padding:10px}
+  .editor label{display:block; font-size:12px; color:var(--dim); margin:8px 0 4px}
+  .editor .row{display:flex; gap:8px}
+  .editor .row > *{flex:1}
+  .opt{display:block; width:100%; text-align:start; margin-top:6px; background:var(--surface2); border:1px solid var(--line); padding:10px}
+  .opt .s{font-size:12px; color:var(--dim)}
+  .opt.out{opacity:.6}
+  .more{display:block; width:100%; margin:8px 0; background:none; border:1px dashed var(--line); color:var(--dim)}
+  .empty{color:var(--dim); text-align:center; padding:30px 10px; font-size:15px}
+
+  #sheet{position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:100; display:none; align-items:flex-end; justify-content:center}
+  #sheet.on{display:flex}
+  #sheetBox{background:var(--surface); border-radius:16px 16px 0 0; width:100%; max-width:640px; max-height:88vh; overflow-y:auto; padding:16px 14px 24px; border-top:1px solid var(--line)}
+  #sheetBox h3{margin:0 0 6px; font-size:18px}
+  .pl{border-top:1px solid var(--line); padding:7px 0; font-size:14px}
+  .pl .s{font-size:12px; color:var(--dim)}
+  .pl.refuse{color:#ffb4a8}
+  .bigbtn{width:100%; padding:14px; font-size:17px; font-weight:700; margin-top:10px}
+  .bigbtn.go{background:var(--green)}
+  .bigbtn.ghost{background:none; border:1px solid var(--line); color:var(--dim); font-weight:400}
+
+  #toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--green); color:#fff; padding:12px 18px; border-radius:12px; font-size:15px; font-weight:700;
+         z-index:200; display:none; box-shadow:0 4px 20px rgba(0,0,0,.5); max-width:92vw; text-align:center; align-items:center; gap:12px}
+  #toast.err{background:var(--red)} #toast.warn{background:var(--amber); color:#000}
+  #toast button{background:rgba(0,0,0,.25); padding:6px 12px; font-size:14px; color:inherit}
+  #gate{max-width:480px; margin:60px auto; padding:0 20px}
+  #gate h1{color:var(--teal-hi); font-size:24px}
+  #gate p{color:var(--dim); line-height:1.6}
+  #failedBox{background:var(--red-soft); border:1px solid var(--red); border-radius:10px; padding:10px; font-size:13px; margin:10px 0; color:#f0b4ac}
+  #foot{color:var(--dim); font-size:12px; text-align:center; margin-top:24px}
+</style>
+</head>
+<body>
+<div id="gate" class="hide">
+  <h1>FREAK — משימות מול הספקים</h1>
+  <p>המסך הזה אישי. פותחים אותו פעם אחת מהקישור האישי, ומאז הוא זוכר.</p>
+  <p>אם יש לך את המפתח עצמו, אפשר להדביק אותו כאן:</p>
+  <input id="keyIn" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="מפתח">
+  <button id="keyBtn" class="bigbtn go">שמור והמשך</button>
+  <p id="gateMsg"></p>
+</div>
+
+<div id="app" class="hide">
+  <div id="top">
+    <div id="topline">
+      <span id="dot"></span><span id="title">ספקים</span><span id="ver"></span>
+      <span id="queueBadge" class="hide">0</span>
+      <span id="upd"></span>
+      <button id="refreshBtn" title="רענון">⟳</button>
+    </div>
+    <div id="tabs"></div>
+  </div>
+  <div class="wrap">
+    <div id="banners"></div>
+    <div id="failedBox" class="hide"></div>
+    <div class="tools"><input id="q" type="search" placeholder="חיפוש לפי שם או קוד"></div>
+    <div id="sub"></div>
+    <div id="list"></div>
+    <div id="foot"></div>
+  </div>
+</div>
+
+<div id="sheet"><div id="sheetBox"></div></div>
+<div id="toast"><span id="toastMsg"></span><button id="toastUndo" class="hide">בטל</button></div>
+
+<script>
+'use strict';
+/* ================= CONFIG ================= */
+const BUILD = 's1.1';
+// the two backends (Apps Script deployments of the catalog's script); ?api=test is the TEST one (it writes only to the TEST copies),
+// ?api=local only on this PC (the bench). Never a URL from the address bar.
+const LIVE_API = 'https://script.google.com/macros/s/AKfycbyCy0D7QPJNjpVIPP7NkNC38rkACV0t-O1C_m-SDsBUTFysG-Q0QUjtDPjI3Go8iYUZfw/exec';   // LIVE deployment (version 7, 18/10)
+const TEST_API = 'https://script.google.com/macros/s/AKfycbyzPhJi5UxWBqaJ7hlorCI-iiT_qprXfK8XHE3BHXWVGmNVrD7JWmMiiG5BldURbjPl8A/exec';   // TEST deployment (18/10)
+const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+const MODE = (()=>{ const a = new URLSearchParams(location.search).get('api'); return a==='test' ? 'test' : a==='local' && LOCAL ? 'local' : 'live'; })();
+const API = MODE==='test' ? TEST_API : MODE==='local' ? location.origin + '/api' : LIVE_API;
+const ENV = MODE==='live' ? '' : 'test';
+const TZ = 'Asia/Jerusalem';
+const LS = { key: 'fs_key', data: 'fs_data_'+MODE, failed: 'fs_failed_'+MODE, tab: 'fs_tab', pend: 'fs_pend_'+MODE };
+const POLL_MS = 60000, UNDO_MS = 5000, PAGE = 25;
+const TABS = [
+  ['order', 'להזמין'], ['transit', 'בדרך'], ['out', 'אזל אצל הספק'], ['nosup', 'בלי ספק'], ['noprice', 'בלי מחיר'], ['snack', 'חטיפים'] ];
+const COMMON_SUPS = ['Kaissa', 'ICO', 'Glassstaff', 'הקובייה', 'ACD', 'School market', 'VFI', 'PSI', 'Asmodee', 'סינאפסה', 'Breaking Games'];
+
+/* ================= STATE ================= */
+let KEY = '';
+let data = null;            // the last tasks answer: { rows, overlay, basket, transit, answers, lost, suppliers, lead, busy, stamp, at, built }
+let tab = localStorage.getItem(LS.tab) || 'order';
+let query = '', shown = {}, openEditor = '', sub = '';
+let pend = {};              // key → { ans, val, at } — answered on this phone, not yet seen in the list
+let loading = false, lastOk = 0, db = null, syncing = false;
+const cancelled = new Set();
+
+/* ================= UTIL ================= */
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&3|8)).toString(16)}));
+const ils = n => n==null||n==='' ? '' : '₪' + Number(n).toLocaleString('he-IL', {maximumFractionDigits: Number(n) < 100 ? 2 : 0});
+const num = n => n==null||n==='' ? '—' : Number(n).toLocaleString('he-IL', {maximumFractionDigits:1});
+const hhmm = iso => { const d=new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString('he-IL',{timeZone:TZ,hour:'2-digit',minute:'2-digit'}); };
+const ddmm = iso => { const d=new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('he-IL',{timeZone:TZ,day:'2-digit',month:'2-digit'}); };
+function toast(msg, cls='', ms=2600, undo=null){
+  const t=$('toast'); $('toastMsg').textContent=msg; t.className=cls; t.style.display='flex';
+  const u=$('toastUndo'); u.classList.toggle('hide', !undo); u.onclick = undo ? ()=>{ undo(); t.style.display='none'; } : null;
+  clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', ms);
+}
+function fetchT(url, opts, ms){ const c=new AbortController(); const t=setTimeout(()=>c.abort(), ms); return fetch(url, {...opts, signal:c.signal}).finally(()=>clearTimeout(t)); }
+async function post(body, ms=45000){
+  // Google sometimes turns the POST into a bare GET (doPost never runs; the backend answers GET_NOT_POST): the same request again
+  for (let i = 0; ; i++){
+    const r = await fetchT(API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ k: KEY, env: ENV || undefined, build: BUILD, ...body }) }, ms);
+    const js = await r.json();
+    if (!(js && js.error === 'GET_NOT_POST') || i >= 3) return js;
+  }
+}
+const sentNow = r => !!(data && data.sent && data.sent[r.code] && !((data.overlay.p[r.code]||{}).qty > 0));
+// the sheet's "ספק בפועל": the pick, else the recommendation, else the real supplier (a supplier typed on ספק אמיתי first)
+const NOT_A_SUP = { '': true, '(אין)': true, 'לא ידוע': true, 'FREAK TLV': true };
+function effOf(r){
+  const o = (data && data.overlay && data.overlay.p[r.code]) || {}, re = data && data.overlay && data.overlay.real && data.overlay.real[r.code];
+  const real = (re && re.other) || (r.d && r.d.real) || '';
+  return o.pick || o.rec || (r.d && r.d.rec) || (!NOT_A_SUP[real] ? real : '');
+}
+function costOf(r, s){ const x = ((r.d && r.d.offers) || []).find(o => o.s === s); return x ? x.ils : null; }
+function supOf(r){ return effOf(r) || r.sup || '(ללא ספק)'; }
+function leadOf(s){ return data && data.lead ? data.lead[s] : null; }
+function latest(key){ return (data && data.answers && data.answers[key]) || null; }
+const FINAL_OK = { 'נכתב': true, 'כבר': true, 'נרשם': true };   // anything else (השתנה, נכשל, לא נמצא, נכתב חלקית …) leaves the task open
+function snoozed(key){ const a = latest(key); return !!(a && a.until && new Date(a.until) > new Date() && FINAL_OK[a.res]); }
+function saveLS(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function loadLS(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
+
+/* ================= KEY ================= */
+function takeKeyFromHash(){
+  const m = /[#&]k=([\w\-]{20,100})/.exec(location.hash);
+  if (m){ try{ localStorage.setItem(LS.key, m[1]); }catch(e){} history.replaceState(null, '', location.pathname + location.search); }
+}
+async function checkKey(k){
+  KEY = k;
+  try{ const js = await post({ action:'ping' }, 30000); return js && js.ok ? js : js; }catch(e){ return { ok:false, error:'NET' }; }
+}
+
+/* ================= QUEUE (IndexedDB, survives a closed app; repeat-safe by uuid) ================= */
+function idb(){ return new Promise((res,rej)=>{ const r=indexedDB.open('freak-suppliers-v1',1); r.onupgradeneeded=()=>r.result.createObjectStore('q',{keyPath:'uuid'}); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+function qPut(j){ return new Promise((res,rej)=>{ const tx=db.transaction('q','readwrite'); tx.objectStore('q').put(j); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }
+function qAll(){ return new Promise((res,rej)=>{ const r=db.transaction('q').objectStore('q').getAll(); r.onsuccess=()=>res(r.result.sort((a,b)=>a.ts-b.ts)); r.onerror=()=>rej(r.error); }); }
+function qDel(id){ return new Promise((res,rej)=>{ const tx=db.transaction('q','readwrite'); tx.objectStore('q').delete(id); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }
+async function badge(){ const n=(await qAll()).filter(j=>j.mode===MODE).length; const b=$('queueBadge'); b.textContent=n; b.classList.toggle('hide', !n); }
+// the server's rule for typed text (Api.js SAFE_TEXT): one line, at most 300 characters, no < >, not starting with =
+const TEXT_RULE = 'הטקסט לא יכול להתחיל ב-= או להכיל < >, ועד 300 תווים';
+const textOk = t => t === '' || (t.length <= 300 && !/^=|[<>\u0000-\u001f]/.test(t));
+/** an answer: shown at once on this phone, sent from the queue; a hiding answer waits 5 s so "בטל" can take it back */
+async function answer(r, ans, value, note, label, hides){
+  const job = { uuid: uuid(), ts: Date.now(), mode: MODE, att: 0, soft: 0, notBefore: hides ? Date.now() + UNDO_MS : 0,
+    body: { action:'answer', kind: r.kind, key: r.key, code: r.code || '', sup: r.sup || '', answer: ans, value: value || {}, note: note || '' } };
+  pend[r.key] = { ans, value: value || {}, at: Date.now(), uuid: job.uuid, label }; saveLS(LS.pend, pend);
+  if (!db){ render(); return sendNow(job, label); }   // no storage on this phone: sent at once, a failure goes to the "not saved" list
+  await qPut(job); badge(); render();
+  if (hides) toast(label, '', UNDO_MS, async ()=>{ cancelled.add(job.uuid); await qDel(job.uuid); delete pend[r.key]; saveLS(LS.pend, pend); badge(); render(); });
+  else toast(label);
+  setTimeout(sync, hides ? UNDO_MS + 200 : 50);
+}
+// refused for good (the answer itself is wrong): everything else is retried, with growing pauses, for up to a day
+const HARD = /^(bad |missing uuid|unknown action|nothing to write|BAD_KEY)/;
+function notSaved(job, err){
+  const f = loadLS(LS.failed, []);
+  f.push({ key: job.body.key, what: pend[job.body.key] ? pend[job.body.key].label : job.body.answer, err: err || '?', body: job.body, at: Date.now() });
+  saveLS(LS.failed, f.slice(-40)); delete pend[job.body.key]; saveLS(LS.pend, pend); renderFailed(); render();
+}
+async function afterOk(job, js){
+  if (js.result === 'changed'){
+    const now = js.results && js.results[0] ? js.results[0].now : '';
+    toast('בגיליון כבר כתוב משהו אחר' + (now!=='' ? ' ('+now+')' : '') + ' — לא דרסתי. לבדוק שוב.', 'warn', 6000);
+    delete pend[job.body.key]; saveLS(LS.pend, pend);
+  }
+  if (js.result === 'partial') toast('נשמר רק חלק: בגיליון כבר היה כתוב משהו אחר באחד התאים — לבדוק', 'warn', 6000);
+  if (js.result === 'gone'){ toast('הפריט כבר לא בלשונית — לא נכתב', 'warn', 4000); delete pend[job.body.key]; saveLS(LS.pend, pend); }
+  setTimeout(()=>load(false), 600);
+}
+async function sendNow(job, label){
+  try{ const js = await post({ ...job.body, uuid: job.uuid }, 60000);
+    if (js && js.ok){ toast(label); return afterOk(job, js); }
+    notSaved(job, js && js.error); }
+  catch(e){ notSaved(job, 'אין חיבור'); }
+}
+async function sync(){
+  if (syncing || !navigator.onLine || !API) return;
+  syncing = true;
+  try{
+    for (const job of await qAll()){
+      if (job.mode !== MODE) continue;                    // a test page's answer never reaches the live backend
+      if (cancelled.has(job.uuid)){ await qDel(job.uuid); continue; }
+      if (job.notBefore && job.notBefore > Date.now()) continue;
+      let js;
+      try{ js = await post({ ...job.body, uuid: job.uuid }, 60000); }catch(e){ break; }   // offline / slow: next round, nothing lost
+      if (js && js.ok){ await qDel(job.uuid); await afterOk(job, js); }
+      else if (js && js.error === 'BAD_KEY'){ showGate('המפתח לא מתאים יותר. לפתוח שוב את הקישור האישי.'); break; }
+      else if (js && HARD.test(String(js.error||''))){ await qDel(job.uuid); notSaved(job, js.error); }
+      else {
+        // the catalog is refreshing, Google is slow, the sheet was busy: try again later — 1, 2, 4 … up to 15 minutes apart, for a day
+        job.soft = (job.soft||0)+1; job.notBefore = Date.now() + Math.min(15, Math.pow(2, Math.min(job.soft-1, 4))) * 60000;
+        if (Date.now() - job.ts > 24*3600000){ await qDel(job.uuid); notSaved(job, (js && js.error) || '?'); }
+        else await qPut(job);
+      }
+    }
+  } finally { syncing = false; badge(); }
+}
+setInterval(sync, 5000);
+window.addEventListener('online', ()=>{ $('dot').classList.add('on'); sync(); load(false); });
+window.addEventListener('offline', ()=> $('dot').classList.remove('on'));
+function renderFailed(){
+  const f = loadLS(LS.failed, []), b = $('failedBox');
+  b.classList.toggle('hide', !f.length);
+  b.innerHTML = f.length ? '<b>תשובות שלא נשמרו ('+f.length+'):</b>' + f.map((x,i)=>'<div class="pl">'+esc(x.what)+(x.body&&x.body.note?' · "'+esc(x.body.note)+'"':'')+(x.body&&x.body.value&&x.body.value.price?' · '+esc(x.body.value.price)+' '+esc(x.body.value.cur):'')+'<div class="s">'+esc(x.err)+'</div>'+(x.body?'<button data-retry="'+i+'">לשלוח שוב</button> ':'')+'<button data-drop="'+i+'">למחוק</button></div>').join('') : '';
+  b.querySelectorAll('[data-retry]').forEach(el => el.onclick = async ()=>{ const f2 = loadLS(LS.failed, []), x = f2[Number(el.dataset.retry)]; if (!x || !x.body) return;
+    f2.splice(Number(el.dataset.retry), 1); saveLS(LS.failed, f2); renderFailed();
+    const job = { uuid: uuid(), ts: Date.now(), mode: MODE, att: 0, soft: 0, notBefore: 0, body: x.body }; pend[x.key] = { ans: x.body.answer, value: x.body.value, at: Date.now(), uuid: job.uuid, label: x.what };
+    if (db){ await qPut(job); badge(); sync(); } else sendNow(job, x.what); render(); });
+  b.querySelectorAll('[data-drop]').forEach(el => el.onclick = ()=>{ const f2 = loadLS(LS.failed, []); f2.splice(Number(el.dataset.drop), 1); saveLS(LS.failed, f2); renderFailed(); });
+}
+
+/* ================= LOAD ================= */
+let loadAgain = false;   // asked for while a load was running (e.g. right after an answer): one more load when it ends
+async function load(full){
+  if (!API) return;
+  if (loading){ loadAgain = true; return; }
+  loading = true; $('refreshBtn').disabled = true;
+  try{
+    const js = await post({ action:'tasks', stamp: !full && data && data.rows ? data.stamp : '' }, 60000);
+    if (js && js.ok){
+      const rows = js.rows || (data && data.stamp === js.stamp ? data.rows : null);
+      if (!rows){ loading = false; return load(true); }
+      data = { ...js, rows };
+      if (MODE === 'live') saveLS(LS.data, data);
+      lastOk = Date.now();
+      // an answer the list now shows (the newest answer of the task is it, or newer) is no longer "pending" on this phone
+      for (const k of Object.keys(pend)){ const a = latest(k); if (a && new Date(a.at).getTime() >= pend[k].at - 120000) delete pend[k]; if (Date.now() - pend[k]?.at > 6*3600000) delete pend[k]; }
+      saveLS(LS.pend, pend);
+      $('dot').classList.add('on');
+    } else if (js && js.error === 'BAD_KEY') showGate('המפתח לא מתאים. לפתוח שוב את הקישור האישי.');
+    else toast('לא הצלחתי לקרוא את הרשימה: ' + (js && js.error || '?'), 'err', 4000);
+  } catch(e){ $('dot').classList.remove('on'); }
+  finally { loading = false; $('refreshBtn').disabled = false; render(); if (loadAgain){ loadAgain = false; setTimeout(()=>load(false), 300); } }
+}
+
+/* ================= RENDER ================= */
+function rowsOf(kind){ return data && data.rows ? data.rows.filter(r => r.kind === kind) : []; }
+function matches(r){ if (!query) return true; const q = query.toLowerCase(); return String(r.name).toLowerCase().includes(q) || String(r.code).includes(q) || String(r.sup).toLowerCase().includes(q); }
+function openCount(kind){
+  if (kind === 'transit') return data && data.transit ? data.transit.filter(o => !snoozed(o.key) && !pend[o.key]).length : 0;
+  if (kind === 'order') return rowsOf('order').filter(r => !snoozed(r.key) && !pend[r.key] && !sentNow(r) && !((data.overlay.p[r.code]||{}).qty > 0)).length;
+  return rowsOf(kind).filter(r => !snoozed(r.key) && !(pend[r.key] && hidingAns(r.kind, pend[r.key].ans)) && !(kind !== 'order' && done(r))).length;
+}
+const hidingAns = (kind, ans) => kind === 'order' ? ans === 'skip' : ans !== 'note';
+/** answered in the sheet already (the task will leave the list on the next build) */
+// answers that settle a task (the next build drops it); a "later" answer only hides it until its date (snoozed)
+const SETTLES = { 'switch': true, supplier: true, price: true, snack: true };
+function done(r){
+  const a = latest(r.key); if (!a || !SETTLES[a.ans]) return false;
+  return a.res === 'נכתב' || a.res === 'כבר';
+}
+function render(){
+  if (!data){ $('list').innerHTML = '<div class="empty">' + (API ? 'טוען…' : 'השרת עוד לא הוגדר בעמוד הזה.') + '</div>'; return; }
+  const age = Date.now() - (lastOk || new Date(data.at).getTime());
+  $('upd').innerHTML = 'עודכן ' + esc(hhmm(data.at)) + (data.built ? '<br>הרשימה נבנתה ' + esc(hhmm(data.built)) : '');
+  $('upd').classList.toggle('stale', age > 10*60000);
+  $('tabs').innerHTML = TABS.map(([k, t]) => { const n = openCount(k); return '<button class="tab'+(k===tab?' on':'')+'" data-tab="'+k+'">'+esc(t)+'<span class="n'+(k==='transit' && lateCount()?' red':'')+'">'+n+'</span></button>'; }).join('');
+  renderBanners();
+  const keep = ED_IDS.map(id => [id, $(id) ? $(id).value : null]).filter(x => x[1] !== null), focus = document.activeElement && document.activeElement.id;
+  ({ order: renderOrder, transit: renderTransit, out: renderOut, nosup: renderNosup, noprice: renderNoprice, snack: renderSnack }[tab] || renderOrder)();
+  for (const [id, v] of keep) if ($(id)) $(id).value = v;
+  if (focus && ED_IDS.includes(focus) && $(focus)) $(focus).focus();
+  $('foot').textContent = 'גרסה ' + BUILD + (MODE !== 'live' ? ' · ' + (MODE === 'local' ? 'בדיקה מקומית' : 'שרת ניסיון') : '') + ' · ' + (data.who || '');
+}
+const ED_IDS = ['edQty', 'edSup', 'edNote', 'edPrice', 'edCur', 'edSrc', 'edUnits'];
+function lateCount(){ return data && data.transit ? data.transit.filter(o => o.late && !snoozed(o.key)).length : 0; }
+function renderBanners(){
+  const b = [];
+  for (const r of rowsOf('login')){
+    const d = r.d;
+    b.push('<div class="banner red"><b>הכניסה לאתר של ' + esc(d.site) + (d.state === 'expired' ? ' פגה' : ' תפוג בעוד ' + esc(d.daysLeft) + ' ימים') + '.</b> ' +
+      (d.state === 'expired' ? 'המחירים והמלאי שלהם לא מתעדכנים מאז ' + esc(d.since) + '.' : '') + ' צריך להתחבר שוב פעם אחת במחשב בחנות — לבקש מ-Claude לפתוח את חלון הכניסה.</div>');
+  }
+  if (data.busy && data.busy.refresh) b.push('<div class="banner amber">הקטלוג מתעדכן עכשיו (מאז ' + esc(data.busy.refresh) + '). התשובות נשמרות בטלפון ונשלחות לבד כשהעדכון נגמר.</div>');
+  if (data.busy && data.busy.brain) b.push('<div class="banner info">גיליון ההזמנות מתעדכן (כל שעה עגולה). אפשר לענות; סימון "נשלח" יחכה ל-' + esc(data.busy.brain) + '.</div>');
+  for (const l of (data.lost || [])){
+    const ack = 'lost|'+l.key+'|'+l.at; if (snoozed(ack) || pend[ack] || pend[l.key]) continue;
+    const r = (data.rows || []).find(x => x.key === l.key) || { kind: l.kind, key: l.key, code: l.code, name: l.code, sup: '' };
+    b.push('<div class="banner red">ענית ב-' + esc(ddmm(l.at)) + ' על <b>' + esc(r.name) + '</b>: ' + esc(l.val) + ', ובגיליון כתוב עכשיו ' + (l.now === '' ? 'כלום' : '"' + esc(l.now) + '"') + '.' +
+      '<div class="row"><button data-lost="'+esc(l.key)+'" data-act="again">לכתוב שוב את שלי</button> <button data-lost="'+esc(l.key)+'" data-act="keep">להשאיר מה שבגיליון</button></div></div>');
+  }
+  $('banners').innerHTML = b.join('');
+}
+function more(kind, total){ const n = shown[kind] || PAGE; return total > n ? '<button class="more" data-more="'+kind+'">עוד '+(total-n)+'</button>' : ''; }
+function metaLine(d){
+  return '<div class="meta"><span>מלאי <b>'+num(d.stock)+'</b></span><span>נמכר בשבוע <b>'+num(d.vel)+'</b></span>' +
+    (d.cover!=null ? '<span>ימי כיסוי <b>'+(d.cover<=0?'0':num(d.cover))+'</b></span>' : '') + (d.shelf ? '<span>מדף <b>'+ils(d.shelf)+'</b></span>' : '') + '</div>';
+}
+function offersTable(offers, best){
+  if (!offers || !offers.length) return '';
+  return '<table class="offers">' + offers.map(o => '<tr class="'+(o.out?'out':o.s===best?'best':'')+'"><td>'+esc(o.s)+'</td><td class="p">'+ils(o.ils)+'</td><td>'+(o.lead!=null?esc(o.lead)+' ימים':'')+'</td><td>'+esc(o.stock||'')+'</td></tr>').join('') + '</table>';
+}
+function supSelect(id, current, extra){
+  const all = [...new Set([...(extra||[]), ...COMMON_SUPS, ...((data && data.suppliers) || [])])].filter(Boolean);
+  return '<select id="'+id+'">' + (all.includes(current) ? '' : '<option value="" selected>בחר ספק…</option>') + all.map(s => '<option'+(s===current?' selected':'')+'>'+esc(s)+'</option>').join('') + '</select>';
+}
+
+/* ---------- להזמין ---------- */
+function renderOrder(){
+  const rows = rowsOf('order').filter(matches);
+  const skipped = rows.filter(r => snoozed(r.key) || (pend[r.key] && pend[r.key].ans === 'skip'));
+  const sentRows = rows.filter(r => !skipped.includes(r) && sentNow(r));
+  const live = rows.filter(r => !skipped.includes(r) && !sentRows.includes(r));
+  const groups = new Map();
+  for (const r of live){ const s = supOf(r); if (!groups.has(s)) groups.set(s, []); groups.get(s).push(r); }
+  const bsk = (data.basket && data.basket.sups) || [], bLines = (data.basket && data.basket.lines) || [];
+  for (const s of bsk) if (!groups.has(s.sup)) groups.set(s.sup, []);
+  const approvedIn = s => bLines.filter(l => l.sup === s);
+  const order = [...groups.keys()].sort((a,b) => (approvedIn(b).length?1:0) - (approvedIn(a).length?1:0) || groups.get(b).filter(r=>r.rank===0).length - groups.get(a).filter(r=>r.rank===0).length || groups.get(b).length - groups.get(a).length);
+  $('sub').innerHTML = '<div class="chipline"><span class="chip'+(sub===''?' on':'')+'" data-sub="">הכל</span>' + order.map(s => '<span class="chip'+(sub===s?' on':'')+'" data-sub="'+esc(s)+'">'+esc(s)+' '+groups.get(s).length+'</span>').join('') +
+    (skipped.length ? '<span class="chip'+(sub==='__skip'?' on':'')+'" data-sub="__skip">נדחו '+skipped.length+'</span>' : '') +
+    (sentRows.length ? '<span class="chip'+(sub==='__sent'?' on':'')+'" data-sub="__sent">נשלחו עכשיו '+sentRows.length+'</span>' : '') + '</div>';
+  if (sub === '__sent'){ $('list').innerHTML = sentRows.map(r => '<div class="card ok"><div class="nm">'+esc(r.name)+'<span class="cd">'+esc(r.code)+'</span></div><div class="why">נשלח '+esc(hhmm(data.sent[r.code].at))+' · '+esc(data.sent[r.code].no)+' — מופיע במסך "בדרך"</div></div>').join(''); return; }
+  if (sub === '__skip'){ $('list').innerHTML = skipped.map(r => orderCard(r, true)).join('') || '<div class="empty">אין</div>'; return; }
+  const html = [];
+  for (const s of order){
+    if (sub && sub !== s) continue;
+    const rs = groups.get(s).sort((a,b) => (a.rank - b.rank) || ((b.d.vel||0) - (a.d.vel||0)));
+    const ap = approvedIn(s), b = bsk.find(x => x.sup === s), total = b ? b.total : ap.reduce((a,l)=>a+(l.total||0),0);
+    const others = ap.filter(l => l.source !== 'מוצרים');
+    html.push('<div class="group"><div class="ghead"><div class="gt"><span class="gn">'+esc(s)+'</span><span class="gs">'+(leadOf(s)!=null?'אספקה '+esc(leadOf(s))+' ימים · ':'')+rs.length+' הצעות</span></div>' +
+      '<div class="gsum">'+(ap.length ? 'אושרו <b>'+ap.length+'</b> שורות · <b>'+ils(total)+'</b>' + (b && b.aboveMin && b.aboveMin !== 'לא הוגדר' ? ' · מינימום: '+esc(b.aboveMin) : '') : 'עוד לא אושר כלום')+'</div>' +
+      (others.length ? '<div class="other-lines">מלשוניות הספק: '+others.map(l=>esc(l.name)+' ×'+l.qty).join(' · ')+'</div>' : '') +
+      (ap.length ? '<div class="gbtns"><button data-doc="'+esc(s)+'">📄 מסמך הזמנה</button><button data-send="'+esc(s)+'">✓ סמן נשלח</button></div>' : '') + '</div>');
+    const n = shown['order|'+s] || (sub ? 200 : 8);
+    for (const r of rs.slice(0, n)) html.push(orderCard(r));
+    if (rs.length > n) html.push('<button class="more" data-more="order|'+esc(s)+'">עוד '+(rs.length-n)+' של '+esc(s)+'</button>');
+    html.push('</div>');
+  }
+  $('list').innerHTML = html.join('') || '<div class="empty">אין שורות להזמנה.</div>';
+}
+function orderCard(r, skippedView){
+  const d = r.d, o = (data.overlay.p[r.code]) || {}, p = pend[r.key];
+  const qty = o.qty, approved = qty > 0, cur = effOf(r), cost = costOf(r, cur);
+  const urgent = (d.stock != null && d.stock <= 0) || d.cover === 0;
+  const recO = (d.offers||[]).find(x => x.s === cur);
+  let h = '<div class="card'+(approved?' ok':'')+(p?' pend':'')+(urgent?' urgent':'')+'" data-key="'+esc(r.key)+'">';
+  h += '<div class="nm">'+esc(r.name)+'<span class="cd">'+esc(r.code)+'</span></div>' + metaLine(d);
+  h += '<div class="rec">המוח מציע <b>'+num(d.sug)+'</b>' + (cur ? ' · מ-<b>'+esc(cur)+'</b>' + (cost!=null ? ' '+ils(cost)+' ליח׳' : '') + (leadOf(cur)!=null ? ' · '+esc(leadOf(cur))+' ימים' : '') : '') + '</div>';
+  if (d.brainSup && cur && d.brainSup !== cur) h += '<div class="why">בגיליון ההזמנות רשום '+esc(d.brainSup)+' (ניחוש)</div>';
+  if (d.bridge) h += '<div class="why">גישור: עכשיו '+esc(d.bridge)+' מהמהיר, את השאר מהזול</div>';
+  for (const w of (d.warn||[])) h += '<div class="warn">⚠ '+esc(w)+'</div>';
+  if (d.why) h += '<div class="why">'+esc(d.why)+'</div>';
+  if ((d.offers||[]).length > 1) h += offersTable(d.offers, d.rec);
+  const a = latest(r.key);
+  if (a && a.res === 'השתנה') h += '<div class="warn">התשובה האחרונה לא נכתבה — בגיליון היה כבר משהו אחר. לבדוק.</div>';
+  if (o.note) h += '<div class="why">הערות: '+esc(o.note)+'</div>';
+  if (p) h += '<div class="pendline">⏳ '+esc(p.label)+' — נשלח</div>';
+  if (skippedView){ h += '<div class="why">נדחה עד '+esc(ddmm(a && a.until))+'</div><div class="acts"><button class="alt" data-act="ordedit">להזמין בכל זאת</button></div>'; }
+  else if (approved){
+    h += '<div class="okline">✓ אושרו <b>'+num(qty)+'</b> מ-'+esc(cur||'?')+(cost!=null?' · '+ils(cost)+' ליח׳':'')+'<button data-act="ordedit">שנה</button><button data-act="ordclear">בטל</button></div>';
+  } else if (!p){
+    h += '<div class="acts">' + (d.sug > 0 && cur ? '<button class="go" data-act="ordok">✓ לאשר '+num(d.sug)+'</button>' : '') +
+      '<button class="alt" data-act="ordedit">כמות / ספק אחר</button><button class="no" data-act="ordskip">לא עכשיו</button></div>';
+  }
+  if (openEditor === r.key) h += orderEditor(r, d, o, cur);
+  return h + '</div>';
+}
+function orderEditor(r, d, o, cur){
+  const offerSups = (d.offers||[]).filter(x=>!x.out).map(x=>x.s);
+  return '<div class="editor"><div class="row"><div><label>כמות (ביחידות שלנו)</label><input id="edQty" type="number" inputmode="numeric" min="1" max="5000" value="'+esc(o.qty>0?o.qty:(d.sug||''))+'"></div>' +
+    '<div><label>מאיזה ספק</label>'+supSelect('edSup', cur, [cur, ...offerSups])+'</div></div>' +
+    '<label>הערה (לא חובה)</label><input id="edNote" maxlength="300">' +
+    '<div class="acts"><button class="go" data-act="ordsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>';
+}
+
+/* ---------- בדרך ---------- */
+function renderTransit(){
+  $('sub').innerHTML = '';
+  const list = (data.transit || []).filter(o => !snoozed(o.key) && !pend[o.key] && (!query || o.sup.toLowerCase().includes(query.toLowerCase()) || o.lines.some(l => String(l.name).toLowerCase().includes(query.toLowerCase()) || String(l.code).includes(query))));
+  $('list').innerHTML = list.map(o => {
+    const exp = o.lead!=null && o.at ? new Date(new Date(o.at).getTime() + o.lead*86400000) : null;
+    return '<div class="card'+(o.late?' urgent':'')+'" data-tkey="'+esc(o.key)+'"><div class="nm">'+esc(o.sup)+'<span class="cd">'+esc(o.no || 'לא מהקטלוג')+'</span></div>' +
+      '<div class="meta"><span>נשלח <b>'+esc(ddmm(o.at))+'</b></span>'+(o.days!=null?'<span>לפני <b>'+o.days+'</b> ימים</span>':'')+(exp?'<span>צפוי <b>'+esc(ddmm(exp.toISOString()))+'</b></span>':'')+(o.total?'<span><b>'+ils(o.total)+'</b></span>':'')+'</div>' +
+      (o.late ? '<div class="warn">⚠ מאחר: עברו '+o.days+' ימים, ובדרך כלל לוקח '+o.lead+'</div>' : '') +
+      '<div class="why">'+o.lines.slice(0,12).map(l => esc(l.name)+' ×'+esc(l.qty)+(l.state?' · '+esc(l.state):'')).join('<br>')+(o.lines.length>12?'<br>ועוד '+(o.lines.length-12):'')+'</div>' +
+      (o.doc ? '<div class="why"><a href="'+esc(o.doc)+'" target="_blank" rel="noopener">מסמך ההזמנה</a></div>' : '') +
+      '<div class="acts"><button class="go" data-tact="arrived">הגיע</button><button class="alt" data-tact="checked">בדקתי, עדיין בדרך</button><button class="no" data-tact="note">הערה</button></div></div>';
+  }).join('') || '<div class="empty">אין הזמנות בדרך. הזמנה שמסמנים "נשלח" במסך "להזמין" מופיעה כאן עד שהיא נקלטת בקופה.</div>';
+}
+
+/* ---------- אזל אצל הספק ---------- */
+function visible(kind){ return rowsOf(kind).filter(matches).filter(r => !snoozed(r.key) && !done(r) && !(pend[r.key] && hidingAns(kind, pend[r.key].ans))); }
+function renderOut(){
+  $('sub').innerHTML = '';
+  const rows = visible('out').sort((a,b) => a.rank - b.rank || (b.d.vel||0) - (a.d.vel||0)), n = shown.out || PAGE;
+  $('list').innerHTML = rows.slice(0, n).map(r => {
+    const d = r.d, alts = (d.offers||[]).filter(o => o.s !== d.out);
+    return '<div class="card'+((d.stock||0)<=0?' urgent':'')+'" data-key="'+esc(r.key)+'"><div class="nm">'+esc(r.name)+'<span class="cd">'+esc(r.code)+'</span></div>' + metaLine(d) +
+      '<div class="warn">⚠ '+esc(d.outLabel)+'</div>' + (d.sug ? '<div class="rec">המוח מציע להזמין <b>'+num(d.sug)+'</b></div>' : '') +
+      (alts.length ? '<div class="why">אפשר במקום:</div>' + alts.map(o => '<button class="opt'+(o.out?' out':'')+'" data-act="outswitch" data-sup="'+esc(o.s)+'">להזמין מ-<b>'+esc(o.s)+'</b> · '+ils(o.ils)+(o.lead!=null?' · '+o.lead+' ימים':'')+'<div class="s">'+esc(o.stock || 'מלאי לא ידוע')+'</div></button>').join('') : '<div class="why">אין ספק אחר עם מחיר בקטלוג.</div>') +
+      '<div class="acts"><button class="alt" data-act="outother">ספק אחר…</button><button class="alt" data-act="outwait">לחכות שיחזור</button><button class="no" data-act="outdrop">לא להביא יותר</button></div>' +
+      (openEditor === r.key ? '<div class="editor"><label>מאיזה ספק להזמין</label>'+supSelect('edSup', '', [])+'<div class="acts"><button class="go" data-act="outsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + '</div>';
+  }).join('') + more('out', rows.length) || '<div class="empty">אין פריטים שאזלו אצל הספק שלהם.</div>';
+}
+
+/* ---------- בלי ספק ---------- */
+function renderNosup(){
+  $('sub').innerHTML = '<div class="why">פריטים שאנחנו מוכרים, ואין חשבונית או קטלוג שמראים מאיפה קונים אותם. הספק שתבחר נכתב בלשונית "ספק אמיתי" (עמודה "ספק אחר"); הספק במערכת עצמה משתנה רק בתהליך המסודר, עם ריצת ניסיון ואישור שלך.</div>';
+  const rows = visible('nosup').sort((a,b) => a.rank - b.rank || (b.d.vel||0) - (a.d.vel||0)), n = shown.nosup || PAGE;
+  $('list').innerHTML = rows.slice(0, n).map(r => {
+    const d = r.d, ro = (data.overlay.real || {})[r.code] || {};
+    const hint = [d.guess ? 'במערכת: '+d.guess+' (ניחוש)' : '', d.study && d.study !== 'לא ידוע' ? 'הבדיקה: '+d.study+(d.studyConf?' ('+d.studyConf+')':'') : ''].filter(Boolean).join(' · ');
+    const quick = [...new Set([d.guess, d.study, ...COMMON_SUPS.slice(0,6)].filter(s => s && s !== 'לא ידוע'))].slice(0, 6);
+    return '<div class="card'+(d.sug?' urgent':'')+'" data-key="'+esc(r.key)+'"><div class="nm">'+esc(r.name)+'<span class="cd">'+esc(r.code)+'</span></div>' + metaLine(d) +
+      (d.sug ? '<div class="rec">המוח רוצה להזמין <b>'+num(d.sug)+'</b></div>' : '') + (hint ? '<div class="why">'+esc(hint)+'</div>' : '') +
+      (ro.other ? '<div class="why">כבר כתוב: '+esc(ro.other)+'</div>' : '') +
+      '<div class="chipline">' + quick.map(s => '<span class="chip" data-act="nsquick" data-sup="'+esc(s)+'">'+esc(s)+'</span>').join('') + '<span class="chip" data-act="nsother">אחר…</span></div>' +
+      '<div class="acts"><button class="no" data-act="nsunknown">לא יודע</button></div>' +
+      (openEditor === r.key ? '<div class="editor"><label>מאיפה קונים את זה</label>'+supSelect('edSup', d.guess, [d.guess])+'<label>הערה (לא חובה)</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-act="nssave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + '</div>';
+  }).join('') + more('nosup', rows.length) || '<div class="empty">אין.</div>';
+}
+
+/* ---------- בלי מחיר ---------- */
+function renderNoprice(){
+  $('sub').innerHTML = '<div class="why">הספק ידוע, אבל אין לנו מחיר אמיתי ממנו (חשבונית, מחירון או קטלוג). המחיר שתקליד נשמר בלשונית "מחירים שהוקלדו" ומסומן "הוקלד" בכל מקום שמופיע.</div>';
+  const rows = visible('noprice').sort((a,b) => a.rank - b.rank || (b.d.vel||0) - (a.d.vel||0)), n = shown.noprice || PAGE;
+  $('list').innerHTML = rows.slice(0, n).map(r => {
+    const d = r.d;
+    return '<div class="card'+(d.sug?' urgent':'')+'" data-key="'+esc(r.key)+'"><div class="nm">'+esc(r.name)+'<span class="cd">'+esc(r.code)+'</span></div>' + metaLine(d) +
+      '<div class="rec">ספק: <b>'+esc(d.eff)+'</b>' + (d.sug ? ' · המוח מציע <b>'+num(d.sug)+'</b>' + (d.est ? ' (מוערך '+ils(d.est)+' לפי מחיר המדף)' : '') : '') + '</div>' +
+      (d.why ? '<div class="why">'+esc(d.why)+'</div>' : '') +
+      (openEditor === r.key
+        ? '<div class="editor"><div class="row"><div><label>מחיר ליחידה שלנו</label><input id="edPrice" type="number" inputmode="decimal" step="0.01" min="0"></div><div><label>מטבע</label><select id="edCur"><option>₪</option><option>€</option><option>$</option><option>£</option></select></div></div>' +
+          '<label>לפי מה</label><select id="edSrc"><option>חשבונית</option><option>מחירון</option><option>הצעת מחיר</option><option>הערכה שלי</option></select>' +
+          '<label>הערה (לא חובה)</label><input id="edNote" maxlength="300" placeholder="למשל: קופסה של 24 ב-€74, אז 3.1 לחבילה"><div class="acts"><button class="go" data-act="npsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>'
+        : '<div class="acts"><button class="go" data-act="npedit">להקליד מחיר</button><button class="no" data-act="npskip">דלג</button></div>') + '</div>';
+  }).join('') + more('noprice', rows.length) || '<div class="empty">אין.</div>';
+}
+
+/* ---------- חטיפים ---------- */
+function renderSnack(){
+  $('sub').innerHTML = '<div class="why">לבחור לכל חטיף שלנו את המוצר של School market. הבחירה נכתבת בלשונית "School market — לקשר"; אם לא ידוע כמה יחידות בקרטון, צריך להקליד פעם אחת.</div>';
+  const rows = visible('snack').sort((a,b) => a.rank - b.rank || (b.d.vel||0) - (a.d.vel||0)), n = shown.snack || PAGE;
+  $('list').innerHTML = rows.slice(0, n).map(r => {
+    const d = r.d;
+    const opts = (d.opts||[]).map((o, i) => {
+      const unit = o.units && o.price ? o.price / o.units : null;
+      return '<button class="opt'+(o.inStock===false?' out':'')+'" data-act="snpick" data-i="'+i+'"><b>'+esc(o.name)+'</b><div class="s">'+ils(o.price)+' לפני מע״מ · '+(o.units ? o.units+' יח׳ בקרטון · '+ils(unit)+' ליח׳' : 'לא ידוע כמה יחידות')+(o.inStock===false?' · אזל אצלם':'')+'</div></button>';
+    }).join('');
+    const ed = openEditor === r.key && editorPick != null ? (d.opts||[])[editorPick] : null;
+    return '<div class="card" data-key="'+esc(r.key)+'"><div class="nm">'+esc(r.name)+'<span class="cd">'+esc(r.code)+'</span></div>' + metaLine(d) + opts +
+      (ed ? '<div class="editor"><b>'+esc(ed.name)+'</b><label>כמה יחידות שלנו בקרטון שלהם</label><input id="edUnits" type="number" inputmode="numeric" min="1" max="500"><div class="acts"><button class="go" data-act="snsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') +
+      '<div class="acts"><button class="no" data-act="snnone">אין אצלם</button><button class="no" data-act="snskip">דלג</button></div></div>';
+  }).join('') + more('snack', rows.length) || '<div class="empty">כל החטיפים מקושרים.</div>';
+}
+let editorPick = null;
+
+/* ================= ORDER SHEET (plan → document → sent) ================= */
+async function orderSheet(supplier, step){
+  showSheet('<h3>'+esc(supplier)+'</h3><div class="why">בודק מה ייכתב לגיליון ההזמנות…</div>');
+  let pl;
+  try{ pl = await post({ action:'orderPlan', supplier }, 90000); }catch(e){ showSheet('<h3>'+esc(supplier)+'</h3><div class="warn">אין חיבור. לנסות שוב.</div>'+closeBtn()); return; }
+  if (!pl.ok){ showSheet('<h3>'+esc(supplier)+'</h3><div class="warn">'+esc(pl.error)+'</div>'+closeBtn()); return; }
+  if (pl.empty){ showSheet('<h3>'+esc(supplier)+'</h3><div class="why">אין שורות מאושרות לספק הזה.</div>'+closeBtn()); return; }
+  const lab = { update:'ייכתב כ"הוזמן"', append:'שורה חדשה, "הוזמן"', record:'נרשם רק כאן', refuse:'לא יישלח' };
+  let h = '<h3>'+esc(supplier)+' — '+pl.lines.length+' שורות · '+ils(pl.total)+'</h3>';
+  if (pl.dup) h += '<div class="banner amber">השורות האלה כבר נשלחו ב-'+esc(pl.dup)+'. אם צריך להזמין שוב — לשנות כמות או לחכות רבע שעה.</div>';
+  if (pl.refresh) h += '<div class="banner amber">הקטלוג מתעדכן עכשיו — לחכות כמה דקות.</div>';
+  h += pl.lines.map(l => '<div class="pl'+(l.action==='refuse'?' refuse':'')+'">'+esc(l.name)+' · <b>'+num(l.docQty)+'</b>'+(l.units>1?' קרטונים ('+num(l.qty)+' יח׳)':'')+(l.price!==''&&l.price!=null?' · '+esc(l.price)+' '+esc(l.cur):'')+
+    '<div class="s">'+esc(lab[l.action]||l.action)+(l.why?' — '+esc(l.why):'')+(l.warn&&l.warn.length?' · '+esc(l.warn.join(' · ')):'')+'</div></div>').join('');
+  if (pl.doc) h += '<div class="banner info">מסמך ההזמנה כבר מוכן: <a href="'+esc(pl.doc.url)+'" target="_blank" rel="noopener">'+esc(pl.doc.no)+'</a></div>';
+  if (step === 'doc' && !pl.doc) h += '<button class="bigbtn" id="mkDoc"'+(pl.refresh?' disabled':'')+'>📄 ליצור מסמך הזמנה</button>';
+  const can = pl.counts.update + pl.counts.append + pl.counts.record;
+  h += can ? '<button class="bigbtn go" id="mkSend"'+(pl.busy||pl.refresh?' disabled':'')+'>✓ שלחתי לספק — לסמן "נשלח"</button>' + (pl.busy ? '<div class="why">גיליון ההזמנות מתעדכן; אפשר לסמן אחרי '+esc(pl.busy)+'.</div>' : '') +
+    '<div class="why">"נשלח" רושם את ההזמנה, כותב אותה לגיליון ההזמנות כ"הוזמן" (המוח לא יציע אותה שוב ויסגור כשהסחורה תיקלט בקופה), ומנקה את הכמויות מהסל. שום מייל לא נשלח.</div>' : '<div class="warn">אף שורה לא יכולה להישלח.</div>';
+  h += closeBtn();
+  showSheet(h);
+  const sig = pl.sig;
+  if ($('mkDoc')) $('mkDoc').onclick = async ()=>{
+    $('mkDoc').disabled = true; $('mkDoc').textContent = 'יוצר…';
+    try{ const js = await post({ action:'orderDoc', supplier, sig, uuid: uuid() }, 90000);
+      if (js.ok && js.url){ toast('המסמך מוכן — הקישור בחלונית'); orderSheet(supplier, 'send'); }
+      else if (js.ok && js.result === 'changed'){ toast('הסל השתנה בינתיים — בודק שוב', 'warn'); orderSheet(supplier, step); }
+      else { toast('לא נוצר: '+(js.error === 'BUSY_REFRESH' ? 'הקטלוג מתעדכן עכשיו, לנסות בעוד כמה דקות' : (js.error||js.result)), 'err', 5000); $('mkDoc').disabled = false; } }
+    catch(e){ toast('אין חיבור — לנסות שוב', 'err'); $('mkDoc').disabled = false; $('mkDoc').textContent = '📄 ליצור מסמך הזמנה'; }
+  };
+  if ($('mkSend')) $('mkSend').onclick = async ()=>{
+    const btn = $('mkSend'); btn.disabled = true; btn.textContent = 'שולח… (עד דקה)';
+    const id = btn.dataset.uuid || (btn.dataset.uuid = uuid());   // the same request when the answer got lost on the way: never sent twice
+    let js;
+    try{ js = await post({ action:'orderSend', supplier, sig, uuid: id }, 120000); }
+    catch(e){ toast('לא ידוע אם נשלח — בודק', 'warn', 5000); setTimeout(()=>orderSheet(supplier, 'send'), 4000); return; }
+    if (js.ok && js.result === 'already'){ toast('ההזמנה הזאת כבר נשלחה', 'warn', 5000); closeSheet(); load(true); return; }
+    if (!js.ok) delete btn.dataset.uuid;   // refused or failed: the next tap is a new request
+    if (js.ok && (js.result === 'sent' || js.result === 'partial')){
+      showSheet('<h3>'+esc(supplier)+(js.result==='sent'?' — נשלח':' — נשלח חלקית')+'</h3><div class="why">הזמנה '+esc(js.no)+': '+js.written+' שורות נכתבו לגיליון ההזמנות כ"הוזמן"'+(js.recorded?', '+js.recorded+' נרשמו רק כאן':'')+(js.refused?', '+js.refused+' נשארו בסל':'')+'.</div>'+
+        (js.error ? '<div class="warn">'+esc(js.error)+'</div>' : '') + (js.doc ? '<div class="why"><a href="'+esc(js.doc)+'" target="_blank" rel="noopener">מסמך ההזמנה</a></div>' : '') + closeBtn());
+      load(true);
+    } else if (js.ok && js.result === 'dup'){ toast('כבר נשלח ב-'+js.at, 'warn', 5000); closeSheet(); load(true); }
+    else if (js.ok && js.result === 'changed'){ toast('הסל השתנה בינתיים — בודק שוב', 'warn'); orderSheet(supplier, step); }
+    else { toast('לא נשלח: '+(js.error === 'BUSY_BRAIN' ? 'גיליון ההזמנות מתעדכן, לנסות אחרי '+js.until : js.error === 'BUSY_REFRESH' ? 'הקטלוג מתעדכן עכשיו, לנסות בעוד כמה דקות' : /^SEND_FAILED/.test(js.error||'') ? 'גוגל לא סיים. מה שנכתב רשום; לבדוק שוב את החלונית' : js.error), 'err', 7000);
+      if (/^SEND_FAILED/.test(js.error||'')){ setTimeout(()=>orderSheet(supplier, 'send'), 3000); return; }
+      btn.disabled = false; btn.textContent = '✓ שלחתי לספק — לסמן "נשלח"'; }
+  };
+}
+const closeBtn = () => '<button class="bigbtn ghost" data-close="1">סגור</button>';
+function showSheet(html){ $('sheetBox').innerHTML = html; $('sheet').classList.add('on'); }
+function closeSheet(){ $('sheet').classList.remove('on'); }
+
+/* ================= EVENTS ================= */
+document.addEventListener('click', async ev => {
+  const t = ev.target.closest('button, .chip, .tab'); if (!t) return;
+  if (t.dataset.close || ev.target === $('sheet')){ closeSheet(); return; }
+  if (t.dataset.tab){ tab = t.dataset.tab; sub = ''; openEditor = ''; localStorage.setItem(LS.tab, tab); window.scrollTo(0,0); render(); return; }
+  if (t.dataset.sub !== undefined){ sub = t.dataset.sub; render(); return; }
+  if (t.dataset.more){ shown[t.dataset.more] = (shown[t.dataset.more] || (t.dataset.more.startsWith('order|') ? 8 : PAGE)) + 25; render(); return; }
+  if (t.dataset.doc){ orderSheet(t.dataset.doc, 'doc'); return; }
+  if (t.dataset.send){ orderSheet(t.dataset.send, 'send'); return; }
+  if (t.dataset.lost){
+    const l = (data.lost||[]).find(x => x.key === t.dataset.lost); if (!l) return;
+    const r = (data.rows||[]).find(x => x.key === l.key) || { kind: l.kind, key: l.key, code: l.code, sup: '' };
+    if (t.dataset.act === 'keep') return answer({ ...r, kind:'lost', key: 'lost|'+l.key+'|'+l.at }, 'ack', {}, '', 'נשאר מה שבגיליון', true);
+    if (l.ans === 'qty') return answer(r, 'qty', { qty: Number(l.val), wasQty: l.now === '' ? null : Number(l.now) }, '', 'נכתב שוב: '+l.val, false);
+    if (l.ans === 'pick' || l.ans === 'switch') return answer(r, 'switch', { sup: l.val, wasPick: l.now }, '', 'נכתב שוב: '+l.val, false);
+    if (l.ans === 'supplier') return answer(r, 'supplier', { sup: l.val, wasOther: l.now }, '', 'נכתב שוב: '+l.val, false);
+    if (l.ans === 'snack') return answer(r, 'snack', { text: l.val, wasPick: l.now }, '', 'נכתב שוב', false);
+    return;
+  }
+  if (t.dataset.tact){
+    const card = t.closest('[data-tkey]'), o = (data.transit||[]).find(x => x.key === card.dataset.tkey); if (!o) return;
+    const r = { kind:'transit', key:o.key, code:'', sup:o.sup };
+    if (t.dataset.tact === 'note'){ const n = prompt('הערה על ההזמנה'); if (n && n.trim()){ if (!textOk(n.trim())){ toast(TEXT_RULE, 'err', 4000); return; } answer(r, 'note', {}, n.trim(), 'ההערה נשמרה', false); } return; }
+    return answer(r, t.dataset.tact, {}, '', t.dataset.tact === 'arrived' ? 'סומן שהגיע' : 'נבדק — יחזור בעוד שבוע', true);
+  }
+  const card = t.closest('[data-key]'); if (!card || !t.dataset.act) return;
+  const r = (data.rows||[]).find(x => x.key === card.dataset.key); if (!r) return;
+  const o = (data.overlay.p[r.code]) || {}, d = r.d, act = t.dataset.act;
+  if (act === 'edclose'){ openEditor = ''; editorPick = null; render(); return; }
+  if (act === 'ordok'){ const cur = effOf(r); return answer(r, 'qty', { qty: Number(d.sug), wasQty: o.qty ?? null }, '', 'אושרו '+d.sug+' מ-'+cur, false); }
+  if (act === 'ordedit' || act === 'outother' || act === 'nsother' || act === 'npedit'){ openEditor = r.key; render(); const f = $('edQty') || $('edPrice') || $('edSup'); if (f) f.focus(); return; }
+  if (act === 'ordsave'){
+    const q = Number($('edQty').value), s = $('edSup').value, n = $('edNote').value.trim(), cur = effOf(r);
+    if (!(Number.isInteger(q) && q >= 1 && q <= 5000)){ toast('כמות לא תקינה', 'err'); return; }
+    if (!s && !cur){ toast('לבחור ספק', 'err'); return; }
+    if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; }
+    openEditor = '';
+    return answer(r, 'qty', { qty: q, wasQty: o.qty ?? null, ...(s && s !== cur ? { sup: s, wasPick: o.pick || '' } : {}) }, n, 'אושרו '+q+' מ-'+(s||cur), false);
+  }
+  if (act === 'ordclear') return answer(r, 'clear', { wasQty: o.qty }, '', 'בוטל', false);
+  if (act === 'ordskip'){ const n = prompt('לא עכשיו — למה? (לא חובה)', '') ; if (n === null) return; if (!textOk(n.trim())){ toast(TEXT_RULE, 'err', 4000); return; } return answer(r, 'skip', {}, n.trim(), 'נדחה לשבוע', true); }
+  if (act === 'outswitch') return answer(r, 'switch', { sup: t.dataset.sup, wasPick: o.pick || '' }, '', 'יוזמן מ-'+t.dataset.sup, true);
+  if (act === 'outsave'){ const s = $('edSup').value; if (!s){ toast('לבחור ספק', 'err'); return; } openEditor = ''; return answer(r, 'switch', { sup: s, wasPick: o.pick || '' }, '', 'יוזמן מ-'+s, true); }
+  if (act === 'outwait') return answer(r, 'wait', {}, '', 'מחכים שיחזור — שבועיים', true);
+  if (act === 'outdrop'){ if (!confirm('לא להביא יותר את '+r.name+'?')) return; return answer(r, 'drop', {}, '', 'לא מביאים יותר', true); }
+  if (act === 'nsquick') return answer(r, 'supplier', { sup: t.dataset.sup, wasOther: ((data.overlay.real||{})[r.code]||{}).other || '' }, '', 'ספק: '+t.dataset.sup, true);
+  if (act === 'nssave'){ const s = $('edSup').value, n = $('edNote').value.trim(); if (!s){ toast('לבחור ספק', 'err'); return; } if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; } openEditor = ''; return answer(r, 'supplier', { sup: s, wasOther: ((data.overlay.real||{})[r.code]||{}).other || '' }, n, 'ספק: '+s, true); }
+  if (act === 'nsunknown') return answer(r, 'unknown', {}, '', 'לא ידוע — יחזור בעוד חודש', true);
+  if (act === 'npsave'){
+    const p = Number($('edPrice').value), c = $('edCur').value, s = $('edSrc').value, n = $('edNote').value.trim();
+    if (!(p > 0 && p < 100000)){ toast('מחיר לא תקין', 'err'); return; }
+    if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; }
+    openEditor = ''; return answer(r, 'price', { price: p, cur: c, src: s, sup: d.eff, name: r.name }, n, 'נשמר: '+p+' '+c, true);
+  }
+  if (act === 'npskip') return answer(r, 'skip', {}, '', 'דילגתי — יחזור בעוד שבועיים', true);
+  if (act === 'snpick'){
+    const opt = (d.opts||[])[Number(t.dataset.i)]; if (!opt) return;
+    if (!opt.units){ openEditor = r.key; editorPick = Number(t.dataset.i); render(); if ($('edUnits')) $('edUnits').focus(); return; }
+    return answer(r, 'snack', { text: opt.text, wasPick: ((data.overlay.snack||{})[r.code]||{}).pick || '' }, '', 'קושר: '+opt.name, true);
+  }
+  if (act === 'snsave'){
+    const opt = (d.opts||[])[editorPick], u = Number($('edUnits').value);
+    if (!opt || !(Number.isInteger(u) && u >= 1 && u <= 500)){ toast('מספר יחידות לא תקין', 'err'); return; }
+    openEditor = ''; editorPick = null;
+    return answer(r, 'snack', { text: opt.text, units: u, wasPick: ((data.overlay.snack||{})[r.code]||{}).pick || '' }, '', 'קושר: '+opt.name+' ('+u+' בקרטון)', true);
+  }
+  if (act === 'snnone') return answer(r, 'snack', { text: 'אין אצלם', wasPick: ((data.overlay.snack||{})[r.code]||{}).pick || '' }, '', 'סומן: אין אצלם', true);
+  if (act === 'snskip') return answer(r, 'skip', {}, '', 'דילגתי — יחזור בעוד שבועיים', true);
+});
+$('sheet').addEventListener('click', ev => { if (ev.target === $('sheet')) closeSheet(); });
+$('refreshBtn').onclick = () => load(true);
+let qT = null; $('q').addEventListener('input', e => { clearTimeout(qT); qT = setTimeout(()=>{ query = e.target.value.trim(); render(); }, 200); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden){ load(false); sync(); } });
+
+/* ================= START ================= */
+function showGate(msg){ $('app').classList.add('hide'); $('gate').classList.remove('hide'); $('gateMsg').textContent = msg || ''; }
+$('keyBtn').onclick = async ()=>{
+  const k = $('keyIn').value.trim(); if (!/^[\w\-]{20,100}$/.test(k)){ $('gateMsg').textContent = 'המפתח לא נראה תקין.'; return; }
+  $('gateMsg').textContent = 'בודק…';
+  const js = await checkKey(k);
+  if (js && js.ok){ try{ localStorage.setItem(LS.key, k); }catch(e){} $('keyIn').value = ''; start(); }
+  else $('gateMsg').textContent = js && js.error === 'BAD_KEY' ? 'המפתח לא מתאים.' : 'אין חיבור לשרת. לנסות שוב.';
+};
+async function start(){
+  KEY = localStorage.getItem(LS.key) || '';
+  if (!KEY){ showGate(''); return; }
+  $('gate').classList.add('hide'); $('app').classList.remove('hide');
+  $('ver').textContent = BUILD + (MODE !== 'live' ? ' · ' + MODE : '');
+  pend = loadLS(LS.pend, {});
+  if (MODE === 'live'){ const d = loadLS(LS.data, null); if (d && d.rows) data = d; }
+  renderFailed(); render();
+  try{ db = await idb(); }catch(e){ toast('אין אחסון בטלפון — התשובות יישלחו רק עם קליטה', 'warn', 5000); }
+  badge(); sync(); load(!data);
+  setInterval(() => { if (!document.hidden) load(false); }, POLL_MS);
+}
+takeKeyFromHash();
+if (navigator.onLine) $('dot').classList.add('on');
+start();
+</script>
+</body>
+</html>
