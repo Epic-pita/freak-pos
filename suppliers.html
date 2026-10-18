@@ -126,7 +126,8 @@
 <body>
 <div id="gate" class="hide">
   <h1>FREAK — משימות מול הספקים</h1>
-  <p>המסך הזה אישי. פותחים אותו פעם אחת מהקישור האישי, ומאז הוא זוכר.</p>
+  <p>המסך הזה אישי. נכנסים פעם אחת, ומאז הטלפון זוכר.</p>
+  <p><b>איך נכנסים:</b> במחשב בחנות פותחים את הקובץ "PHONE_LINK" שבתיקיית הקטלוג (או מבקשים מ-Claude להציג אותו), וסורקים את הקוד עם המצלמה של הטלפון.</p>
   <p>אם יש לך את המפתח עצמו, אפשר להדביק אותו כאן:</p>
   <input id="keyIn" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="מפתח">
   <button id="keyBtn" class="bigbtn go">שמור והמשך</button>
@@ -140,6 +141,7 @@
       <span id="queueBadge" class="hide">0</span>
       <span id="upd"></span>
       <button id="refreshBtn" title="רענון">⟳</button>
+      <button id="appsBtn" title="מעבר לספירה או לקופה">☰</button>
     </div>
     <div id="tabs"></div>
   </div>
@@ -159,7 +161,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 's1.1';
+const BUILD = 's1.2';
 // the two backends (Apps Script deployments of the catalog's script); ?api=test is the TEST one (it writes only to the TEST copies),
 // ?api=local only on this PC (the bench). Never a URL from the address bar.
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbyCy0D7QPJNjpVIPP7NkNC38rkACV0t-O1C_m-SDsBUTFysG-Q0QUjtDPjI3Go8iYUZfw/exec';   // LIVE deployment (version 7, 18/10)
@@ -672,6 +674,11 @@ document.addEventListener('click', async ev => {
 });
 $('sheet').addEventListener('click', ev => { if (ev.target === $('sheet')) closeSheet(); });
 $('refreshBtn').onclick = () => load(true);
+// the other apps of the same site (the count and the till); the queue keeps running in the background of this page only while it is open
+$('appsBtn').onclick = () => showSheet('<h3>מעבר ל…</h3>' +
+  '<a class="bigbtn go" style="display:block;text-align:center;text-decoration:none;color:#fff;border-radius:10px" href="./count.html">📦 ספירת מלאי</a>' +
+  '<a class="bigbtn" style="display:block;text-align:center;text-decoration:none;color:var(--ink);background:var(--surface2);border-radius:10px" href="./index.html">🧾 קופת אירועים</a>' +
+  closeBtn());
 let qT = null; $('q').addEventListener('input', e => { clearTimeout(qT); qT = setTimeout(()=>{ query = e.target.value.trim(); render(); }, 200); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden){ load(false); sync(); } });
 

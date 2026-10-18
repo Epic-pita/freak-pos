@@ -178,6 +178,8 @@
     <span id="progress">—</span>
     <button class="iconbtn" onclick="openSearch()" title="חיפוש">🔎</button>
     <button class="iconbtn" id="tasksBtn" onclick="openTasks()" title="משימות לצוות">📋<span id="tasksBadge"></span></button>
+    <!-- v3.5: to the owner's supplier tasks — shown only on a phone that holds that page's personal key (same site, same storage) -->
+    <a class="iconbtn hide" id="suppliersLink" href="./suppliers.html" title="משימות מול הספקים" style="text-decoration:none;border-radius:10px">🚚</a>
     <button class="iconbtn" onclick="refreshCatalog()" title="רענון קטלוג">⟳</button>
     <button class="iconbtn" onclick="openHelp()" title="איך סופרים">?</button>
   </div>
@@ -399,7 +401,7 @@
 
 <script>
 /* ================= CONFIG ================= */
-const BUILD = 'v3.4';
+const BUILD = 'v3.5';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live"
 // ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the
 // address bar, so no link can send the page (and what it shows) to a backend of someone else's
@@ -1582,6 +1584,7 @@ function renderNameChips(){
 function openNameGate(){ renderNameChips(); $('nameInput').value=''; $('nameGate').style.display='flex'; }
 async function boot(){
   $('ver').textContent = BUILD;
+  try{ if(localStorage.getItem('fs_key')) $('suppliersLink').classList.remove('hide'); }catch(e){}
   db = await idbOpen();
   if(!OFF_LIVE){ for(const j of await qAll()) if(j.api==='test') await qDel(j.uuid); }   // v3.0: the queue is shared by origin — a test page's job never drains to the live backend
   if(navigator.onLine) $('dot').classList.add('on');
