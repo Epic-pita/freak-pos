@@ -124,10 +124,12 @@ function render(r){
   const snap = r && r.snap;
   if (!snap){ $('boxes').innerHTML = '<div class="empty">' + (API ? 'עוד אין תמונה. היא נבנית פעם בשעה.' : 'השרת עוד לא הוגדר בעמוד הזה.') + '</div>'; return; }
   $('built').textContent = 'נבנה ' + when(snap.builtAt);
+  // the hourly build sleeps 00:00-05:59, so before 07:00 a snapshot from last night is not old
+  const oldMs = Number(partsOf(Date.now()).hour) < 7 ? 8.5 * 3600000 : OLD_MS;
   const age = Date.now() - snap.builtAt, b = $('banner');
-  if (age > OLD_MS || (r && r.err)){
-    b.className = age > OLD_MS ? '' : 'warn';
-    b.textContent = (age > OLD_MS ? 'מסך הבית לא התעדכן מאז ' + when(snap.builtAt) + '. ' : '') + (r && r.err ? 'הבנייה האחרונה נכשלה: ' + r.err : '');
+  if (age > oldMs || (r && r.err)){
+    b.className = age > oldMs ? '' : 'warn';
+    b.textContent = (age > oldMs ? 'מסך הבית לא התעדכן מאז ' + when(snap.builtAt) + '. ' : '') + (r && r.err ? 'הבנייה האחרונה נכשלה: ' + r.err : '');
   } else b.className = 'hide';
   $('boxes').innerHTML = snap.boxes.map(box => {
     const rows = box.items.map(it => {
