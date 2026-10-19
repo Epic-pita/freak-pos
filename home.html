@@ -83,7 +83,8 @@ const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const MODE = (()=>{ const a = new URLSearchParams(location.search).get('api'); return a==='test' ? 'test' : a==='local' && LOCAL ? 'local' : 'live'; })();
 const API = MODE==='test' ? TEST_API : MODE==='local' ? location.origin + '/api' : LIVE_API;
 const TZ = 'Asia/Jerusalem';
-const LS = { key: 'l1_key', snap: 'l1_snap_' + MODE };
+// one key per mode, so a wrong TEST key never removes the LIVE one
+const LS = { key: MODE === 'live' ? 'l1_key' : 'l1_key_' + MODE, snap: 'l1_snap_' + MODE };
 const POLL_MS = 5 * 60000, OLD_MS = 2 * 3600000;
 
 /* ================= UTIL ================= */
@@ -116,7 +117,7 @@ function saveLS(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e
 function loadLS(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
 
 /* ================= STATE ================= */
-let KEY = '', last = null, loading = false;
+let KEY = '', last = null, loading = false, timer = null;
 
 /* ================= RENDER ================= */
 function render(r){
@@ -147,7 +148,7 @@ async function load(){
   try{
     const js = await post({ action:'home' });
     if (js && js.ok){ last = js; if (MODE === 'live') saveLS(LS.snap, js); render(js); }
-    else if (js && js.error === 'BAD_KEY'){ try{ localStorage.removeItem(LS.key); }catch(e){} showGate('הקוד לא מתאים יותר. צריך להכניס אותו מחדש.'); }
+    else if (js && js.error === 'BAD_KEY'){ try{ localStorage.removeItem(LS.key); localStorage.removeItem(LS.snap); }catch(e){} $('boxes').innerHTML = ''; showGate('הקוד לא מתאים יותר. צריך להכניס אותו מחדש.'); }
     else showBanner('אין תשובה מהשרת. מוצג המצב האחרון שנשמר בטלפון.');
   }catch(e){ showBanner('אין חיבור. מוצג המצב האחרון שנשמר בטלפון.'); }
   finally{ loading = false; $('refresh').disabled = false; }
@@ -183,7 +184,7 @@ function start(){
   const cached = MODE === 'live' ? loadLS(LS.snap, null) : null;
   if (cached && cached.snap) render(cached);
   load();
-  setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
+  if (!timer) timer = setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
 }
 takeKeyFromHash();
 if (navigator.onLine) $('dot').classList.add('on');
