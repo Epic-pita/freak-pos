@@ -134,10 +134,11 @@ self.addEventListener('fetch', e => {
 });
 
 /* Another app's path: the network first. Its own saved copy comes back only
-   when the network fails, or after the same 3.5s fuse. With no copy (a first
-   open) it is the network however long it takes, or the browser's own offline
-   page — never the till's index.html. Clean 200s are still saved, so a page
-   opened once (the count) keeps opening offline as it did before. */
+   when the network fails or answers with an error or a captive portal's page,
+   or after the same 3.5s fuse. With no copy (a first open) it is the network
+   however long it takes, or the browser's own offline page — never the till's
+   index.html. Clean 200s are still saved, so a page opened once (the count)
+   keeps opening offline as it did before. */
 async function networkThenOwnCopy(req) {
   const fetched = fetch(req).then(res => {
     if (res.ok && !res.redirected) {
@@ -146,6 +147,7 @@ async function networkThenOwnCopy(req) {
     }
     return res;
   });
+  fetched.catch(() => {});   // a failure is answered below; keep the console clean
 
   const own = await caches.match(req);
   if (!own) return fetched;
@@ -154,5 +156,5 @@ async function networkThenOwnCopy(req) {
     fetched.catch(() => null),
     new Promise(r => setTimeout(() => r(null), 3500))
   ]);
-  return winner || own;
+  return (winner && winner.ok && !winner.redirected) ? winner : own;
 }
