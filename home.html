@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1a20">
+<meta name="robots" content="noindex">
+<link rel="manifest" href="./home.webmanifest">
+<link rel="icon" href="./icon-192.png">
+<title>FREAK — מסך הבית</title>
+<style>
+  :root{
+    --bg:#0f1a20; --surface:#16262e; --surface2:#1d323c; --line:#2a4450;
+    --teal:#3d7a94; --teal-hi:#5aa3c2; --ok:#43a047; --warn:#e0a020; --bad:#e04a3a; --grey:#7d8f97;
+    --ink:#e8eef1; --dim:#8fa6b0;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0; background:var(--bg); color:var(--ink)}
+  body{font-family:-apple-system,'Segoe UI',Roboto,'Heebo',Arial,sans-serif; font-size:16px; line-height:1.4; padding-bottom:32px}
+  button{font-family:inherit; font-size:15px; border:none; border-radius:10px; cursor:pointer; color:var(--ink); background:var(--surface2); padding:10px 12px}
+  input{font-family:inherit; font-size:16px; color:var(--ink); background:var(--surface2); border:1px solid var(--line); border-radius:10px; padding:10px; width:100%}
+  .hide{display:none !important}
+  .wrap{max-width:640px; margin:0 auto; padding:0 12px}
+  #top{position:sticky; top:0; z-index:5; background:var(--surface); border-bottom:1px solid var(--line)}
+  #topline{display:flex; align-items:center; gap:10px; padding:10px 12px; max-width:640px; margin:0 auto}
+  #dot{width:10px; height:10px; border-radius:50%; background:var(--bad); flex:none}
+  #dot.on{background:var(--ok)}
+  #title{font-weight:700; font-size:17px; flex:1}
+  #built{color:var(--dim); font-size:13px}
+  #refresh{padding:6px 10px; font-size:18px; line-height:1}
+  #banner{margin:10px 0 0; padding:10px 12px; border-radius:10px; background:#3a1512; color:#ffd7d2; font-size:14px}
+  #banner.warn{background:#3a2c0e; color:#ffe7b0}
+  .box{background:var(--surface); border:1px solid var(--line); border-radius:14px; margin:12px 0; overflow:hidden}
+  .box h2{margin:0; font-size:15px; font-weight:700; padding:10px 12px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--line)}
+  .box h2 .st{width:10px; height:10px; border-radius:50%; flex:none}
+  .box h2 .hint{margin-right:auto; color:var(--dim); font-size:12.5px; font-weight:400}
+  .row{display:flex; gap:10px; align-items:flex-start; padding:9px 12px; border-top:1px solid #20343d; text-decoration:none; color:inherit}
+  .row:first-of-type{border-top:none}
+  a.row:active{background:var(--surface2)}
+  .row .st{width:8px; height:8px; border-radius:50%; margin-top:8px; flex:none}
+  .row .main{flex:1; min-width:0}
+  .row .label{font-size:15px}
+  .row .sub{color:var(--dim); font-size:12.5px; margin-top:2px}
+  .row .val{font-weight:700; font-size:16px; text-align:left; white-space:nowrap; direction:rtl}
+  .row .val.long{font-weight:400; color:var(--dim); font-size:13px; white-space:normal; max-width:55%}
+  .s-ok{background:var(--ok)} .s-warn{background:var(--warn)} .s-bad{background:var(--bad)} .s-grey{background:var(--grey)} .s-info{background:transparent; border:1px solid var(--line)}
+  .row.bad .val{color:#ff8a7d} .row.warn .val{color:#ffd166} .row.grey .val{color:var(--grey)}
+  #foot{color:var(--dim); font-size:12px; text-align:center; margin-top:18px}
+  #gate{padding-top:40px}
+  #gate h1{font-size:20px}
+  #gate p{color:var(--dim)}
+  #gateMsg{min-height:22px; color:#ffd166; margin-top:8px}
+  .empty{color:var(--dim); text-align:center; padding:40px 0}
+</style>
+</head>
+<body>
+<div id="gate" class="wrap hide">
+  <h1>FREAK — מסך הבית</h1>
+  <p>העמוד הזה פתוח רק עם קוד אישי. את הקוד מכניסים פעם אחת: סורקים את קוד ה-QR מהמחשב בחנות, או מדביקים אותו כאן.</p>
+  <input id="keyIn" type="password" autocomplete="off" placeholder="הקוד האישי">
+  <button id="keyBtn" style="margin-top:10px; width:100%">כניסה</button>
+  <div id="gateMsg"></div>
+</div>
+<div id="app" class="hide">
+  <div id="top"><div id="topline">
+    <span id="dot"></span><span id="title">FREAK · הבית</span><span id="built"></span><button id="refresh" aria-label="לרענן">↻</button>
+  </div></div>
+  <div class="wrap">
+    <div id="banner" class="hide"></div>
+    <div id="boxes"><div class="empty">טוען…</div></div>
+    <div id="foot"></div>
+  </div>
+</div>
+<script>
+'use strict';
+/* ================= CONFIG ================= */
+const BUILD = 'h1.0';
+// The backend is the F-3 alarm's Apps Script with the L1 files (web app, doPost only). ?api=test is the TEST deployment
+// (the TEST copy), ?api=local only on this PC (the bench). LIVE_API stays empty until the release.
+const LIVE_API = 'https://script.google.com/macros/s/AKfycbxUnoCfolEzKVkRRD2X3iBxc1BKUc29vn-f_rfxCN3M0POOv_tY34iJFrXAHjLwFAWiuQ/exec';   // LIVE deployment @1 (20/10, L1 LIVE h1.0)
+const TEST_API = 'https://script.google.com/macros/s/AKfycbz1aUaR698bq3Y2y2WhX1ng77i9BYrTBIP1ahDpNezYXqYPGJect3T64HOgB85FXytW/exec';   // TEST deployment @1 (19/10)
+const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+const MODE = (()=>{ const a = new URLSearchParams(location.search).get('api'); return a==='test' ? 'test' : a==='local' && LOCAL ? 'local' : 'live'; })();
+const API = MODE==='test' ? TEST_API : MODE==='local' ? location.origin + '/api' : LIVE_API;
+const TZ = 'Asia/Jerusalem';
+// one key per mode, so a wrong TEST key never removes the LIVE one
+const LS = { key: MODE === 'live' ? 'l1_key' : 'l1_key_' + MODE, snap: 'l1_snap_' + MODE };
+const POLL_MS = 5 * 60000, OLD_MS = 2 * 3600000;
+
+/* ================= UTIL ================= */
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const STATES = { ok:1, warn:1, bad:1, grey:1, info:1 };
+const st = s => STATES[s] ? s : 'grey';
+const TZF = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false });
+function partsOf(ms){ const p = {}; TZF.formatToParts(new Date(ms)).forEach(x => { if (x.type !== 'literal') p[x.type] = x.value === '24' ? '00' : x.value; }); return p; }
+const todayDM = () => { const p = partsOf(Date.now()); return p.day + '/' + p.month; };
+/** an instant → "14:05" today, else "19/10 14:05" (always day/month, never the locale's order) */
+function when(ms){
+  if (!ms) return '';
+  const p = partsOf(ms), dm = p.day + '/' + p.month, hm = p.hour + ':' + p.minute;
+  return dm === todayDM() ? hm : dm + ' ' + hm;
+}
+/** a value the server wrote as "dd/MM HH:mm" → "היום HH:mm" when it is today */
+function shortVal(v){ const m = /^(\d\d\/\d\d) (\d\d:\d\d)$/.exec(String(v)); return m && m[1] === todayDM() ? 'היום ' + m[2] : v; }
+const safeLink = u => /^https:\/\/(docs\.google\.com\/spreadsheets\/d\/[\w\-]+\/edit|epic-pita\.github\.io\/freak-pos\/[\w\-]+\.html)$/.test(String(u||'')) ? u : '';
+function fetchT(url, opts, ms){ const c = new AbortController(); const t = setTimeout(()=>c.abort(), ms); return fetch(url, {...opts, signal:c.signal}).finally(()=>clearTimeout(t)); }
+async function post(body, ms=30000){
+  // Google sometimes turns the POST into a bare GET (doPost never runs; the backend answers GET_NOT_POST): send it again
+  for (let i = 0; ; i++){
+    const r = await fetchT(API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ k: KEY, build: BUILD, ...body }) }, ms);
+    const js = await r.json();
+    if (!(js && js.error === 'GET_NOT_POST') || i >= 3) return js;
+  }
+}
+function saveLS(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function loadLS(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
+
+/* ================= STATE ================= */
+let KEY = '', last = null, loading = false, timer = null;
+
+/* ================= RENDER ================= */
+function render(r){
+  const snap = r && r.snap;
+  if (!snap){ $('boxes').innerHTML = '<div class="empty">' + (API ? 'עוד אין תמונה. היא נבנית פעם בשעה.' : 'השרת עוד לא הוגדר בעמוד הזה.') + '</div>'; return; }
+  $('built').textContent = 'נבנה ' + when(snap.builtAt);
+  // the hourly build sleeps 00:00-05:59, so before 07:00 a snapshot from last night is not old
+  const oldMs = Number(partsOf(Date.now()).hour) < 7 ? 8.5 * 3600000 : OLD_MS;
+  const age = Date.now() - snap.builtAt, b = $('banner');
+  if (age > oldMs || (r && r.err)){
+    b.className = age > oldMs ? '' : 'warn';
+    b.textContent = (age > oldMs ? 'מסך הבית לא התעדכן מאז ' + when(snap.builtAt) + '. ' : '') + (r && r.err ? 'הבנייה האחרונה נכשלה: ' + r.err : '');
+  } else b.className = 'hide';
+  $('boxes').innerHTML = snap.boxes.map(box => {
+    const rows = box.items.map(it => {
+      const s = st(it.state), link = safeLink(it.link), tag = link ? 'a' : 'div';
+      const sub = [it.note, it.at ? 'נכון ל-' + when(it.at) : ''].filter(Boolean).map(esc).join(' · ');
+      return '<' + tag + ' class="row ' + s + '"' + (link ? ' href="' + esc(link) + '" target="_blank" rel="noopener"' : '') + '>' +
+        '<span class="st s-' + s + '"></span><div class="main"><div class="label">' + esc(it.label) + '</div>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>' +
+        '<div class="val' + (String(it.value).length > 24 ? ' long' : '') + '">' + esc(shortVal(it.value)) + '</div></' + tag + '>';
+    }).join('');
+    return '<section class="box"><h2><span class="st s-' + st(box.state) + '"></span>' + esc(box.title) + (box.hint ? '<span class="hint">' + esc(box.hint) + '</span>' : '') + '</h2>' + rows + '</section>';
+  }).join('');
+  $('foot').textContent = [BUILD, snap.build, r && r.who ? r.who : '', MODE !== 'live' ? MODE : ''].filter(Boolean).join(' · ');
+}
+
+async function load(){
+  if (loading || !API) return;
+  loading = true; $('refresh').disabled = true;
+  try{
+    const js = await post({ action:'home' });
+    if (js && js.ok){ last = js; if (MODE === 'live') saveLS(LS.snap, js); render(js); }
+    else if (js && js.error === 'BAD_KEY'){ try{ localStorage.removeItem(LS.key); localStorage.removeItem(LS.snap); }catch(e){} $('boxes').innerHTML = ''; showGate('הקוד לא מתאים יותר. צריך להכניס אותו מחדש.'); }
+    else showBanner('אין תשובה מהשרת. מוצג המצב האחרון שנשמר בטלפון.');
+  }catch(e){ showBanner('אין חיבור. מוצג המצב האחרון שנשמר בטלפון.'); }
+  finally{ loading = false; $('refresh').disabled = false; }
+}
+function showBanner(t){ const b = $('banner'); b.className = 'warn'; b.textContent = t; }
+
+/* ================= KEY ================= */
+function takeKeyFromHash(){
+  const m = /[#&]k=([\w\-]{24,100})/.exec(location.hash);
+  if (m){ try{ localStorage.setItem(LS.key, m[1]); }catch(e){} history.replaceState(null, '', location.pathname + location.search); }
+}
+function showGate(msg){ $('app').classList.add('hide'); $('gate').classList.remove('hide'); $('gateMsg').textContent = msg || ''; }
+$('keyBtn').onclick = async ()=>{
+  const k = $('keyIn').value.trim();
+  if (!/^[\w\-]{24,100}$/.test(k)){ $('gateMsg').textContent = 'הקוד לא נראה תקין.'; return; }
+  $('gateMsg').textContent = 'בודק…';
+  KEY = k;
+  let js = null;
+  try{ js = await post({ action:'ping' }); }catch(e){ js = { ok:false, error:'NET' }; }
+  if (js && js.ok){ try{ localStorage.setItem(LS.key, k); }catch(e){} $('keyIn').value = ''; start(); }
+  else $('gateMsg').textContent = js && js.error === 'BAD_KEY' ? 'הקוד לא מתאים.' : 'אין חיבור לשרת. לנסות שוב.';
+};
+$('refresh').onclick = () => load();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+addEventListener('online', () => $('dot').classList.add('on'));
+addEventListener('offline', () => $('dot').classList.remove('on'));
+
+/* ================= START ================= */
+function start(){
+  KEY = (()=>{ try{ return localStorage.getItem(LS.key) || ''; }catch(e){ return ''; } })();
+  if (!KEY){ showGate(''); return; }
+  $('gate').classList.add('hide'); $('app').classList.remove('hide');
+  const cached = MODE === 'live' ? loadLS(LS.snap, null) : null;
+  if (cached && cached.snap) render(cached);
+  load();
+  if (!timer) timer = setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
+}
+takeKeyFromHash();
+if (navigator.onLine) $('dot').classList.add('on');
+start();
+</script>
+</body>
+</html>
