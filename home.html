@@ -77,7 +77,7 @@
 const BUILD = 'h1.0';
 // The backend is the F-3 alarm's Apps Script with the L1 files (web app, doPost only). ?api=test is the TEST deployment
 // (the TEST copy), ?api=local only on this PC (the bench). LIVE_API stays empty until the release.
-const LIVE_API = '';
+const LIVE_API = 'https://script.google.com/macros/s/AKfycbxUnoCfolEzKVkRRD2X3iBxc1BKUc29vn-f_rfxCN3M0POOv_tY34iJFrXAHjLwFAWiuQ/exec';   // LIVE deployment @1 (20/10, L1 LIVE h1.0)
 const TEST_API = 'https://script.google.com/macros/s/AKfycbz1aUaR698bq3Y2y2WhX1ng77i9BYrTBIP1ahDpNezYXqYPGJect3T64HOgB85FXytW/exec';   // TEST deployment @1 (19/10)
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const MODE = (()=>{ const a = new URLSearchParams(location.search).get('api'); return a==='test' ? 'test' : a==='local' && LOCAL ? 'local' : 'live'; })();
