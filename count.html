@@ -401,7 +401,7 @@
 
 <script>
 /* ================= CONFIG ================= */
-const BUILD = 'v3.5';
+const BUILD = 'v3.5.1';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live"
 // ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the
 // address bar, so no link can send the page (and what it shows) to a backend of someone else's
@@ -518,16 +518,44 @@ async function updateQueueBadge(){
 }
 
 /* ================= SYNC ================= */
+// A reply the backend could not finish is not the job's fault ("soft"): its own counter, 30 s apart, 20 tries. That is
+// RACE / write failed (answerTask); bad json (this page always sends valid JSON, so the body was lost on the way); and
+// (v3.5.1, S-CNT 20/10) any error Google or the script runtime threw — the backend answers String(err): 'Exception: Lock
+// timeout…' (waitLock), 'Exception: Service Spreadsheets timed out…', 'Error: staff header missing…', 'TypeError: …'.
+// Until then those were hard: half a minute of Google trouble (6 ticks) moved a count to the failed list.
+// The backend's own refusals ('missing counted', 'bad note', 'unknown action'…) stay hard: sending them again cannot help.
+const SOFT_ERR_RE = /^(RACE|write failed|bad json)|^\w*(Exception|Error):/;
+function softError(err){ return SOFT_ERR_RE.test(String(err||'')); }
+/** what a person typed, kept on the failed list so it can be entered again (until v3.5.1 a count kept only its code) */
+function failedNote(job){
+  if(job.action==='saveItem'){
+    const f = job.fields || {};
+    let locs = '';
+    try{ locs = JSON.parse(f.locations||'[]').map(x=>x.l+': '+x.q).join(', '); }catch(e){ locs = String(f.locations||''); }
+    return [f.counted!=null && f.counted!=='' ? 'ספרתי '+f.counted : '', locs, f.newName ? 'שם חדש: '+f.newName : '', f.notes||'',
+      f.scanTime ? ddmm(f.scanTime)+' '+hhmm(f.scanTime) : ''].filter(Boolean).join(' · ');
+  }
+  if(job.action==='answerTask') return [job.done?'בוצע':'', job.counted!=null?'ספרתי '+job.counted:'', job.flag||'', job.note||''].filter(Boolean).join(' · ');
+  if(job.action==='uploadPhoto') return 'תמונה — לצלם שוב';
+  if(job.action==='addPending') return ['פריט חדש: '+(job.name||''), job.qty!=null && job.qty!=='' ? 'כמות '+job.qty : '', job.location||'',
+    job.priceOnSticker ? 'מחיר '+job.priceOnSticker : '', job.notes||'', 'לצלם שוב'].filter(Boolean).join(' · ');
+  if(job.action==='addLookup') return job.value||'';
+  return '';
+}
 async function sync(){
   if(syncing || !navigator.onLine) return;
   syncing = true;
   try{
     const jobs = await qAll();
+    // v3.5.1: a count's photo waits while its count is still queued — the backend puts the photo on the count's row, which
+    // must exist first (a count now waits 30 s between soft tries; before, the photo could land first and stay off the row)
+    const heldCounts = new Set(jobs.filter(j=>j.action==='saveItem').map(j=>j.uuid));
     for(const job of jobs){
       if(job.api && job.api !== API_TAG){ if(job.api==='test') await qDel(job.uuid); continue; }   // a test page's job never reaches the live backend (and the reverse)
       if(cancelledJobs.has(job.uuid)){ await qDel(job.uuid); continue; }
       if(job.notBefore && job.notBefore > Date.now()) continue;   // v3.0: a task answer waits out its undo window
-      const body = {...job, token: TOKEN}; delete body.ts; delete body.att; delete body.notBefore; delete body.api;
+      if(job.action==='uploadPhoto' && job.countUuid && heldCounts.has(job.countUuid)) continue;
+      const body = {...job, token: TOKEN}; delete body.ts; delete body.att; delete body.notBefore; delete body.api; delete body.soft;
       let js;
       try{
         // Apps Script is usually 1–5 s and now and then 20–60 s (Google re-dispatching); a photo is ~150 KB
@@ -546,22 +574,29 @@ async function sync(){
           if(js.changed){ delete taskAnswers[key]; saveTaskAnswers(); toast('המשימה של '+(job.code||'')+' השתנתה בינתיים — לבדוק שוב ברשימה', 'warn', 4500); }   // nothing was written
           setTimeout(()=>loadTasks(false), 800);   // the backend dropped its cache — the list now shows the row answered
         }
-        await qDel(job.uuid);
+        await qDel(job.uuid); heldCounts.delete(job.uuid);
       }
       else if(js && js.error==='BAD_TOKEN'){
         // Google sometimes re-dispatches a POST as a bare GET — the body is gone; just try again
         job.att = (job.att||0)+1; if(!cancelledJobs.has(job.uuid)) await qAdd(job);
       }
       else{
-        // a write the backend could not finish (RACE / write failed) is not the phone's fault: its own counter, 30 s apart, 20 tries
-        const soft = !!(js && /^RACE|^write failed/.test(String(js.error||'')));
+        // soft (see SOFT_ERR_RE) or hard; v3.5.1: each kind of error is judged by its own counter only (a soft error no longer
+        // drops a job whose hard counter re-dispatched BAD_TOKEN answers had raised)
+        const soft = !!(js && softError(js.error));
         if(soft){ job.soft = (job.soft||0)+1; job.notBefore = Date.now()+30000; } else job.att = (job.att||0)+1;
-        if(job.att >= 6 || (job.soft||0) >= 20){
-          const f = JSON.parse(localStorage.getItem(LS.failed)||'[]');
-          f.push({action:job.action, code:job.itemCode||job.barcode||'', err:(js&&js.error)||'?', note: job.action==='answerTask' ? [job.done?'בוצע':'', job.counted!=null?'ספרתי '+job.counted:'', job.flag||'', job.note||''].filter(Boolean).join(' · ') : ''});
-          localStorage.setItem(LS.failed, JSON.stringify(f));
+        let listed = false;
+        if(soft ? job.soft >= 20 : job.att >= 6){
+          try{   // v3.5.1: the job leaves the queue only once the failed list holds it (a full or unreadable storage keeps it queued)
+            const f = JSON.parse(localStorage.getItem(LS.failed)||'[]');
+            f.push({action:job.action, code:job.itemCode||job.barcode||'', err:(js&&js.error)||'?', note: failedNote(job)});
+            localStorage.setItem(LS.failed, JSON.stringify(f));
+            listed = true;
+          }catch(e){}
+        }
+        if(listed){
           if(job.action==='answerTask'){ delete taskAnswers[job.kind+'|'+job.code]; saveTaskAnswers(); renderTasks(); }   // the row is open again on this phone, with the failure shown
-          await qDel(job.uuid); renderFailed();
+          await qDel(job.uuid); heldCounts.delete(job.uuid); renderFailed();
         } else if(!cancelledJobs.has(job.uuid)) await qAdd(job);
       }
     }
