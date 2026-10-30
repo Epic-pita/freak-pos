@@ -53,15 +53,18 @@
   .chipline{display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 2px}
   .chip{background:var(--surface2); border:1px solid var(--line); border-radius:16px; padding:10px 12px; font-size:13px; cursor:pointer}
   .chip.on{background:var(--teal); border-color:var(--teal)}
-  .chip .n{font-family:var(--mono); font-size:11px; opacity:.8; margin-inline-start:6px}   /* jo1.2: 6 px, so "D100" and its count never read as one number */
-  /* jo1.2 filters: a labelled row per dimension (sub-type, material, option, design, pace), the sort box and the dealer-€ range */
-  .frow{display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 2px; align-items:center}
-  .frow .flbl{font-size:12px; color:var(--dim); margin-inline-end:2px; white-space:nowrap}
+  .chip .n{font-family:var(--mono); font-size:11px; opacity:.8; margin-inline-start:6px; unicode-bidi:isolate}   /* jo1.2: isolated + 6 px, so "D100" and its count never read as one number */
+  /* jo1.2 filters: a labelled row per dimension (sub-type, material, option, design, pace) that scrolls sideways (one line each, the
+     first card stays near the top at 375 px), the sort box and the dealer-€ range */
+  .frow{display:flex; flex-wrap:nowrap; gap:6px; margin:4px 0 2px; align-items:center; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; padding-bottom:2px}
+  .frow::-webkit-scrollbar{display:none}
+  .frow .chip{flex:none; white-space:nowrap}
+  .frow .flbl{font-size:12px; color:var(--dim); margin-inline-end:2px; white-space:nowrap; flex:none}
   .chip.mat.on{background:#4a3d7a; border-color:#7a66c4}
   .chip.pace-chip.on{background:#2b5a3a; border-color:#43a047}
   .tools select{font-family:inherit; font-size:14px; color:var(--ink); background:var(--surface2); border:1px solid var(--line); border-radius:10px; padding:9px 8px; min-height:40px; max-width:46%}
   .range{display:flex; gap:6px; align-items:center; margin:4px 0 2px; flex-wrap:wrap}
-  .range input{width:78px; padding:9px 6px; font-size:15px; text-align:center; font-family:var(--mono)}
+  .range input{width:78px; min-height:40px; padding:9px 6px; font-size:15px; text-align:center; font-family:var(--mono)}
   .range .flbl{font-size:12px; color:var(--dim)}
   .cnt{font-size:12.5px; color:var(--dim); margin:4px 0 2px; display:flex; align-items:center; gap:8px; flex-wrap:wrap}
   .clear{background:none; border:1px solid var(--line); color:#ffd479; padding:8px 12px; font-size:13px; min-height:40px}
@@ -530,8 +533,9 @@ function passes(r, skip){
   if (skip !== 'price'){ const p = r.dealer_eur; if (F.pmin !== '' && !(p != null && p >= Number(F.pmin))) return false; if (F.pmax !== '' && !(p != null && p <= Number(F.pmax))) return false; }
   return matches(r);
 }
-function anyFilter(){ return chip !== 'all' || !!query || F.sub.length > 0 || F.mat.length > 0 || F.opt.length > 0 || !!F.design || F.pace.length > 0 || F.pmin !== '' || F.pmax !== '' || F.sort !== 'ordered'; }
-function clearFilters(){ chip = 'all'; query = ''; F = { sub:[], mat:[], opt:[], design:'', pace:[], pmin:'', pmax:'', sort:'ordered' }; shown = PAGE; sortSnap = null; saveF(); }
+function anyFilter(){ return chip !== 'all' || !!query || F.sub.length > 0 || F.mat.length > 0 || F.opt.length > 0 || !!F.design || F.pace.length > 0 || F.pmin !== '' || F.pmax !== ''; }
+/** every filter off; the sort is this device's preference and stays */
+function clearFilters(){ chip = 'all'; query = ''; F = { sub:[], mat:[], opt:[], design:'', pace:[], pmin:'', pmax:'', sort: F.sort }; shown = PAGE; sortSnap = null; saveF(); }
 function saveF(){ saveLS(LS.filters, Object.assign({ chip }, F)); }
 /** the filters this device last used (never a value the page does not know) */
 function loadF(){
@@ -539,7 +543,8 @@ function loadF(){
   const arr = v => Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.length <= 60).slice(0, 20) : [];
   const numStr = v => (v === '' || v == null || isNaN(Number(v)) || Number(v) < 0) ? '' : String(v).slice(0, 10);
   if (typeof s.chip === 'string' && (s.chip === 'all' || s.chip === 'new' || s.chip === 'ordered' || GROUPS.some(g => g[0] === s.chip))) chip = s.chip;
-  F = { sub: arr(s.sub), mat: arr(s.mat), opt: arr(s.opt), design: typeof s.design === 'string' ? s.design.slice(0, 80) : '', pace: arr(s.pace), pmin: numStr(s.pmin), pmax: numStr(s.pmax), sort: SORTS.some(x => x[0] === s.sort) ? s.sort : 'ordered' };
+  F = { sub: arr(s.sub).filter(x => SUB_ORDER.includes(x)), mat: arr(s.mat).filter(x => MAT_ORDER.includes(x)), opt: arr(s.opt), design: typeof s.design === 'string' ? s.design.slice(0, 80) : '',
+    pace: arr(s.pace).filter(x => x && PACE_ORDER[x] !== undefined), pmin: numStr(s.pmin), pmax: numStr(s.pmax), sort: SORTS.some(x => x[0] === s.sort) ? s.sort : 'ordered' };
 }
 const byTitle = (a, b) => a.title.localeCompare(b.title, 'en');
 function catRows(){
@@ -576,8 +581,8 @@ function renderCatalog(){
     const hasFacets = cat.rows.some(r => r.sub), hasPace = cat.rows.some(r => r.pace), aGroup = chip !== 'all' && chip !== 'new' && chip !== 'ordered';
     if (hasFacets && aGroup) facets += facetRow('סוג', 'sub', SUB_ORDER, SUB_HE, F.sub, 'sub');
     if (hasFacets && (chip === 'dice' || F.mat.length)) facets += facetRow('חומר', 'mat', MAT_ORDER, MAT_HE, F.mat, 'mat');
-    if (hasFacets && aGroup){ const kinds = new Set(cat.rows.filter(r => passes(r, 'opt') && r.opt_kind).map(r => r.opt_kind)); if (kinds.size === 1) facets += facetRow(OPT_HE[[...kinds][0]] || 'אפשרות', 'opt', null, null, F.opt, 'opt'); }
-    if (hasFacets && DESIGN_GROUPS.has(chip)){   // an artwork that is on two kinds of product (a mug and a pin): a chip; a design on one product only is found by the search
+    if (hasFacets && (aGroup || F.opt.length)){ const kinds = new Set(cat.rows.filter(r => passes(r, 'opt') && r.opt_kind).map(r => r.opt_kind)); if (kinds.size === 1 || F.opt.length) facets += facetRow(kinds.size === 1 ? (OPT_HE[[...kinds][0]] || 'אפשרות') : 'אפשרות', 'opt', null, null, F.opt, 'opt'); }   // a row that filters is always drawn
+    if (hasFacets && (DESIGN_GROUPS.has(chip) || F.design)){   // an artwork that is on two kinds of product (a mug and a pin): a chip; a design on one product only is found by the search
       const subsOf = {}; for (const r of cat.rows) if (r.design){ (subsOf[r.design] = subsOf[r.design] || new Set()).add(r.sub); }
       const cross = Object.keys(subsOf).filter(d => subsOf[d].size >= 2).sort();
       if (cross.length) facets += facetRow('עיצוב על כמה מוצרים', 'design', cross, null, F.design ? [F.design] : [], 'design');
@@ -595,7 +600,7 @@ function renderCatalog(){
   const refocus = id => { const el = $(id); if (el){ el.focus({ preventScroll:true }); try{ el.setSelectionRange(el.value.length, el.value.length); }catch(e){} } };
   const q = $('q'); let qT = null;
   q.addEventListener('input', e => { clearTimeout(qT); qT = setTimeout(()=>{ query = e.target.value.trim(); shown = PAGE; sortSnap = null; const a = document.activeElement === q; renderCatalog(); if (a) refocus('q'); }, 200); });
-  for (const id of ['pmin', 'pmax']){ const el = $(id); let t = null; el.addEventListener('input', e => { const s = e.target.value.replace(/[^\d.]/g, ''); if (s !== e.target.value) e.target.value = s; clearTimeout(t); t = setTimeout(()=>{ F[id] = s === '' || isNaN(Number(s)) ? '' : s; shown = PAGE; sortSnap = null; saveF(); const a = document.activeElement === $(id); renderCatalog(); if (a) refocus(id); }, 300); }); }
+  for (const id of ['pmin', 'pmax']){ const el = $(id); let t = null; el.addEventListener('input', e => { const s = e.target.value.replace(/,/g, '.').replace(/[^\d.]/g, '');   /* a Hebrew / Android keypad gives "," for the decimal */ if (s !== e.target.value) e.target.value = s; clearTimeout(t); t = setTimeout(()=>{ F[id] = s === '' || isNaN(Number(s)) ? '' : s; shown = PAGE; sortSnap = null; saveF(); const a = document.activeElement === $(id); renderCatalog(); if (a) refocus(id); }, 300); }); }
   $('sort').addEventListener('change', e => { F.sort = SORTS.some(x => x[0] === e.target.value) ? e.target.value : 'ordered'; shown = PAGE; sortSnap = null; saveF(); renderCatalog(); });
 }
 /** the pace badge of an item we already carry + one line of its figures (receipt, units, sold out / in stock, times received) */
@@ -608,7 +613,7 @@ function paceHtml(r){
     if (r.last_receive) p.push('נקלט ' + ddmmyy(r.last_receive) + (r.last_receive_qty != null ? ' · ' + num(r.last_receive_qty) + ' יח׳' : ''));
     if (r.pace === 'unclear') p.push('לא נמכר מאז ולא במלאי');
     else if (inStock){ p.push('במלאי ' + num(r.stock_now)); if (r.sold_after != null) p.push('נמכרו ' + num(r.sold_after) + ' מאז'); if (r.last_sale) p.push('מכירה אחרונה ' + ddmmyy(r.last_sale)); if (r.pace_days != null) p.push(num(r.pace_days) + ' ימים מהקליטה'); }
-    else if (r.last_sale) p.push('אזל ' + ddmmyy(r.last_sale) + (r.pace_days != null ? ' (' + num(r.pace_days) + ' ימים)' : ''));
+    else if (r.last_sale){ p.push('אזל ' + ddmmyy(r.last_sale)); if (r.pace_days != null) p.push(num(r.pace_days) + ' ימים מהקליטה'); }   // for a sold-out item last_sale is the sale that emptied the stock (pace.mts)
     if (r.receipts_n != null && r.receipts_n > 1) p.push('נקלט ' + num(r.receipts_n) + ' פעמים');
     line = p.join(' · ');
   }
@@ -789,7 +794,7 @@ function goCard(v){
 document.addEventListener('click', ev => {
   const t = ev.target.closest('button, .chip, .tab, [data-go]'); if (!t) return;
   if (t.dataset.view){ view = t.dataset.view; sortSnap = null; saveLS(LS.view, view); window.scrollTo(0, 0); render(); return; }
-  if (t.dataset.chip){ chip = t.dataset.chip; F.sub = []; F.opt = []; if (chip !== 'dice') F.mat = []; shown = PAGE; sortSnap = null; saveF(); renderCatalog(); return; }   // another group: its own sub-types and options
+  if (t.dataset.chip){ chip = t.dataset.chip; F.sub = []; F.opt = []; if (chip !== 'dice') F.mat = []; if (!DESIGN_GROUPS.has(chip)) F.design = ''; shown = PAGE; sortSnap = null; saveF(); renderCatalog(); return; }   // another group: its own sub-types, options and designs
   for (const dim of ['sub', 'mat', 'opt', 'pace']){ if (t.dataset[dim] !== undefined){ const id = t.dataset[dim], i = F[dim].indexOf(id); if (i >= 0) F[dim].splice(i, 1); else F[dim].push(id); shown = PAGE; sortSnap = null; saveF(); renderCatalog(); return; } }
   if (t.dataset.design !== undefined){ F.design = F.design === t.dataset.design ? '' : t.dataset.design; shown = PAGE; sortSnap = null; saveF(); renderCatalog(); return; }
   if (t.dataset.clear){ clearFilters(); renderCatalog(); return; }
