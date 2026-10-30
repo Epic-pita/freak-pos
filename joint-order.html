@@ -50,7 +50,9 @@
 
   .tools{display:flex; gap:8px; margin:10px 0 6px}
   .tools input{flex:1; padding:9px 10px; font-size:15px}
-  .chipline{display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 2px}
+  .chipline{display:flex; flex-wrap:nowrap; gap:6px; margin:6px 0 2px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; padding-bottom:2px}   /* jo1.4: the group row is one scrolling line */
+  .chipline::-webkit-scrollbar{display:none}
+  .chipline .chip{flex:none; white-space:nowrap}
   .chip{background:var(--surface2); border:1px solid var(--line); border-radius:16px; padding:10px 12px; font-size:13px; cursor:pointer}
   .chip.on{background:var(--teal); border-color:var(--teal)}
   .chip .n{font-family:var(--mono); font-size:11px; opacity:.8; margin-inline-start:6px; unicode-bidi:isolate}   /* jo1.2: isolated + 6 px, so "D100" and its count never read as one number */
@@ -76,6 +78,33 @@
   .pace.unreceived,.pace.unclear{color:#ffd479}
   .pline{font-size:12px; color:var(--dim); margin-top:2px}
   .fct{font-size:12px; color:#9fd8ea; margin-top:2px}
+  /* jo1.4: one "סינון" toggle holds the facet rows and the € range; the bar shows only the active chips; a list view; a picture zoom */
+  #fpanel{border:1px solid var(--line); border-radius:12px; padding:2px 8px 6px; margin:4px 0; background:var(--surface)}
+  .chip.tog{border-color:var(--teal-hi); color:#c9e6f2}
+  .chip.tog.on{background:var(--teal); color:var(--ink)}
+  .chip.act{background:#2a4450; border-color:var(--teal-hi)}
+  .chip .x{margin-inline-start:6px; opacity:.85; font-weight:700}
+  .pic,.thumb{cursor:zoom-in}
+  .card.big .pic{width:160px; height:160px}
+  .row{display:flex; gap:10px; align-items:center; padding:6px 0; border-top:1px solid var(--line); min-width:0}
+  .row:first-child{border-top:0}
+  .row.out{opacity:.6}
+  .row .thumb{width:56px; height:56px; flex:none; border-radius:8px; object-fit:cover; background:var(--surface2)}
+  .row .rb{flex:1; min-width:0; cursor:pointer; min-height:40px}
+  .row .rt{font-size:14px; font-weight:600; line-height:1.25; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere}
+  .row .rs{font-size:12px; color:var(--dim); margin-top:2px; display:flex; gap:6px; flex-wrap:wrap; align-items:center}
+  .row .rs .d{font-family:var(--mono); color:var(--ink); font-weight:600}
+  .row .pace{margin-top:0; padding:0 6px; font-size:11px}
+  .row .stepper{margin-top:0; flex:none}
+  .row .stepper button{width:36px}
+  .row .stepper input{width:52px}
+  .row .stepper .st{display:none}
+  #list.listmode{display:block}
+  #list.listmode .card{margin:8px 0}
+  #lightbox{position:fixed; inset:0; background:rgba(0,0,0,.92); z-index:300; display:flex; align-items:center; justify-content:center; cursor:zoom-out}
+  #lightbox img{max-width:96vw; max-height:88vh; border-radius:12px; background:#fff}
+  #lightbox .cap{position:absolute; bottom:14px; left:0; right:0; text-align:center; color:#ddd; font-size:14px; padding:0 16px}
+  h2.tog{cursor:pointer; min-height:40px; display:flex; align-items:center; gap:6px}
 
   #list{margin-top:8px}
   .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:10px; margin:8px 0; min-width:0}
@@ -202,7 +231,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'jo1.3';
+const BUILD = 'jo1.4';
 // the two backends (JOINT deployments of the catalog's script); ?api=test is the TEST one (it writes only the TEST sheet),
 // ?api=local only on this PC (the mock server of the page test). Never a URL from the address bar. The page holds no key and no sheet id.
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbyNg6AVes7vWeIfTqCnkpoFIayLxdx4EoI7cVvIN2c_LgFEIfedMyhnFc00Z3-s-sPQUA/exec';
@@ -255,7 +284,8 @@ let lines = new Map();           // person\u0001variant_id → { qty, ord, shop,
 let nLines = 0;                  // ledger data rows this page already has (= `since` of the next poll)
 let person = '';                 // my name (LS jo_person)
 let view = 'catalog', query = '', chip = 'all', shown = PAGE;
-let F = { sub:[], mat:[], opt:[], design:'', pace:[], pmin:'', pmax:'', sort:'ordered' };   // jo1.2 filters beyond the group chip; kept on this device (LS.filters) with the chip
+let F = { sub:[], mat:[], opt:[], design:'', pace:[], pmin:'', pmax:'', sort:'ordered', open:false, list:false };   // jo1.2 filters beyond the group chip; kept on this device (LS.filters) with the chip; jo1.4: open = the סינון panel, list = the list view
+let showShort = false;           // jo1.4: the summary's "under the supplier's minimum" list is folded until tapped
 const expanded = new Set();      // variant ids with the description opened
 let mine = {};                   // variant_id → { qty, uuid } my value not yet confirmed by the server (optimistic layer)
 let st = {};                     // variant_id → '' | 'saving' | 'saved' | 'retry'
@@ -537,7 +567,7 @@ function passes(r, skip){
 }
 function anyFilter(){ return chip !== 'all' || !!query || F.sub.length > 0 || F.mat.length > 0 || F.opt.length > 0 || !!F.design || F.pace.length > 0 || F.pmin !== '' || F.pmax !== ''; }
 /** every filter off; the sort is this device's preference and stays */
-function clearFilters(){ chip = 'all'; query = ''; F = { sub:[], mat:[], opt:[], design:'', pace:[], pmin:'', pmax:'', sort: F.sort }; shown = PAGE; sortSnap = null; saveF(); }
+function clearFilters(){ chip = 'all'; query = ''; F = { sub:[], mat:[], opt:[], design:'', pace:[], pmin:'', pmax:'', sort: F.sort, open: F.open, list: F.list }; shown = PAGE; sortSnap = null; saveF(); }
 function saveF(){ saveLS(LS.filters, Object.assign({ chip }, F)); }
 /** the filters this device last used (never a value the page does not know) */
 function loadF(){
@@ -546,7 +576,7 @@ function loadF(){
   const numStr = v => (v === '' || v == null || isNaN(Number(v)) || Number(v) < 0) ? '' : String(v).slice(0, 10);
   if (typeof s.chip === 'string' && (s.chip === 'all' || s.chip === 'new' || s.chip === 'ordered' || GROUPS.some(g => g[0] === s.chip))) chip = s.chip;
   F = { sub: arr(s.sub).filter(x => SUB_ORDER.includes(x)), mat: arr(s.mat).filter(x => MAT_ORDER.includes(x)), opt: arr(s.opt), design: typeof s.design === 'string' ? s.design.slice(0, 80) : '',
-    pace: arr(s.pace).filter(x => x && PACE_ORDER[x] !== undefined), pmin: numStr(s.pmin), pmax: numStr(s.pmax), sort: SORTS.some(x => x[0] === s.sort) ? s.sort : 'ordered' };
+    pace: arr(s.pace).filter(x => x && PACE_ORDER[x] !== undefined), pmin: numStr(s.pmin), pmax: numStr(s.pmax), sort: SORTS.some(x => x[0] === s.sort) ? s.sort : 'ordered', open: s.open === true, list: s.list === true };
 }
 const byTitle = (a, b) => a.title.localeCompare(b.title, 'en');
 function catRows(){
@@ -591,19 +621,54 @@ function renderCatalog(){
     }
     if (hasPace) facets += facetRow('קצב אצלנו', 'pace', ['fast','medium','slow','early','unclear','unreceived','none'], PACE_HE, F.pace, 'pace-chip');
   }
-  const total = cat ? cat.rows.length : 0;
+  const total = cat ? cat.rows.length : 0, act = activeChips();
+  // jo1.4: search + sort on one line, the groups on one scrolling line, then one bar: the סינון toggle, the list/cards toggle, the
+  // ACTIVE filter chips only (each with ×) and the count; the facet rows and the € range live in a panel that opens on the toggle
+  const bar = '<div class="frow" id="fbar"><span class="chip tog'+(F.open?' on':'')+'" data-tog="filters">סינון'+(act.length ? ' · '+act.length : '')+' '+(F.open ? '▴' : '▾')+'</span>' +
+    '<span class="chip" data-tog="list">'+(F.list ? 'כרטיסים' : 'רשימה')+'</span>' +
+    act.map(([dim, id, he]) => '<span class="chip act" data-'+dim+'="'+esc(id)+'">'+esc(he)+'<span class="x">×</span></span>').join('') +
+    '<span class="cnt" id="cnt">מציג <b>'+num(rows.length)+'</b> מתוך '+num(total)+'</span>' + (anyFilter() ? '<button class="clear" data-clear="1">נקה</button>' : '') + '</div>';
+  const panel = '<div id="fpanel"'+(F.open ? '' : ' class="hide"')+'>' + facets +
+    '<div class="range"><span class="flbl">מחיר סוחר €</span><input id="pmin" type="text" inputmode="decimal" placeholder="מ-" value="'+esc(F.pmin)+'" aria-label="מחיר סוחר מ-"><span class="flbl">–</span><input id="pmax" type="text" inputmode="decimal" placeholder="עד" value="'+esc(F.pmax)+'" aria-label="מחיר סוחר עד"></div></div>';
   $('view').innerHTML = '<div class="tools"><input id="q" type="search" placeholder="חיפוש: כמה מילים, מק״ט, ברקוד או קוד שלנו" value="'+esc(query)+'" autocomplete="off">' +
       '<select id="sort" aria-label="סידור">' + SORTS.map(([id, t]) => '<option value="'+id+'"'+(F.sort===id?' selected':'')+'>'+esc(t)+'</option>').join('') + '</select></div>' +
     '<div class="chipline">' + chips.map(([id, t, n]) => '<span class="chip'+(chip===id?' on':'')+'" data-chip="'+id+'">'+esc(t)+'<span class="n">'+n+'</span></span>').join('') + '</div>' +
-    facets +
-    '<div class="range"><span class="flbl">מחיר סוחר €</span><input id="pmin" type="text" inputmode="decimal" placeholder="מ-" value="'+esc(F.pmin)+'" aria-label="מחיר סוחר מ-"><span class="flbl">–</span><input id="pmax" type="text" inputmode="decimal" placeholder="עד" value="'+esc(F.pmax)+'" aria-label="מחיר סוחר עד">' +
-      '<span class="cnt" id="cnt">מציג <b>'+num(rows.length)+'</b> מתוך '+num(total)+'</span>' + (anyFilter() ? '<button class="clear" data-clear="1">נקה סינון</button>' : '') + '</div>' +
-    '<div id="list">' + (rows.length ? rows.slice(0, shown).map(cardHtml).join('') + (rows.length > shown ? '<button class="more" data-more="1">עוד '+(rows.length - shown)+'</button>' : '') : '<div class="empty">' + (cat ? 'לא נמצא כלום' : 'טוען את הקטלוג…') + '</div>') + '</div>';
+    bar + panel +
+    '<div id="list"'+(F.list ? ' class="listmode"' : '')+'>' + (rows.length ? rows.slice(0, shown).map(F.list ? rowHtml : cardHtml).join('') + (rows.length > shown ? '<button class="more" data-more="1">עוד '+(rows.length - shown)+'</button>' : '') : '<div class="empty">' + (cat ? 'לא נמצא כלום' : 'טוען את הקטלוג…') + '</div>') + '</div>';
   const refocus = id => { const el = $(id); if (el){ el.focus({ preventScroll:true }); try{ el.setSelectionRange(el.value.length, el.value.length); }catch(e){} } };
   const q = $('q'); let qT = null;
   q.addEventListener('input', e => { clearTimeout(qT); qT = setTimeout(()=>{ query = e.target.value.trim(); shown = PAGE; sortSnap = null; const a = document.activeElement === q; renderCatalog(); if (a) refocus('q'); }, 200); });
   for (const id of ['pmin', 'pmax']){ const el = $(id); let t = null; el.addEventListener('input', e => { const s = e.target.value.replace(/,/g, '.').replace(/[^\d.]/g, '');   /* a Hebrew / Android keypad gives "," for the decimal */ if (s !== e.target.value) e.target.value = s; clearTimeout(t); t = setTimeout(()=>{ F[id] = s === '' || isNaN(Number(s)) ? '' : s; shown = PAGE; sortSnap = null; saveF(); const a = document.activeElement === $(id); renderCatalog(); if (a) refocus(id); }, 300); }); }
   $('sort').addEventListener('change', e => { F.sort = SORTS.some(x => x[0] === e.target.value) ? e.target.value : 'ordered'; shown = PAGE; sortSnap = null; saveF(); renderCatalog(); });
+}
+/** the filters that are on, as [dimension, id, label] — drawn as chips with × on the bar (a tap on one toggles it off) */
+function activeChips(){
+  const out = [];
+  for (const id of F.sub) out.push(['sub', id, SUB_HE[id] || id]);
+  for (const id of F.mat) out.push(['mat', id, MAT_HE[id] || id]);
+  for (const id of F.opt) out.push(['opt', id, id]);
+  if (F.design) out.push(['design', F.design, F.design]);
+  for (const id of F.pace) out.push(['pace', id, PACE_HE[id] || id]);
+  if (F.pmin !== '' || F.pmax !== '') out.push(['price', '1', (F.pmin !== '' ? 'מ-€' + F.pmin : '') + (F.pmin !== '' && F.pmax !== '' ? ' ' : '') + (F.pmax !== '' ? 'עד €' + F.pmax : '')]);
+  return out;
+}
+/** list view (jo1.4): a thumbnail, the name, the dealer €, the pace and the total, my stepper; an opened row is the full card with a bigger picture */
+function rowHtml(r){
+  if (expanded.has(r.id)) return cardHtml(r);
+  const total = totalOf(r.id);
+  let h = '<div class="row'+(r.available?'':' out')+'" data-v="'+esc(r.id)+'">';
+  h += '<img class="thumb" loading="lazy" decoding="async" src="'+esc(r.image || PLACEHOLDER)+'" alt="">';
+  h += '<div class="rb" data-open="'+esc(r.id)+'"><div class="rt" dir="auto">'+esc(r.title)+'</div><div class="rs"><span class="d">'+esc(eur(r.dealer_eur))+'</span>' +
+    (r.pace ? '<span class="pace '+esc(r.pace)+'">'+esc(PACE_HE[r.pace] || r.pace)+'</span>' : '') +
+    '<span class="qchip tot" data-tot'+(total>0?'':' style="display:none"')+'>סה״כ <b>'+num(total)+'</b></span>' + (r.available ? '' : '<span class="outlbl" style="margin-top:0">אזל</span>') + '</div></div>';
+  h += stepperHtml(r) + '</div>';
+  return h;
+}
+/** the picture, large, over the page; a tap anywhere closes it */
+function zoom(r){
+  if (!r || !r.image) return;
+  let lb = $('lightbox'); if (!lb){ lb = document.createElement('div'); lb.id = 'lightbox'; lb.onclick = ()=> lb.remove(); document.body.appendChild(lb); }
+  lb.innerHTML = '<img src="'+esc(r.image.replace(/([?&])width=\d+(?=&|$)/, '$1width=1200'))+'" alt=""><div class="cap" dir="auto">'+esc(r.title)+'</div>';
 }
 /** the pace badge of an item we already carry + one line of its figures (receipt, units, sold out / in stock, times received) */
 function paceHtml(r){
@@ -642,7 +707,7 @@ function stepperHtml(r){
 }
 function cardHtml(r){
   const total = totalOf(r.id);
-  let h = '<div class="card'+(total>0?' has':'')+(r.available?'':' out')+'" data-v="'+esc(r.id)+'">';
+  let h = '<div class="card'+(total>0?' has':'')+(r.available?'':' out')+(expanded.has(r.id)?' big':'')+'" data-v="'+esc(r.id)+'">';   // big = the description is open: the picture grows
   h += '<div class="crow"><img class="pic" loading="lazy" decoding="async" src="'+esc(r.image || PLACEHOLDER)+'" alt=""><div class="body">';
   h += '<div class="ttl" dir="auto">'+esc(r.title)+'</div>';
   h += '<div class="typ">'+esc(r.type)+(r.sku?' · <span class="sku">'+esc(r.sku)+'</span>':'')+(r.is_new?' · <span style="color:#9fe0b0">חדש</span>':'')+'</div>';
@@ -672,6 +737,7 @@ function paintCard(v){
     if (inp && document.activeElement !== inp && !deb[r.id]) inp.value = my;
     if (el.classList.contains('line')){ const q = el.querySelector('.q'), e = el.querySelector('.e'); if (q) q.textContent = '×' + num(my); if (e) e.textContent = eur(r.dealer_eur != null ? round2(my * r.dealer_eur) : null); }
     if (el.classList.contains('srow')){ const q = el.querySelector('.h .q'), e = el.querySelector('.h .e'); if (q && !q.classList.contains('short')){ q.textContent = '×' + num(total); if (e) e.textContent = eur(r.dealer_eur != null ? round2(total * r.dealer_eur) : null); } }
+    if (el.classList.contains('row')){ const t = el.querySelector('[data-tot]'); if (t){ t.style.display = total > 0 ? '' : 'none'; t.querySelector('b').textContent = num(total); } }
   }
 }
 /** my stepper changed: show at once, send ONE jo_set 700 ms after the last change */
@@ -748,7 +814,9 @@ function renderSummary(){
     '<div class="s">'+esc(x.r.sku)+(x.r.moq ? ' · מינימום '+num(x.r.moq) : '')+(x.r.orphan || x.r.available ? '' : ' · אזל אצל הספק')+'</div>'+paceHtml(x.r)+'<div class="chips">'+chipsHtml(x.r)+'</div>'+(x.r.orphan ? '' : stepperHtml(x.r))+'</div>').join('');   // jo1.3: the pace and my stepper per item
   h += '<h2>לפי אדם</h2>' + S.perPerson.map(p => '<div class="srow"><div class="h"><div class="t">'+esc(p.name)+(p.shop ? ' <span class="s">'+esc(p.shop)+'</span>' : '')+'</div><div class="q">'+p.lines+' שורות · '+num(p.units)+' יח׳</div><div class="e">'+esc(eur(p.eur))+'</div></div></div>').join('');
   h += '<h2>לפי חנות</h2>' + S.perShop.map(s => '<div class="srow"><div class="h"><div class="t">'+esc(s.shop)+'</div><div class="q">'+s.lines+' שורות · '+num(s.units)+' יח׳</div><div class="e">'+esc(eur(s.eur))+'</div></div></div>').join('');
-  h += '<h2>פריטים שחסר להם למינימום</h2>' + (S.short.length ? S.short.map(x => '<div class="srow" data-go="'+esc(x.r.id)+'"><div class="h"><div class="t" dir="auto">'+esc(x.r.title)+'</div><div class="q short">חסר '+num(x.r.moq - x.total)+'</div><div class="e">'+num(x.total)+' / '+num(x.r.moq)+'</div></div></div>').join('') : '<div class="srow" style="color:var(--dim)">אין — כל הפריטים עוברים את המינימום.</div>');
+  // jo1.4 (Chris: fewer minimum reminders): one folded line with the count; the list opens on a tap
+  h += '<h2 class="tog" data-tog="short">' + (S.short.length ? 'מתחת למינימום הספק: <b>'+S.short.length+'</b> פריטים ' + (showShort ? '▴' : '▾') : 'כל הפריטים עוברים את מינימום הספק') + '</h2>' +
+    (S.short.length && showShort ? S.short.map(x => '<div class="srow" data-go="'+esc(x.r.id)+'"><div class="h"><div class="t" dir="auto">'+esc(x.r.title)+'</div><div class="q short">חסר '+num(x.r.moq - x.total)+'</div><div class="e">'+num(x.total)+' / '+num(x.r.moq)+'</div></div></div>').join('') : '');
   $('view').innerHTML = h;
 }
 function csvCell(v){
@@ -799,14 +867,21 @@ function goCard(v){
 
 /* ================= EVENTS ================= */
 document.addEventListener('click', ev => {
-  const t = ev.target.closest('button, .chip, .tab, [data-go]'); if (!t) return;
+  const img = ev.target.closest('img.pic, img.thumb');   // jo1.4: a tap on a picture shows it large
+  if (img){ const host = img.closest('[data-v]'); zoom(host && cat ? cat.byId.get(host.dataset.v) : null); return; }
+  const t = ev.target.closest('button, .chip, .tab, [data-go], [data-open], [data-tog]'); if (!t) return;
+  if (t.dataset.tog === 'filters'){ F.open = !F.open; saveF(); renderCatalog(); return; }
+  if (t.dataset.tog === 'list'){ F.list = !F.list; saveF(); renderCatalog(); return; }
+  if (t.dataset.tog === 'short'){ showShort = !showShort; renderSummary(); return; }
+  if (t.dataset.open){ expanded.add(t.dataset.open); renderCatalog(); return; }   // a list row opens into its card
+  if (t.dataset.price){ F.pmin = ''; F.pmax = ''; shown = PAGE; sortSnap = null; saveF(); renderCatalog(); return; }
   if (t.dataset.view){ view = t.dataset.view; sortSnap = null; saveLS(LS.view, view); window.scrollTo(0, 0); render(); return; }
   if (t.dataset.chip){ chip = t.dataset.chip; F.sub = []; F.opt = []; if (chip !== 'dice') F.mat = []; if (!DESIGN_GROUPS.has(chip)) F.design = ''; shown = PAGE; sortSnap = null; saveF(); renderCatalog(); return; }   // another group: its own sub-types, options and designs
   for (const dim of ['sub', 'mat', 'opt', 'pace']){ if (t.dataset[dim] !== undefined){ const id = t.dataset[dim], i = F[dim].indexOf(id); if (i >= 0) F[dim].splice(i, 1); else F[dim].push(id); shown = PAGE; sortSnap = null; saveF(); renderCatalog(); return; } }
   if (t.dataset.design !== undefined){ F.design = F.design === t.dataset.design ? '' : t.dataset.design; shown = PAGE; sortSnap = null; saveF(); renderCatalog(); return; }
   if (t.dataset.clear){ clearFilters(); renderCatalog(); return; }
   if (t.dataset.more){ shown += PAGE; renderCatalog(); return; }
-  if (t.dataset.moreDesc){ const card = t.closest('.card'); const v = card.dataset.v; if (expanded.has(v)) expanded.delete(v); else expanded.add(v); card.querySelector('.desc').classList.toggle('open', expanded.has(v)); t.textContent = expanded.has(v) ? 'פחות' : 'עוד'; return; }
+  if (t.dataset.moreDesc){ const card = t.closest('.card'); const v = card.dataset.v; if (expanded.has(v)) expanded.delete(v); else expanded.add(v); if (F.list && view === 'catalog'){ renderCatalog(); return; } card.querySelector('.desc').classList.toggle('open', expanded.has(v)); card.classList.toggle('big', expanded.has(v)); t.textContent = expanded.has(v) ? 'פחות' : 'עוד'; return; }   // open = the picture grows; in the list view "פחות" folds the card back into its row
   if (t.dataset.step){ const host = t.closest('[data-v]'); if (!host) return; const v = host.dataset.v, inp = host.querySelector('input[data-qin]'); const cur = deb[v] ? deb[v].qty : (parseInt(inp && inp.value, 10) || 0); change(v, Math.max(0, cur + Number(t.dataset.step)), false); return; }   // jo1.3: a card, a line of my order or a summary row
   if (t.dataset.act === 'copy') return copyText();
   if (t.dataset.act === 'csv') return downloadCsv();
