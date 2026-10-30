@@ -53,7 +53,26 @@
   .chipline{display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 2px}
   .chip{background:var(--surface2); border:1px solid var(--line); border-radius:16px; padding:10px 12px; font-size:13px; cursor:pointer}
   .chip.on{background:var(--teal); border-color:var(--teal)}
-  .chip .n{font-family:var(--mono); font-size:11px; opacity:.8; margin-inline-start:3px}
+  .chip .n{font-family:var(--mono); font-size:11px; opacity:.8; margin-inline-start:6px}   /* jo1.2: 6 px, so "D100" and its count never read as one number */
+  /* jo1.2 filters: a labelled row per dimension (sub-type, material, option, design, pace), the sort box and the dealer-€ range */
+  .frow{display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 2px; align-items:center}
+  .frow .flbl{font-size:12px; color:var(--dim); margin-inline-end:2px; white-space:nowrap}
+  .chip.mat.on{background:#4a3d7a; border-color:#7a66c4}
+  .chip.pace-chip.on{background:#2b5a3a; border-color:#43a047}
+  .tools select{font-family:inherit; font-size:14px; color:var(--ink); background:var(--surface2); border:1px solid var(--line); border-radius:10px; padding:9px 8px; min-height:40px; max-width:46%}
+  .range{display:flex; gap:6px; align-items:center; margin:4px 0 2px; flex-wrap:wrap}
+  .range input{width:78px; padding:9px 6px; font-size:15px; text-align:center; font-family:var(--mono)}
+  .range .flbl{font-size:12px; color:var(--dim)}
+  .cnt{font-size:12.5px; color:var(--dim); margin:4px 0 2px; display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .clear{background:none; border:1px solid var(--line); color:#ffd479; padding:8px 12px; font-size:13px; min-height:40px}
+  .pace{display:inline-flex; align-items:center; gap:4px; border-radius:10px; padding:2px 8px; font-size:12px; margin-top:5px; border:1px solid var(--line); background:var(--surface2); color:var(--dim)}
+  .pace.fast{background:#163a1f; border-color:#2E7D32; color:#9fe0b0}
+  .pace.medium{background:#3a2c10; border-color:#5a4418; color:#ffd479}
+  .pace.slow{background:var(--red-soft); border-color:var(--red); color:#f0b4ac}
+  .pace.early{border-color:var(--teal); color:#c9e6f2}
+  .pace.unreceived,.pace.unclear{color:#ffd479}
+  .pline{font-size:12px; color:var(--dim); margin-top:2px}
+  .fct{font-size:12px; color:#9fd8ea; margin-top:2px}
 
   #list{margin-top:8px}
   .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:10px; margin:8px 0; min-width:0}
@@ -178,7 +197,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'jo1.1';
+const BUILD = 'jo1.2';
 // the two backends (JOINT deployments of the catalog's script); ?api=test is the TEST one (it writes only the TEST sheet),
 // ?api=local only on this PC (the mock server of the page test). Never a URL from the address bar. The page holds no key and no sheet id.
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbyNg6AVes7vWeIfTqCnkpoFIayLxdx4EoI7cVvIN2c_LgFEIfedMyhnFc00Z3-s-sPQUA/exec';
@@ -189,21 +208,35 @@ const MODE = (()=>{ const a = new URLSearchParams(location.search).get('api'); r
 const API = MODE==='test' ? TEST_API : MODE==='local' ? LOCAL_API : LIVE_API;
 const ENV = MODE==='live' ? '' : 'test';
 const TZ = 'Asia/Jerusalem';
-const LS = { key:'jo_key', person:'jo_person', device:'jo_device', view:'jo_view', queue:'jo_queue_'+MODE, cat:'jo_cat_'+MODE, meta:'jo_meta_'+MODE };
+const LS = { key:'jo_key', person:'jo_person', device:'jo_device', view:'jo_view', queue:'jo_queue_'+MODE, cat:'jo_cat_'+MODE, meta:'jo_meta_'+MODE, filters:'jo_filters' };
 const POLL_MS = 20000, DEBOUNCE_MS = 700, PAGE = 40, DAY = 24*3600000, MAX_QTY = 5000;
 const RETRY_MS = [1000, 2000, 5000, 15000], RETRY_LATER_MS = 30000;
-const CAT_HEADER = ['variant_id','sku','barcode','title','type','kind','description','image','url','price_eur','dealer_eur','moq','case_qty','available','published','is_new','data_date'];
+// jo1.2: after the 17 columns of jo1.1 come the facets the PC derives (material, sub-type, option, design) and the pace of the item at
+// our register; an older 17-column catalog still draws (the facet fields come back blank, the filters that need them stay hidden)
+const CAT_HEADER = ['variant_id','sku','barcode','title','type','kind','description','image','url','price_eur','dealer_eur','moq','case_qty','available','published','is_new','data_date',
+  'material','sub','opt_kind','opt','design','our_code','first_receive','receipts_n','last_receive','last_receive_qty','sold_after','last_sale','stock_now','pace','pace_days'];
 const LINE_HEADER = ['at','person','shop','variant_id','sku','qty','uuid','device','build','note'];
 const HTTPS_RE = /^https:\/\/[^\s"'<>]+$/i;   // a picture is an https URL or the placeholder: no http, data: or javascript: ever reaches an img src
 const ROLE_HE = { buyer: 'משתתף', admin: 'מנהל' };
 const GROUPS = [
-  ['sets', 'סטים', ['RPG Dice Set','Mystery Dice','Glassstaff Dice','d100']],
-  ['d20', 'D20 גדולים', ['33mm D20','50mm D20']],
+  ['dice', 'קוביות', ['RPG Dice Set','Mystery Dice','Glassstaff Dice','d100','33mm D20','50mm D20']],   // jo1.2: one group, the form is a sub-type chip
   ['stickers', 'מדבקות', ['Sticker','Special Stickers']],
   ['socks', 'גרביים', ['Socks']],
   ['acc', 'אביזרים', ['CritStones Dice Accessories','Glassstaff Dice Accessories','Keychain','Pin','Tableware','Loot Boxes','Toys','Food']],
   ['gifts', 'מחברות ומתנות', ['Deluxe Notebook','Journal','Greeting Card','Gift Mug']] ];
 const GROUP_OF = {}; for (const [id,,types] of GROUPS) for (const t of types) GROUP_OF[t] = id;
+// jo1.2 facet ids (tools/facets.mts on the PC) → Hebrew; an id not listed shows as itself
+const SUB_HE = { set:'סט 7 קוביות', single_d20:'D20 יחיד', d20_33:'D20 33 מ״מ', d20_50:'D20 50 מ״מ', d100:'D100', mystery:'מיסטרי', sticker:'מדבקה', sticker_pack:'חבילת מדבקות', socks:'גרביים',
+  notebook:'מחברת', journal:'יומן שחקן', card:'כרטיס ברכה', mug:'כוס', keychain:'מחזיק מפתחות', pin:'סיכה', tray:'מגש קוביות', case:'קופסת קוביות', acc_other:'אביזר אחר', tableware:'תחתיות', lootbox:'קופסת שלל', toy:'צעצוע', food:'עוגיות', other:'אחר' };
+const SUB_ORDER = ['set','single_d20','d20_33','d20_50','d100','mystery','sticker','sticker_pack','socks','notebook','journal','card','mug','keychain','pin','tray','case','acc_other','tableware','lootbox','toy','food','other'];
+const MAT_HE = { metal:'מתכת', hollow_metal:'מתכת חלולה', liquid_core:'ליקוויד קור', resin:'רזין', sharp_resin:'רזין חד-קצוות', glass:'זכוכית', floating_eye:'עין צפה', mineral:'מינרל/ג׳אודה', other:'אחר' };
+const MAT_ORDER = ['metal','hollow_metal','liquid_core','resin','sharp_resin','glass','floating_eye','mineral','other'];
+const OPT_HE = { size:'מידה', color:'צבע', pack:'אריזה' };
+// pace at our register after the LAST receipt (Chris 30/10: ≤ a week fast, ≤ two months medium, later or still in stock after two months slow)
+const PACE_HE = { fast:'🟢 מהיר', medium:'🟡 בינוני', slow:'🔴 איטי', early:'⚪ מוקדם לדעת', unclear:'⚪ לא ברור', unreceived:'⚪ שולם, לא נקלט בקופה', none:'חדש אצלנו' };
+const PACE_ORDER = { fast:0, medium:1, early:2, slow:3, unclear:4, unreceived:5, none:6, '':7 };
+const SORTS = [['ordered','הוזמן קודם'], ['price_asc','מחיר עולה'], ['price_desc','מחיר יורד'], ['new','חדש קודם'], ['pace','קצב מכירה'], ['name','א-ב']];
+const DESIGN_GROUPS = new Set(['all','stickers','socks','acc','gifts']);
 const VIEWS = [['catalog','קטלוג'], ['mine','ההזמנה שלי'], ['summary','סיכום']];
 // a neutral picture when the supplier's image fails to load (a grey square with a die outline)
 const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect width="96" height="96" rx="12" fill="#1d323c"/><path d="M48 18 22 33v30l26 15 26-15V33z" fill="none" stroke="#3d5a68" stroke-width="3"/><path d="M22 33l26 15 26-15M48 48v30" fill="none" stroke="#3d5a68" stroke-width="3"/></svg>');
@@ -217,6 +250,7 @@ let lines = new Map();           // person\u0001variant_id → { qty, ord, shop,
 let nLines = 0;                  // ledger data rows this page already has (= `since` of the next poll)
 let person = '';                 // my name (LS jo_person)
 let view = 'catalog', query = '', chip = 'all', shown = PAGE;
+let F = { sub:[], mat:[], opt:[], design:'', pace:[], pmin:'', pmax:'', sort:'ordered' };   // jo1.2 filters beyond the group chip; kept on this device (LS.filters) with the chip
 const expanded = new Set();      // variant ids with the description opened
 let mine = {};                   // variant_id → { qty, uuid } my value not yet confirmed by the server (optimistic layer)
 let st = {};                     // variant_id → '' | 'saving' | 'saved' | 'retry'
@@ -283,16 +317,25 @@ function setCatalog(c){
       dealer_eur: o.dealer_eur === '' || o.dealer_eur == null ? (o.price_eur === '' || o.price_eur == null ? null : round2(Number(o.price_eur) * 0.5)) : Number(o.dealer_eur),
       moq: o.moq === '' || o.moq == null || isNaN(Number(o.moq)) ? null : Number(o.moq),
       case_qty: o.case_qty === '' || o.case_qty == null || isNaN(Number(o.case_qty)) ? null : Number(o.case_qty),
-      available: truthy(o.available), is_new: truthy(o.is_new), published: String(o.published||'') });
+      available: truthy(o.available), is_new: truthy(o.is_new), published: String(o.published||''),
+      // jo1.2 facets + pace (blank on a 17-column catalog)
+      material: String(o.material||''), sub: String(o.sub||''), opt_kind: String(o.opt_kind||''), opt: String(o.opt||''), design: String(o.design||''), our_code: String(o.our_code||''),
+      first_receive: String(o.first_receive||''), receipts_n: numOr(o.receipts_n), last_receive: String(o.last_receive||''), last_receive_qty: numOr(o.last_receive_qty), sold_after: numOr(o.sold_after),
+      last_sale: String(o.last_sale||''), stock_now: numOr(o.stock_now), pace: String(o.pace||''), pace_days: numOr(o.pace_days) });
+    const r = rows[rows.length - 1]; r.hay = [r.title, r.sku, r.barcode, r.type, r.our_code, r.opt, r.design, r.description].join(' ').toLowerCase();   // every word of the search must be in here
   }
   cat = { stamp: String(c.stamp||''), data_date: String(c.data_date||''), rows, byId: new Map(rows.map(r => [r.id, r])) };
   sortSnap = null;
 }
 function groupOf(type){ return GROUP_OF[type] || 'other'; }
+/** every word typed, in any order, somewhere in the name, SKU, barcode, type, our code, option, design or description */
 function matches(r){
-  if (!query) return true; const q = query.toLowerCase();
-  return r.title.toLowerCase().includes(q) || r.sku.toLowerCase().includes(q) || r.barcode.includes(q) || r.type.toLowerCase().includes(q);
+  if (!query) return true;
+  const toks = query.toLowerCase().split(/\s+/).filter(Boolean), hay = r.hay || '';
+  return toks.every(t => hay.includes(t));
 }
+function numOr(v){ return v === '' || v == null || isNaN(Number(v)) ? null : Number(v); }
+function ddmmyy(s){ const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s||'')); return m ? m[3]+'/'+m[2]+'/'+m[1].slice(2) : String(s||''); }
 
 /* ================= LINES (server layer + my optimistic layer) ================= */
 function shopOf(name){ const p = people.find(x => x.name === name); return p ? p.shop : ''; }
@@ -463,37 +506,113 @@ function render(){
   if (!$('app') || $('app').classList.contains('hide')) return;
   renderTop(); renderTabs(); renderBanners();
   // keep the focused input (a stepper's number or the search box) and what was typed in it across the re-render
-  const act = document.activeElement, keep = act && act.dataset && act.dataset.qin ? { v: act.dataset.qin, val: act.value, sel: act.selectionStart } : act && act.id === 'q' ? { q: true, val: act.value, sel: act.selectionStart } : null;
+  const act = document.activeElement, keep = act && act.dataset && act.dataset.qin ? { v: act.dataset.qin, val: act.value, sel: act.selectionStart } : act && ['q', 'pmin', 'pmax'].includes(act.id) ? { fid: act.id, val: act.value, sel: act.selectionStart } : null;
   if (view === 'catalog') renderCatalog(); else if (view === 'mine') renderMine(); else renderSummary();
-  if (keep){ const inp = keep.q ? $('q') : document.querySelector('input[data-qin="' + CSS.escape(keep.v) + '"]'); if (inp){ inp.value = keep.val; inp.focus({ preventScroll:true }); try{ inp.setSelectionRange(keep.sel, keep.sel); }catch(e){} } }
+  if (keep){ const inp = keep.fid ? $(keep.fid) : document.querySelector('input[data-qin="' + CSS.escape(keep.v) + '"]'); if (inp){ inp.value = keep.val; inp.focus({ preventScroll:true }); try{ inp.setSelectionRange(keep.sel, keep.sel); }catch(e){} } }
 }
 
-/* ---------- catalog ---------- */
+/* ---------- catalog (jo1.2: group chip × sub-type × material × option × design × pace × dealer-€ range × search, one sort) ---------- */
+/** the group chip alone (new / ordered / a group / all) */
+function inGroup(r){
+  if (chip === 'new') return r.is_new;
+  if (chip === 'ordered') return totalOf(r.id) > 0;
+  return chip === 'all' || groupOf(r.type) === chip;
+}
+const FIELD_OF = { sub:'sub', mat:'material', opt:'opt', design:'design', pace:'pace' };
+/** every filter but `skip` (the dimension whose own chips are being counted); the group and the search always count */
+function passes(r, skip){
+  if (!inGroup(r)) return false;
+  if (skip !== 'sub' && F.sub.length && !F.sub.includes(r.sub)) return false;
+  if (skip !== 'mat' && F.mat.length && !F.mat.includes(r.material)) return false;
+  if (skip !== 'opt' && F.opt.length && !F.opt.includes(r.opt)) return false;
+  if (skip !== 'design' && F.design && r.design !== F.design) return false;
+  if (skip !== 'pace' && F.pace.length && !F.pace.includes(r.pace)) return false;
+  if (skip !== 'price'){ const p = r.dealer_eur; if (F.pmin !== '' && !(p != null && p >= Number(F.pmin))) return false; if (F.pmax !== '' && !(p != null && p <= Number(F.pmax))) return false; }
+  return matches(r);
+}
+function anyFilter(){ return chip !== 'all' || !!query || F.sub.length > 0 || F.mat.length > 0 || F.opt.length > 0 || !!F.design || F.pace.length > 0 || F.pmin !== '' || F.pmax !== '' || F.sort !== 'ordered'; }
+function clearFilters(){ chip = 'all'; query = ''; F = { sub:[], mat:[], opt:[], design:'', pace:[], pmin:'', pmax:'', sort:'ordered' }; shown = PAGE; sortSnap = null; saveF(); }
+function saveF(){ saveLS(LS.filters, Object.assign({ chip }, F)); }
+/** the filters this device last used (never a value the page does not know) */
+function loadF(){
+  const s = loadLS(LS.filters, null); if (!s || typeof s !== 'object') return;
+  const arr = v => Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.length <= 60).slice(0, 20) : [];
+  const numStr = v => (v === '' || v == null || isNaN(Number(v)) || Number(v) < 0) ? '' : String(v).slice(0, 10);
+  if (typeof s.chip === 'string' && (s.chip === 'all' || s.chip === 'new' || s.chip === 'ordered' || GROUPS.some(g => g[0] === s.chip))) chip = s.chip;
+  F = { sub: arr(s.sub), mat: arr(s.mat), opt: arr(s.opt), design: typeof s.design === 'string' ? s.design.slice(0, 80) : '', pace: arr(s.pace), pmin: numStr(s.pmin), pmax: numStr(s.pmax), sort: SORTS.some(x => x[0] === s.sort) ? s.sort : 'ordered' };
+}
+const byTitle = (a, b) => a.title.localeCompare(b.title, 'en');
 function catRows(){
   if (!cat) return [];
-  let rows = cat.rows;
-  if (chip === 'new') rows = rows.filter(r => r.is_new);
-  else if (chip === 'ordered') rows = rows.filter(r => totalOf(r.id) > 0);
-  else if (chip !== 'all') rows = rows.filter(r => groupOf(r.type) === chip);
-  rows = rows.filter(matches);
-  // "ordered first" is frozen at the last explicit draw (a tab, a chip, the search, ⟳, a tap on a line): a poll repaints cards but never moves them
+  const rows = cat.rows.filter(r => passes(r, null));
+  // "ordered first" (the default sort) is frozen at the last explicit draw (a tab, a chip, the search, ⟳, a tap on a line): a poll repaints cards but never moves them
   if (!sortSnap) sortSnap = new Set(cat.rows.filter(r => totalOf(r.id) > 0).map(r => r.id));
+  const avail = (a, b) => a.available !== b.available ? (a.available ? -1 : 1) : 0;   // what the supplier has comes first in every sort
+  const s = F.sort;
   return rows.slice().sort((a, b) => {
-    const ha = sortSnap.has(a.id), hb = sortSnap.has(b.id); if (ha !== hb) return ha ? -1 : 1;
-    if (a.available !== b.available) return a.available ? -1 : 1;
-    return a.title.localeCompare(b.title, 'en');
+    if (s === 'ordered'){ const ha = sortSnap.has(a.id), hb = sortSnap.has(b.id); if (ha !== hb) return ha ? -1 : 1; return avail(a, b) || byTitle(a, b); }
+    const av = avail(a, b); if (av) return av;
+    if (s === 'price_asc' || s === 'price_desc'){ const pa = a.dealer_eur, pb = b.dealer_eur; if (pa == null || pb == null){ if (pa == null && pb == null) return byTitle(a, b); return pa == null ? 1 : -1; } return (s === 'price_asc' ? pa - pb : pb - pa) || byTitle(a, b); }
+    if (s === 'new'){ if (a.is_new !== b.is_new) return a.is_new ? -1 : 1; return (b.published || '').localeCompare(a.published || '') || byTitle(a, b); }
+    if (s === 'pace'){ const oa = PACE_ORDER[a.pace] ?? 7, ob = PACE_ORDER[b.pace] ?? 7; if (oa !== ob) return oa - ob; const da = a.pace_days == null ? 1e9 : a.pace_days, db = b.pace_days == null ? 1e9 : b.pace_days; return (da - db) || byTitle(a, b); }
+    return byTitle(a, b);
   });
+}
+/** one labelled row of multi-select chips for a dimension: ids in `order` (or as found), counted with every OTHER filter on, only ids that still have rows */
+function facetRow(label, dim, order, he, sel, cls){
+  const field = FIELD_OF[dim], counts = {};
+  for (const r of cat.rows){ if (!passes(r, dim)) continue; const k = r[field]; if (k) counts[k] = (counts[k]||0) + 1; }
+  const ids = (order || Object.keys(counts).sort()).filter(id => counts[id] > 0 || sel.includes(id));
+  if (ids.length < 2 && !sel.length) return '';
+  return '<div class="frow"><span class="flbl">'+esc(label)+'</span>' + ids.map(id => '<span class="chip '+cls+(sel.includes(id)?' on':'')+'" data-'+dim+'="'+esc(id)+'">'+esc(he ? (he[id] || id) : id)+'<span class="n">'+(counts[id]||0)+'</span></span>').join('') + '</div>';
 }
 function renderCatalog(){
   const counts = {}; if (cat) for (const r of cat.rows){ const g = groupOf(r.type); counts[g] = (counts[g]||0) + 1; }
   const hasOther = !!counts.other, newN = cat ? cat.rows.filter(r => r.is_new).length : 0, ordN = cat ? cat.rows.filter(r => totalOf(r.id) > 0).length : 0;
   const chips = [['all','הכל', cat ? cat.rows.length : 0], ...GROUPS.map(([id, t]) => [id, t, counts[id]||0]), ...(hasOther ? [['other','אחר', counts.other]] : []), ['new','חדש', newN], ['ordered','הוזמן', ordN]];
   const rows = catRows();
-  $('view').innerHTML = '<div class="tools"><input id="q" type="search" placeholder="חיפוש לפי שם, מק״ט או ברקוד" value="'+esc(query)+'" autocomplete="off"></div>' +
+  let facets = '';
+  if (cat && cat.rows.length){
+    const hasFacets = cat.rows.some(r => r.sub), hasPace = cat.rows.some(r => r.pace), aGroup = chip !== 'all' && chip !== 'new' && chip !== 'ordered';
+    if (hasFacets && aGroup) facets += facetRow('סוג', 'sub', SUB_ORDER, SUB_HE, F.sub, 'sub');
+    if (hasFacets && (chip === 'dice' || F.mat.length)) facets += facetRow('חומר', 'mat', MAT_ORDER, MAT_HE, F.mat, 'mat');
+    if (hasFacets && aGroup){ const kinds = new Set(cat.rows.filter(r => passes(r, 'opt') && r.opt_kind).map(r => r.opt_kind)); if (kinds.size === 1) facets += facetRow(OPT_HE[[...kinds][0]] || 'אפשרות', 'opt', null, null, F.opt, 'opt'); }
+    if (hasFacets && DESIGN_GROUPS.has(chip)){   // an artwork that is on two kinds of product (a mug and a pin): a chip; a design on one product only is found by the search
+      const subsOf = {}; for (const r of cat.rows) if (r.design){ (subsOf[r.design] = subsOf[r.design] || new Set()).add(r.sub); }
+      const cross = Object.keys(subsOf).filter(d => subsOf[d].size >= 2).sort();
+      if (cross.length) facets += facetRow('עיצוב על כמה מוצרים', 'design', cross, null, F.design ? [F.design] : [], 'design');
+    }
+    if (hasPace) facets += facetRow('קצב אצלנו', 'pace', ['fast','medium','slow','early','unclear','unreceived','none'], PACE_HE, F.pace, 'pace-chip');
+  }
+  const total = cat ? cat.rows.length : 0;
+  $('view').innerHTML = '<div class="tools"><input id="q" type="search" placeholder="חיפוש: כמה מילים, מק״ט, ברקוד או קוד שלנו" value="'+esc(query)+'" autocomplete="off">' +
+      '<select id="sort" aria-label="סידור">' + SORTS.map(([id, t]) => '<option value="'+id+'"'+(F.sort===id?' selected':'')+'>'+esc(t)+'</option>').join('') + '</select></div>' +
     '<div class="chipline">' + chips.map(([id, t, n]) => '<span class="chip'+(chip===id?' on':'')+'" data-chip="'+id+'">'+esc(t)+'<span class="n">'+n+'</span></span>').join('') + '</div>' +
+    facets +
+    '<div class="range"><span class="flbl">מחיר סוחר €</span><input id="pmin" type="text" inputmode="decimal" placeholder="מ-" value="'+esc(F.pmin)+'" aria-label="מחיר סוחר מ-"><span class="flbl">–</span><input id="pmax" type="text" inputmode="decimal" placeholder="עד" value="'+esc(F.pmax)+'" aria-label="מחיר סוחר עד">' +
+      '<span class="cnt" id="cnt">מציג <b>'+num(rows.length)+'</b> מתוך '+num(total)+'</span>' + (anyFilter() ? '<button class="clear" data-clear="1">נקה סינון</button>' : '') + '</div>' +
     '<div id="list">' + (rows.length ? rows.slice(0, shown).map(cardHtml).join('') + (rows.length > shown ? '<button class="more" data-more="1">עוד '+(rows.length - shown)+'</button>' : '') : '<div class="empty">' + (cat ? 'לא נמצא כלום' : 'טוען את הקטלוג…') + '</div>') + '</div>';
+  const refocus = id => { const el = $(id); if (el){ el.focus({ preventScroll:true }); try{ el.setSelectionRange(el.value.length, el.value.length); }catch(e){} } };
   const q = $('q'); let qT = null;
-  q.addEventListener('input', e => { clearTimeout(qT); qT = setTimeout(()=>{ query = e.target.value.trim(); shown = PAGE; sortSnap = null; const a = document.activeElement === q; renderCatalog(); if (a){ const q2 = $('q'); q2.focus({ preventScroll:true }); q2.setSelectionRange(q2.value.length, q2.value.length); } }, 200); });
+  q.addEventListener('input', e => { clearTimeout(qT); qT = setTimeout(()=>{ query = e.target.value.trim(); shown = PAGE; sortSnap = null; const a = document.activeElement === q; renderCatalog(); if (a) refocus('q'); }, 200); });
+  for (const id of ['pmin', 'pmax']){ const el = $(id); let t = null; el.addEventListener('input', e => { const s = e.target.value.replace(/[^\d.]/g, ''); if (s !== e.target.value) e.target.value = s; clearTimeout(t); t = setTimeout(()=>{ F[id] = s === '' || isNaN(Number(s)) ? '' : s; shown = PAGE; sortSnap = null; saveF(); const a = document.activeElement === $(id); renderCatalog(); if (a) refocus(id); }, 300); }); }
+  $('sort').addEventListener('change', e => { F.sort = SORTS.some(x => x[0] === e.target.value) ? e.target.value : 'ordered'; shown = PAGE; sortSnap = null; saveF(); renderCatalog(); });
+}
+/** the pace badge of an item we already carry + one line of its figures (receipt, units, sold out / in stock, times received) */
+function paceHtml(r){
+  if (!r.pace) return '';
+  let line = '';
+  if (r.pace === 'unreceived') line = 'יש חשבונית, אין קליטה בקופה' + (r.our_code ? ' · קוד ' + r.our_code : '');
+  else if (r.pace !== 'none'){
+    const p = [], inStock = r.stock_now != null && r.stock_now > 0;
+    if (r.last_receive) p.push('נקלט ' + ddmmyy(r.last_receive) + (r.last_receive_qty != null ? ' · ' + num(r.last_receive_qty) + ' יח׳' : ''));
+    if (r.pace === 'unclear') p.push('לא נמכר מאז ולא במלאי');
+    else if (inStock){ p.push('במלאי ' + num(r.stock_now)); if (r.sold_after != null) p.push('נמכרו ' + num(r.sold_after) + ' מאז'); if (r.last_sale) p.push('מכירה אחרונה ' + ddmmyy(r.last_sale)); if (r.pace_days != null) p.push(num(r.pace_days) + ' ימים מהקליטה'); }
+    else if (r.last_sale) p.push('אזל ' + ddmmyy(r.last_sale) + (r.pace_days != null ? ' (' + num(r.pace_days) + ' ימים)' : ''));
+    if (r.receipts_n != null && r.receipts_n > 1) p.push('נקלט ' + num(r.receipts_n) + ' פעמים');
+    line = p.join(' · ');
+  }
+  return '<div><span class="pace '+esc(r.pace)+'">'+esc(PACE_HE[r.pace] || r.pace)+'</span>'+(line ? '<div class="pline">'+esc(line)+'</div>' : '')+'</div>';
 }
 /** the "הוזמן" chip's count after a poll (the list itself is not redrawn) */
 function paintCounts(){ const n = document.querySelector('.chip[data-chip="ordered"] .n'); if (n && cat) n.textContent = cat.rows.filter(r => totalOf(r.id) > 0).length; }
@@ -520,9 +639,12 @@ function cardHtml(r){
   h += '<div class="crow"><img class="pic" loading="lazy" decoding="async" src="'+esc(r.image || PLACEHOLDER)+'" alt=""><div class="body">';
   h += '<div class="ttl" dir="auto">'+esc(r.title)+'</div>';
   h += '<div class="typ">'+esc(r.type)+(r.sku?' · <span class="sku">'+esc(r.sku)+'</span>':'')+(r.is_new?' · <span style="color:#9fe0b0">חדש</span>':'')+'</div>';
+  const fct = [r.sub ? (SUB_HE[r.sub] || r.sub) : '', r.material ? (MAT_HE[r.material] || r.material) : '', r.opt ? (OPT_HE[r.opt_kind] ? OPT_HE[r.opt_kind] + ' ' : '') + r.opt : '', r.design ? 'עיצוב: ' + r.design : ''].filter(Boolean);
+  if (fct.length) h += '<div class="fct">'+esc(fct.join(' · '))+'</div>';
   if (r.description) h += '<div class="desc'+(expanded.has(r.id)?' open':'')+'" dir="auto">'+esc(r.description)+'</div><button class="morebtn" data-more-desc="1">'+(expanded.has(r.id)?'פחות':'עוד')+'</button>';
   h += '<div class="price"><span class="d">'+esc(eur(r.dealer_eur))+'</span><span class="lbl">מחיר סוחר</span>'+(r.price_eur!=null?'<span class="site">באתר '+esc(eur(r.price_eur))+'</span>':'')+'</div>';
   h += '<div class="meta"><span>'+(r.moq ? 'מינימום '+num(r.moq) : 'מינימום לא ידוע')+'</span>'+(r.case_qty ? '<span>קרטון '+num(r.case_qty)+'</span>' : '')+'</div>';
+  h += paceHtml(r);
   if (!r.available) h += '<span class="outlbl">אזל אצל הספק</span>';
   h += '</div></div>';
   h += '<div class="chips">'+chipsHtml(r)+'</div>';
@@ -657,7 +779,7 @@ async function setOpen(open){
   catch(e){ toast('אין חיבור — נסה שוב', 'err'); if (btn) btn.disabled = false; }
 }
 function goCard(v){
-  view = 'catalog'; query = ''; chip = 'all'; shown = PAGE; sortSnap = null; saveLS(LS.view, view); render();
+  view = 'catalog'; clearFilters(); saveLS(LS.view, view); render();   // every filter off, so the card is on the list
   let el = document.querySelector('.card[data-v="' + CSS.escape(String(v)) + '"]');
   if (!el){ shown = 100000; renderCatalog(); el = document.querySelector('.card[data-v="' + CSS.escape(String(v)) + '"]'); }
   if (el){ el.scrollIntoView({ block:'center' }); el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'), 1600); }
@@ -667,7 +789,10 @@ function goCard(v){
 document.addEventListener('click', ev => {
   const t = ev.target.closest('button, .chip, .tab, [data-go]'); if (!t) return;
   if (t.dataset.view){ view = t.dataset.view; sortSnap = null; saveLS(LS.view, view); window.scrollTo(0, 0); render(); return; }
-  if (t.dataset.chip){ chip = t.dataset.chip; shown = PAGE; sortSnap = null; renderCatalog(); return; }
+  if (t.dataset.chip){ chip = t.dataset.chip; F.sub = []; F.opt = []; if (chip !== 'dice') F.mat = []; shown = PAGE; sortSnap = null; saveF(); renderCatalog(); return; }   // another group: its own sub-types and options
+  for (const dim of ['sub', 'mat', 'opt', 'pace']){ if (t.dataset[dim] !== undefined){ const id = t.dataset[dim], i = F[dim].indexOf(id); if (i >= 0) F[dim].splice(i, 1); else F[dim].push(id); shown = PAGE; sortSnap = null; saveF(); renderCatalog(); return; } }
+  if (t.dataset.design !== undefined){ F.design = F.design === t.dataset.design ? '' : t.dataset.design; shown = PAGE; sortSnap = null; saveF(); renderCatalog(); return; }
+  if (t.dataset.clear){ clearFilters(); renderCatalog(); return; }
   if (t.dataset.more){ shown += PAGE; renderCatalog(); return; }
   if (t.dataset.moreDesc){ const card = t.closest('.card'); const v = card.dataset.v; if (expanded.has(v)) expanded.delete(v); else expanded.add(v); card.querySelector('.desc').classList.toggle('open', expanded.has(v)); t.textContent = expanded.has(v) ? 'פחות' : 'עוד'; return; }
   if (t.dataset.step){ const card = t.closest('.card'); const v = card.dataset.v, inp = card.querySelector('input[data-qin]'); const cur = deb[v] ? deb[v].qty : (parseInt(inp && inp.value, 10) || 0); change(v, Math.max(0, cur + Number(t.dataset.step)), false); return; }
@@ -720,6 +845,7 @@ async function start(){
   if (!KEY){ showGate(''); return; }
   DEVICE = rawLS(LS.device); if (!/^[\w\-]{6,40}$/.test(DEVICE)){ DEVICE = 'p-' + uuid().replace(/-/g, '').slice(0, 12); try{ localStorage.setItem(LS.device, DEVICE); }catch(e){} }
   person = rawLS(LS.person); view = loadLS(LS.view, 'catalog'); if (!VIEWS.some(v => v[0] === view)) view = 'catalog';
+  loadF();
   queue = loadLS(LS.queue, []).filter(j => j && j.uuid && j.variant_id); seedMine(); badge();
   const c = loadLS(LS.cat, null); if (c && c.rows) setCatalog(c);     // draws at once; the poll brings a newer catalog only when the stamp changed
   const m = loadLS(LS.meta, null);
