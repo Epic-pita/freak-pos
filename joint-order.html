@@ -114,7 +114,9 @@
   .more{display:block; width:100%; margin:8px 0; background:none; border:1px dashed var(--line); color:var(--dim)}
   .empty{color:var(--dim); text-align:center; padding:30px 10px; font-size:15px}
 
-  .line{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin:6px 0; display:flex; gap:10px; align-items:center; cursor:pointer}
+  .line{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin:6px 0; display:flex; gap:10px; align-items:center; cursor:pointer; flex-wrap:wrap}
+  .line .stepper{flex-basis:100%; margin-top:2px; cursor:default}   /* jo1.3: my stepper under the line; the pace badge sits in the title block */
+  .srow .stepper{margin-top:6px}
   .line .t{flex:1; min-width:0; overflow-wrap:anywhere}
   .line .t .s{font-size:12px; color:var(--dim); font-family:var(--mono)}
   .line .q{font-family:var(--mono); font-weight:700; font-size:16px; white-space:nowrap}
@@ -200,7 +202,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'jo1.2';
+const BUILD = 'jo1.3';
 // the two backends (JOINT deployments of the catalog's script); ?api=test is the TEST one (it writes only the TEST sheet),
 // ?api=local only on this PC (the mock server of the page test). Never a URL from the address bar. The page holds no key and no sheet id.
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbyNg6AVes7vWeIfTqCnkpoFIayLxdx4EoI7cVvIN2c_LgFEIfedMyhnFc00Z3-s-sPQUA/exec';
@@ -625,7 +627,7 @@ function chipsHtml(r){
   const qs = qtysOf(r.id), total = qs.reduce((s, x) => s + x.qty, 0);
   let h = qs.map(x => '<span class="qchip'+(x.me?' me':'')+'">'+esc(x.name)+' · <b>'+num(x.qty)+'</b></span>').join('');
   if (total > 0) h += '<span class="qchip tot">סה״כ <b>'+num(total)+'</b></span>';
-  if (total > 0 && r.moq && total < r.moq) h += '<span class="short">חסר '+num(r.moq - total)+' למינימום</span>';
+  // jo1.3 (Chris 30/10): no amber "חסר N למינימום" on every card and line; the minimum stays in the card's grey meta line and in the summary's one list
   return h;
 }
 /** the steppers open only once this session knows the ledger: the first jo_load answered, or the first load failed (offline) and the phone's cached ledger is drawn */
@@ -659,13 +661,18 @@ function cardHtml(r){
 }
 /** redraw only one card's chips, state and (unless being typed in) its number — no full re-render per tap */
 function paintCard(v){
-  const el = document.querySelector('.card[data-v="' + CSS.escape(String(v)) + '"]'), r = cat && cat.byId.get(String(v)); if (!el || !r) return;
-  const total = totalOf(r.id); el.classList.toggle('has', total > 0);
-  const c = el.querySelector('.chips'); if (c) c.innerHTML = chipsHtml(r);
-  const stp = el.querySelector('.stepper'), inp = el.querySelector('input[data-qin]');
-  if (stp){ const s = st[r.id] || '', lab = stp.querySelector('.st'); lab.className = 'st ' + s; lab.textContent = stLabel(r.id); }
-  if (inp && document.activeElement !== inp && !deb[r.id]) inp.value = myQty(r.id);
-  const ln = document.querySelector('.srow[data-v="' + CSS.escape(String(v)) + '"] .chips'); if (ln) ln.innerHTML = chipsHtml(r);
+  const r = cat && cat.byId.get(String(v)); if (!r) return;
+  const total = totalOf(r.id), my = myQty(r.id);
+  // jo1.3: the same item may be drawn as a catalog card, a line of my order and a summary row, each with its chips and my stepper
+  for (const el of document.querySelectorAll('[data-v="' + CSS.escape(String(v)) + '"]')){
+    if (el.classList.contains('card')) el.classList.toggle('has', total > 0);
+    const c = el.querySelector('.chips'); if (c) c.innerHTML = chipsHtml(r);
+    const stp = el.querySelector('.stepper'), inp = el.querySelector('input[data-qin]');
+    if (stp){ const s = st[r.id] || '', lab = stp.querySelector('.st'); lab.className = 'st ' + s; lab.textContent = stLabel(r.id); }
+    if (inp && document.activeElement !== inp && !deb[r.id]) inp.value = my;
+    if (el.classList.contains('line')){ const q = el.querySelector('.q'), e = el.querySelector('.e'); if (q) q.textContent = '×' + num(my); if (e) e.textContent = eur(r.dealer_eur != null ? round2(my * r.dealer_eur) : null); }
+    if (el.classList.contains('srow')){ const q = el.querySelector('.h .q'), e = el.querySelector('.h .e'); if (q && !q.classList.contains('short')){ q.textContent = '×' + num(total); if (e) e.textContent = eur(r.dealer_eur != null ? round2(total * r.dealer_eur) : null); } }
+  }
 }
 /** my stepper changed: show at once, send ONE jo_set 700 ms after the last change */
 function change(v, qty, atOnce){
@@ -701,7 +708,7 @@ function renderMine(){
   $('view').innerHTML = (ls.length ? '<div class="tot-box"><b>'+ls.length+'</b> שורות · <b>'+num(units)+'</b> יחידות · <b>'+esc(eur(total))+'</b> במחיר סוחר</div>' +
     ls.map(x => x.r.orphan
       ? '<div class="line"><div class="t"><div dir="auto">'+esc(x.r.title)+'</div><div class="s">הפריט ירד מהקטלוג — הכמות עדיין רשומה</div></div><div class="q">×'+num(x.qty)+'</div>' + (state.open && ready() ? '<button class="rm" data-rm="'+esc(x.r.id)+'">הסר</button>' : '') + '</div>'
-      : '<div class="line" data-go="'+esc(x.r.id)+'"><div class="t"><div dir="auto">'+esc(x.r.title)+'</div><div class="s">'+esc(x.r.sku)+'</div></div><div class="q">×'+num(x.qty)+'</div><div class="e">'+esc(eur(x.eur))+'</div></div>').join('')
+      : '<div class="line" data-v="'+esc(x.r.id)+'" data-go="'+esc(x.r.id)+'"><div class="t"><div dir="auto">'+esc(x.r.title)+'</div><div class="s">'+esc(x.r.sku)+'</div>'+paceHtml(x.r)+'</div><div class="q">×'+num(x.qty)+'</div><div class="e">'+esc(eur(x.eur))+'</div>'+stepperHtml(x.r)+'</div>').join('')   // jo1.3: the pace and my stepper on every line
     : '<div class="empty">' + (ready() ? 'עוד לא רשמת כמויות.<br>עבור לקטלוג ורשום כמה אתה רוצה מכל פריט.' : firstLoadDone ? 'אין חיבור — הכמויות יופיעו כשהחיבור יחזור.' : 'טוען…') + '</div>');
 }
 
@@ -738,7 +745,7 @@ function renderSummary(){
   if (!S.items.length){ $('view').innerHTML = h + '<div class="empty">' + (ready() ? 'עוד אין כמויות בהזמנה.' : firstLoadDone ? 'אין חיבור — הסיכום יופיע כשהחיבור יחזור.' : 'טוען…') + '</div>'; return; }
   h += '<div class="tot-box">סה״כ להזמנה: <b>'+S.grand.lines+'</b> פריטים · <b>'+num(S.grand.units)+'</b> יחידות · <b>'+esc(eur(S.grand.eur))+'</b> במחיר סוחר</div>';
   h += '<h2>לפי פריט</h2>' + S.items.map(x => '<div class="srow" data-v="'+esc(x.r.id)+'"'+(x.r.orphan ? '' : ' data-go="'+esc(x.r.id)+'"')+'><div class="h"><div class="t" dir="auto">'+esc(x.r.title)+'</div><div class="q">×'+num(x.total)+'</div><div class="e">'+esc(eur(x.lineEur))+'</div></div>' +
-    '<div class="s">'+esc(x.r.sku)+(x.r.moq ? ' · מינימום '+num(x.r.moq) : '')+(x.r.orphan || x.r.available ? '' : ' · אזל אצל הספק')+'</div><div class="chips">'+chipsHtml(x.r)+'</div></div>').join('');
+    '<div class="s">'+esc(x.r.sku)+(x.r.moq ? ' · מינימום '+num(x.r.moq) : '')+(x.r.orphan || x.r.available ? '' : ' · אזל אצל הספק')+'</div>'+paceHtml(x.r)+'<div class="chips">'+chipsHtml(x.r)+'</div>'+(x.r.orphan ? '' : stepperHtml(x.r))+'</div>').join('');   // jo1.3: the pace and my stepper per item
   h += '<h2>לפי אדם</h2>' + S.perPerson.map(p => '<div class="srow"><div class="h"><div class="t">'+esc(p.name)+(p.shop ? ' <span class="s">'+esc(p.shop)+'</span>' : '')+'</div><div class="q">'+p.lines+' שורות · '+num(p.units)+' יח׳</div><div class="e">'+esc(eur(p.eur))+'</div></div></div>').join('');
   h += '<h2>לפי חנות</h2>' + S.perShop.map(s => '<div class="srow"><div class="h"><div class="t">'+esc(s.shop)+'</div><div class="q">'+s.lines+' שורות · '+num(s.units)+' יח׳</div><div class="e">'+esc(eur(s.eur))+'</div></div></div>').join('');
   h += '<h2>פריטים שחסר להם למינימום</h2>' + (S.short.length ? S.short.map(x => '<div class="srow" data-go="'+esc(x.r.id)+'"><div class="h"><div class="t" dir="auto">'+esc(x.r.title)+'</div><div class="q short">חסר '+num(x.r.moq - x.total)+'</div><div class="e">'+num(x.total)+' / '+num(x.r.moq)+'</div></div></div>').join('') : '<div class="srow" style="color:var(--dim)">אין — כל הפריטים עוברים את המינימום.</div>');
@@ -800,13 +807,13 @@ document.addEventListener('click', ev => {
   if (t.dataset.clear){ clearFilters(); renderCatalog(); return; }
   if (t.dataset.more){ shown += PAGE; renderCatalog(); return; }
   if (t.dataset.moreDesc){ const card = t.closest('.card'); const v = card.dataset.v; if (expanded.has(v)) expanded.delete(v); else expanded.add(v); card.querySelector('.desc').classList.toggle('open', expanded.has(v)); t.textContent = expanded.has(v) ? 'פחות' : 'עוד'; return; }
-  if (t.dataset.step){ const card = t.closest('.card'); const v = card.dataset.v, inp = card.querySelector('input[data-qin]'); const cur = deb[v] ? deb[v].qty : (parseInt(inp && inp.value, 10) || 0); change(v, Math.max(0, cur + Number(t.dataset.step)), false); return; }
+  if (t.dataset.step){ const host = t.closest('[data-v]'); if (!host) return; const v = host.dataset.v, inp = host.querySelector('input[data-qin]'); const cur = deb[v] ? deb[v].qty : (parseInt(inp && inp.value, 10) || 0); change(v, Math.max(0, cur + Number(t.dataset.step)), false); return; }   // jo1.3: a card, a line of my order or a summary row
   if (t.dataset.act === 'copy') return copyText();
   if (t.dataset.act === 'csv') return downloadCsv();
   if (t.dataset.act === 'close') return setOpen(false);
   if (t.dataset.act === 'open') return setOpen(true);
   if (t.dataset.rm) return removeOrphan(t.dataset.rm);
-  if (t.dataset.go) return goCard(t.dataset.go);
+  if (t.dataset.go){ if (ev.target.closest('.stepper')) return; return goCard(t.dataset.go); }   // a tap in a line's stepper edits there, it never jumps to the card
 });
 document.addEventListener('input', ev => {
   const inp = ev.target; if (!inp.dataset || !inp.dataset.qin) return;
