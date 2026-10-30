@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1a20">
+<link rel="manifest" href="./joint-order.webmanifest">
+<link rel="icon" href="./icon-192.png">
+<title>הזמנה משותפת — Glassstaff</title>
+<style>
+  :root{
+    --bg:#0f1a20; --surface:#16262e; --surface2:#1d323c; --line:#2a4450;
+    --teal:#3d7a94; --teal-hi:#5aa3c2; --green:#2E7D32; --green-hi:#43a047; --amber:#c77f14;
+    --red:#c0392b; --red-soft:#3a1512; --ink:#e8eef1; --dim:#8fa6b0; --mono:'Roboto Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0; background:var(--bg); color:var(--ink)}
+  body{font-family:-apple-system,'Segoe UI',Roboto,'Heebo',Arial,sans-serif; font-size:16px; line-height:1.4; padding-bottom:40px; overflow-x:hidden}
+  button{font-family:inherit; font-size:15px; border:none; border-radius:10px; cursor:pointer; color:var(--ink); background:var(--surface2); padding:10px 12px}
+  button:disabled{opacity:.45; cursor:default}
+  input{font-family:inherit; font-size:16px; color:var(--ink); background:var(--surface2); border:1px solid var(--line); border-radius:10px; padding:10px; width:100%}
+  input:focus{outline:2px solid var(--teal)}
+  a{color:var(--teal-hi)}
+  .hide{display:none !important}
+  .wrap{max-width:640px; margin:0 auto; padding:0 12px}
+
+  #top{position:sticky; top:0; z-index:50; background:var(--surface); border-bottom:1px solid var(--line)}
+  #topline{display:flex; align-items:center; gap:8px; padding:8px 12px; max-width:640px; margin:0 auto; min-width:0}
+  #dot{width:10px; height:10px; border-radius:50%; background:var(--red); flex:none}
+  #dot.on{background:var(--green-hi)}
+  #title{font-weight:700; font-size:15px; white-space:nowrap}
+  #ver{font-size:11px; color:var(--dim); white-space:nowrap}
+  #me{display:flex; align-items:center; gap:4px; min-width:0; flex:1; font-size:14px}
+  #meName{font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0}
+  #meBtn{padding:6px 10px; min-height:40px; font-size:12px; color:var(--dim); background:none; border:1px solid var(--line)}
+  #upd{margin-inline-start:auto; font-size:11px; color:var(--dim); text-align:end; line-height:1.25; white-space:nowrap}
+  #upd.stale{color:#ffd479}
+  #queueBadge{background:var(--amber); color:#000; font-size:12px; font-weight:700; border-radius:9px; padding:2px 8px}
+  #refreshBtn{padding:6px 10px; font-size:15px; flex:none; min-width:40px; min-height:40px}
+  #tabs{display:flex; gap:6px; padding:0 12px 8px; max-width:640px; margin:0 auto}
+  .tab{flex:1; background:var(--surface2); border:1px solid var(--line); border-radius:20px; padding:10px 6px; font-size:14px; white-space:nowrap; text-align:center}
+  .tab.on{background:var(--teal); border-color:var(--teal)}
+  .tab .n{font-family:var(--mono); font-size:12px; margin-inline-start:4px; opacity:.85}
+
+  .banner{border-radius:12px; padding:10px 12px; font-size:14px; margin:10px 0}
+  .banner.red{background:var(--red-soft); color:#f0b4ac; border:1px solid var(--red)}
+  .banner.amber{background:#3a2c10; color:#ffd479; border:1px solid #5a4418}
+  .banner.info{background:#10303a; color:#9fd8ea; border:1px solid #1f5a6a}
+  .banner b{color:var(--ink)}
+
+  .tools{display:flex; gap:8px; margin:10px 0 6px}
+  .tools input{flex:1; padding:9px 10px; font-size:15px}
+  .chipline{display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 2px}
+  .chip{background:var(--surface2); border:1px solid var(--line); border-radius:16px; padding:10px 12px; font-size:13px; cursor:pointer}
+  .chip.on{background:var(--teal); border-color:var(--teal)}
+  .chip .n{font-family:var(--mono); font-size:11px; opacity:.8; margin-inline-start:3px}
+
+  #list{margin-top:8px}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:10px; margin:8px 0; min-width:0}
+  .card.has{border-color:var(--teal)}
+  .card.out{opacity:.6}
+  .card.out.has{opacity:.85}
+  .card.flash{outline:2px solid var(--teal-hi)}
+  .crow{display:flex; gap:10px; min-width:0}
+  .pic{width:96px; height:96px; flex:none; border-radius:10px; object-fit:cover; background:var(--surface2)}
+  .body{flex:1; min-width:0}
+  .ttl{font-size:15px; font-weight:700; line-height:1.3; overflow-wrap:anywhere}
+  .typ{font-size:12px; color:var(--dim); margin-top:2px}
+  .typ .sku{font-family:var(--mono)}
+  .desc{font-size:12.5px; color:var(--dim); margin-top:4px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere}
+  .desc.open{display:block; -webkit-line-clamp:unset}
+  .morebtn{background:none; color:var(--teal-hi); padding:0 12px; min-height:40px; margin:-9px -12px; font-size:12.5px}   /* a 40 px thumb target that takes the room of one text line */
+  .price{margin-top:6px; display:flex; align-items:baseline; gap:6px; flex-wrap:wrap}
+  .price .d{font-size:18px; font-weight:700; font-family:var(--mono)}
+  .price .lbl{font-size:12px; color:var(--dim)}
+  .price .site{font-size:11.5px; color:var(--dim)}
+  .meta{display:flex; flex-wrap:wrap; gap:2px 12px; color:var(--dim); font-size:12.5px; margin-top:3px}
+  .chips{display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; align-items:center; min-height:0}
+  .qchip{background:var(--surface2); border:1px solid var(--line); border-radius:14px; padding:3px 9px; font-size:12.5px}
+  .qchip b{font-family:var(--mono); font-weight:600}
+  .qchip.me{border-color:var(--teal-hi); color:#c9e6f2}
+  .qchip.tot{background:#10303a; border-color:#1f5a6a; color:#9fd8ea}
+  .short{color:#ffd479; font-size:12.5px}
+  .outnote{color:#ffd479; font-size:12.5px; margin-top:6px}
+  .outlbl{display:inline-block; background:var(--red-soft); color:#f0b4ac; border:1px solid var(--red); border-radius:10px; padding:1px 8px; font-size:12px; margin-top:6px}
+  .stepper{display:flex; align-items:center; gap:6px; margin-top:8px}
+  .stepper button{width:44px; height:40px; font-size:22px; padding:0; line-height:1; flex:none}
+  .stepper input{width:76px; text-align:center; font-family:var(--mono); font-size:17px; padding:9px 4px; flex:none}
+  .stepper .st{font-size:12px; color:var(--dim); margin-inline-start:4px; min-width:0}
+  .stepper .st.saved{color:#9fe0b0}
+  .stepper .st.retry{color:#ffd479}
+  .more{display:block; width:100%; margin:8px 0; background:none; border:1px dashed var(--line); color:var(--dim)}
+  .empty{color:var(--dim); text-align:center; padding:30px 10px; font-size:15px}
+
+  .line{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin:6px 0; display:flex; gap:10px; align-items:center; cursor:pointer}
+  .line .t{flex:1; min-width:0; overflow-wrap:anywhere}
+  .line .t .s{font-size:12px; color:var(--dim); font-family:var(--mono)}
+  .line .q{font-family:var(--mono); font-weight:700; font-size:16px; white-space:nowrap}
+  .line .e{font-family:var(--mono); color:var(--dim); font-size:13px; white-space:nowrap}
+  .line .rm{background:var(--red-soft); color:#f0b4ac; border:1px solid var(--red); padding:9px 12px; font-size:13px; flex:none}
+  .tot-box{background:#10303a; border:1px solid #1f5a6a; border-radius:12px; padding:10px 12px; margin:10px 0; font-size:15px}
+  .tot-box b{font-family:var(--mono)}
+  h2{font-size:16px; margin:16px 0 6px; color:var(--teal-hi)}
+  .srow{border-top:1px solid var(--line); padding:8px 0; font-size:14px}
+  .srow .h{display:flex; gap:8px; align-items:baseline}
+  .srow .h .t{flex:1; min-width:0; overflow-wrap:anywhere; font-weight:600}
+  .srow .h .q{font-family:var(--mono); font-weight:700; white-space:nowrap}
+  .srow .h .e{font-family:var(--mono); color:var(--dim); font-size:13px; white-space:nowrap}
+  .srow .s{font-size:12px; color:var(--dim); font-family:var(--mono)}
+  .srow .chips{margin-top:4px}
+  .acts{display:flex; gap:8px; margin:12px 0; flex-wrap:wrap}
+  .acts button{flex:1; min-width:120px; padding:11px 8px}
+  .acts .go{background:var(--teal)}
+  .acts .danger{background:var(--red)}
+  .acts .ok{background:var(--green)}
+  #foot{color:var(--dim); font-size:12px; text-align:center; margin-top:24px}
+
+  #gate,#names{max-width:480px; margin:40px auto; padding:0 20px}
+  #gate h1,#names h1{color:var(--teal-hi); font-size:22px}
+  #gate p,#names p{color:var(--dim); line-height:1.6}
+  .bigbtn{width:100%; padding:14px; font-size:17px; font-weight:700; margin-top:10px}
+  .bigbtn.go{background:var(--green)}
+  .pbtn{width:100%; text-align:start; padding:14px; margin-top:10px; background:var(--surface); border:1px solid var(--line); font-size:18px}
+  .pbtn .shop{display:block; font-size:13px; color:var(--dim); font-weight:400; margin-top:2px}
+
+  #toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--green); color:#fff; padding:12px 18px; border-radius:12px; font-size:15px; font-weight:700;
+         z-index:200; display:none; box-shadow:0 4px 20px rgba(0,0,0,.5); max-width:92vw; text-align:center; align-items:center; gap:12px}
+  #toast.err{background:var(--red)} #toast.warn{background:var(--amber); color:#000}
+
+  @media (max-width:699px){ #ver{display:none} }
+  @media (min-width:700px){
+    .wrap,#topline,#tabs{max-width:1100px}
+    #me{flex:none; max-width:260px}
+    #list{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; align-items:start}
+    #list .card{margin:0}
+    #list .more{grid-column:1 / -1}
+  }
+  @media (min-width:1000px){ #list{grid-template-columns:repeat(3,minmax(0,1fr))} }
+</style>
+</head>
+<body>
+<div id="gate" class="hide">
+  <h1>הזמנה משותפת — Glassstaff</h1>
+  <p><b>פתח את הקישור שקיבלת.</b> הדף נפתח מהקישור שנשלח לך בהודעה, והטלפון זוכר אותו מאז.</p>
+  <p>אם יש לך את המפתח עצמו, הדבק אותו כאן:</p>
+  <input id="keyIn" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="מפתח">
+  <button id="keyBtn" class="bigbtn go">המשך</button>
+  <p id="gateMsg"></p>
+</div>
+
+<div id="names" class="hide">
+  <h1>מי ממלא את ההזמנה?</h1>
+  <p>בחר את השם שלך. הכמויות שתרשום יופיעו לכולם תחת השם הזה.</p>
+  <div id="nameList"></div>
+  <p id="namesMsg"></p>
+</div>
+
+<div id="app" class="hide">
+  <div id="top">
+    <div id="topline">
+      <span id="dot"></span><span id="title">הזמנה משותפת</span><span id="ver"></span>
+      <span id="me"><span id="meName"></span><button id="meBtn">החלף</button></span>
+      <span id="queueBadge" class="hide">0</span>
+      <span id="upd"></span>
+      <button id="refreshBtn" title="רענון">⟳</button>
+    </div>
+    <div id="tabs"></div>
+  </div>
+  <div class="wrap">
+    <div id="banners"></div>
+    <div id="view"></div>
+    <div id="foot"></div>
+  </div>
+</div>
+
+<div id="toast"><span id="toastMsg"></span></div>
+
+<script>
+'use strict';
+/* ================= CONFIG ================= */
+const BUILD = 'jo1.1';
+// the two backends (JOINT deployments of the catalog's script); ?api=test is the TEST one (it writes only the TEST sheet),
+// ?api=local only on this PC (the mock server of the page test). Never a URL from the address bar. The page holds no key and no sheet id.
+const LIVE_API = 'https://script.google.com/macros/s/AKfycbyNg6AVes7vWeIfTqCnkpoFIayLxdx4EoI7cVvIN2c_LgFEIfedMyhnFc00Z3-s-sPQUA/exec';
+const TEST_API = 'https://script.google.com/macros/s/AKfycbzTFJra1b6AExJWWh4Oa5NT3eZnjdCfLPwQcOGs7lfgbDgjPhkwucIFVGPo8-yZJxfVAw/exec';
+const LOCAL_API = 'http://localhost:8788/';
+const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+const MODE = (()=>{ const a = new URLSearchParams(location.search).get('api'); return a==='test' ? 'test' : a==='local' && LOCAL ? 'local' : 'live'; })();
+const API = MODE==='test' ? TEST_API : MODE==='local' ? LOCAL_API : LIVE_API;
+const ENV = MODE==='live' ? '' : 'test';
+const TZ = 'Asia/Jerusalem';
+const LS = { key:'jo_key', person:'jo_person', device:'jo_device', view:'jo_view', queue:'jo_queue_'+MODE, cat:'jo_cat_'+MODE, meta:'jo_meta_'+MODE };
+const POLL_MS = 20000, DEBOUNCE_MS = 700, PAGE = 40, DAY = 24*3600000, MAX_QTY = 5000;
+const RETRY_MS = [1000, 2000, 5000, 15000], RETRY_LATER_MS = 30000;
+const CAT_HEADER = ['variant_id','sku','barcode','title','type','kind','description','image','url','price_eur','dealer_eur','moq','case_qty','available','published','is_new','data_date'];
+const LINE_HEADER = ['at','person','shop','variant_id','sku','qty','uuid','device','build','note'];
+const HTTPS_RE = /^https:\/\/[^\s"'<>]+$/i;   // a picture is an https URL or the placeholder: no http, data: or javascript: ever reaches an img src
+const ROLE_HE = { buyer: 'משתתף', admin: 'מנהל' };
+const GROUPS = [
+  ['sets', 'סטים', ['RPG Dice Set','Mystery Dice','Glassstaff Dice','d100']],
+  ['d20', 'D20 גדולים', ['33mm D20','50mm D20']],
+  ['stickers', 'מדבקות', ['Sticker','Special Stickers']],
+  ['socks', 'גרביים', ['Socks']],
+  ['acc', 'אביזרים', ['CritStones Dice Accessories','Glassstaff Dice Accessories','Keychain','Pin','Tableware','Loot Boxes','Toys','Food']],
+  ['gifts', 'מחברות ומתנות', ['Deluxe Notebook','Journal','Greeting Card','Gift Mug']] ];
+const GROUP_OF = {}; for (const [id,,types] of GROUPS) for (const t of types) GROUP_OF[t] = id;
+const VIEWS = [['catalog','קטלוג'], ['mine','ההזמנה שלי'], ['summary','סיכום']];
+// a neutral picture when the supplier's image fails to load (a grey square with a die outline)
+const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect width="96" height="96" rx="12" fill="#1d323c"/><path d="M48 18 22 33v30l26 15 26-15V33z" fill="none" stroke="#3d5a68" stroke-width="3"/><path d="M22 33l26 15 26-15M48 48v30" fill="none" stroke="#3d5a68" stroke-width="3"/></svg>');
+
+/* ================= STATE ================= */
+let KEY = '', AK = '', who = '', DEVICE = '';
+let people = [];                 // [{name, shop}] active, sheet order
+let state = { open: true, closed_at: '', closed_by: '' };
+let cat = null;                  // { stamp, data_date, rows:[{...}], byId: Map }
+let lines = new Map();           // person\u0001variant_id → { qty, ord, shop, sku, fresh? } (the LAST ledger row of the pair wins; fresh = written by me after the last snapshot)
+let nLines = 0;                  // ledger data rows this page already has (= `since` of the next poll)
+let person = '';                 // my name (LS jo_person)
+let view = 'catalog', query = '', chip = 'all', shown = PAGE;
+const expanded = new Set();      // variant ids with the description opened
+let mine = {};                   // variant_id → { qty, uuid } my value not yet confirmed by the server (optimistic layer)
+let st = {};                     // variant_id → '' | 'saving' | 'saved' | 'retry'
+const deb = {};                  // variant_id → { t, qty } the debounce of my stepper
+let queue = [];                  // [{ uuid, ts, person, variant_id, qty, att, notBefore }] in order, in LS
+let loading = false, loadAgain = false, syncing = false, lastOk = 0, syncTimer = null, sheetMissing = false;
+let firstLoadDone = false, netDown = false, cachedLines = false;   // this session's first jo_load; the ledger drawn from the phone's cache
+let sortSnap = null;             // Set of the variant ids drawn "ordered first" at the last explicit draw of the catalog: a poll never re-sorts under the thumb
+
+/* ================= UTIL ================= */
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&3|8)).toString(16)}));
+const eur = n => n==null||n===''||isNaN(Number(n)) ? '' : '€' + Number(n).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+const num = n => Number(n||0).toLocaleString('he-IL');
+const hhmm = iso => { const d=new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString('he-IL',{timeZone:TZ,hour:'2-digit',minute:'2-digit'}); };
+const ddmm = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso||'')); if (m && String(iso).length <= 10) return m[3]+'/'+m[2]; const d=new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('en-GB',{timeZone:TZ,day:'2-digit',month:'2-digit'}); };   // always DD/MM
+const round2 = n => Math.round(Number(n) * 100) / 100;
+const truthy = v => v === true || /^true$/i.test(String(v));
+const kOf = (p, v) => p + '\u0001' + String(v);
+function toast(msg, cls='', ms=2600){
+  const t=$('toast'); $('toastMsg').textContent=msg; t.className=cls; t.style.display='flex';
+  clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', ms);
+}
+function fetchT(url, opts, ms){ const c=new AbortController(); const t=setTimeout(()=>c.abort(), ms); return fetch(url, {...opts, signal:c.signal}).finally(()=>clearTimeout(t)); }
+async function post(body, ms=45000){
+  // Google sometimes turns the POST into a bare GET (doPost never runs; the backend answers GET_NOT_POST): the same request again
+  for (let i = 0; ; i++){
+    const r = await fetchT(API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ k: KEY, ak: AK || undefined, env: ENV || undefined, build: BUILD, ...body }) }, ms);
+    const js = await r.json();
+    if (js && js.who) who = js.who;
+    if (!(js && js.error === 'GET_NOT_POST') || i >= 3) return js;
+  }
+}
+function saveLS(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function loadLS(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
+function rawLS(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
+
+/* ================= KEY ================= */
+function takeKeyFromHash(){
+  // #k=<joint key>; Chris's own link may add &ak=<his supplier key>, kept as fs_key (the same key suppliers.html keeps) so this browser is admin
+  const m = /[#&]k=([\w\-]{20,100})/.exec(location.hash), a = /[#&]ak=([\w\-]{8,100})/.exec(location.hash);
+  if (m){ try{ localStorage.setItem(LS.key, m[1]); }catch(e){} }
+  if (a){ try{ localStorage.setItem('fs_key', a[1]); }catch(e){} }
+  if (m || a) history.replaceState(null, '', location.pathname + location.search);
+}
+async function ping(){
+  try{ return await post({ action:'jo_ping' }, 30000); }catch(e){ return { ok:false, error:'NET' }; }
+}
+
+/* ================= CATALOG ================= */
+function rowObj(header, r){ if (Array.isArray(r)){ const o = {}; header.forEach((h, i) => o[h] = r[i]); return o; } return r || {}; }
+function setCatalog(c){
+  // rows come as arrays in CAT_HEADER order (or objects); gift cards never show, whatever the backend sends
+  const rows = [];
+  for (const raw of (c.rows || [])){
+    if (Array.isArray(raw) && raw[0] === 'variant_id') continue;   // a header row, if one ever comes
+    const o = rowObj(CAT_HEADER, raw);
+    if (String(o.kind) === 'gift_card' || o.variant_id === '' || o.variant_id == null) continue;
+    rows.push({ id: String(o.variant_id), sku: String(o.sku||''), barcode: String(o.barcode||''), title: String(o.title||''), type: String(o.type||''), kind: String(o.kind||''),
+      description: String(o.description||''), image: HTTPS_RE.test(String(o.image||'')) ? String(o.image) : '', url: String(o.url||''),
+      price_eur: o.price_eur === '' || o.price_eur == null ? null : Number(o.price_eur),
+      dealer_eur: o.dealer_eur === '' || o.dealer_eur == null ? (o.price_eur === '' || o.price_eur == null ? null : round2(Number(o.price_eur) * 0.5)) : Number(o.dealer_eur),
+      moq: o.moq === '' || o.moq == null || isNaN(Number(o.moq)) ? null : Number(o.moq),
+      case_qty: o.case_qty === '' || o.case_qty == null || isNaN(Number(o.case_qty)) ? null : Number(o.case_qty),
+      available: truthy(o.available), is_new: truthy(o.is_new), published: String(o.published||'') });
+  }
+  cat = { stamp: String(c.stamp||''), data_date: String(c.data_date||''), rows, byId: new Map(rows.map(r => [r.id, r])) };
+  sortSnap = null;
+}
+function groupOf(type){ return GROUP_OF[type] || 'other'; }
+function matches(r){
+  if (!query) return true; const q = query.toLowerCase();
+  return r.title.toLowerCase().includes(q) || r.sku.toLowerCase().includes(q) || r.barcode.includes(q) || r.type.toLowerCase().includes(q);
+}
+
+/* ================= LINES (server layer + my optimistic layer) ================= */
+function shopOf(name){ const p = people.find(x => x.name === name); return p ? p.shop : ''; }
+/** every person's current quantity on a variant: [{name, qty, me}] in people order, others after; my unconfirmed value on top unless confirmedOnly (the ledger as the server has it) */
+function qtysOf(v, confirmedOnly){
+  const by = new Map();
+  for (const [k, l] of lines){ const [p, id] = k.split('\u0001'); if (id === String(v) && l.qty > 0) by.set(p, l.qty); }
+  if (person && !confirmedOnly && mine[v]){ if (mine[v].qty > 0) by.set(person, mine[v].qty); else by.delete(person); }
+  const order = people.map(p => p.name); const names = [...by.keys()].sort((a, b) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
+  return names.map(n => ({ name: n, qty: by.get(n), me: n === person }));
+}
+function totalOf(v){ return qtysOf(v).reduce((s, x) => s + x.qty, 0); }
+function myQty(v){ if (mine[v]) return mine[v].qty; const l = lines.get(kOf(person, v)); return l ? l.qty : 0; }
+/** merges ledger rows; returns the Set of variant ids whose quantities changed, or null when out of step with the server (the next poll reads from 0) */
+function mergeLines(from, rows){
+  const changed = new Set();
+  let keep = null;
+  if (from === 0){
+    // rows my own saves wrote AFTER the server took this snapshot (ordinal beyond it) stay until the next poll brings them
+    keep = [...lines].filter(([, l]) => l.fresh && l.ord > rows.length + 1);
+    for (const k of lines.keys()) changed.add(k.split('\u0001')[1]);
+    lines = new Map(); nLines = 0;
+  }
+  else if (from !== nLines){ nLines = 0; return null; }
+  rows.forEach((raw, i) => {
+    const o = rowObj(LINE_HEADER, raw); const p = String(o.person||''), v = String(o.variant_id||''); if (!p || !v) return;
+    const qty = Math.max(0, Math.floor(Number(o.qty) || 0)), ord = from + i + 2;   // sheet row number (header = 1)
+    const cur = lines.get(kOf(p, v));
+    if (!cur || ord >= cur.ord){ if (!cur || cur.qty !== qty) changed.add(v); lines.set(kOf(p, v), { qty, ord, shop: String(o.shop||''), sku: String(o.sku||'') }); }
+    // my own write seen in the ledger: its uuid confirms the queued job (a reply that was lost on the way)
+    if (p === person && o.uuid){ const j = queue.find(x => x.uuid === o.uuid); if (j){ queue = queue.filter(x => x !== j); saveQ(); if (mine[v] && mine[v].uuid === j.uuid) delete mine[v]; markSaved(v); changed.add(v); } }
+  });
+  if (keep) for (const [k, l] of keep){ const cur = lines.get(k); if (!cur || l.ord >= cur.ord){ lines.set(k, l); changed.add(k.split('\u0001')[1]); } }
+  nLines = from + rows.length; return changed;
+}
+
+/* ================= QUEUE (localStorage; latest value per variant; in order; retries 1/2/5/15 s then every 30 s, for a day) ================= */
+function saveQ(){ saveLS(LS.queue, queue); badge(); }
+function badge(){ const b = $('queueBadge'); b.textContent = queue.length; b.classList.toggle('hide', !queue.length); }
+function enqueue(v, qty){
+  // a job not yet tried is replaced by the newer value; one already sent once stays ahead so its uuid is settled first (order = last row wins)
+  queue = queue.filter(j => !(j.variant_id === v && j.person === person && !(j.att > 0)));
+  const job = { uuid: uuid(), ts: Date.now(), person, variant_id: v, qty, att: 0, notBefore: 0 };
+  queue.push(job); mine[v] = { qty, uuid: job.uuid }; st[v] = 'saving'; saveQ(); paintCard(v); sync();
+}
+const HARD = /^(BAD_PERSON|BAD_ITEM|NOT_AVAILABLE|BAD_QTY|CLOSED|NO_SHEET|missing uuid|unknown action|bad )/;
+const HARD_MSG = { BAD_PERSON:'השם שלך לא ברשימה — בחר שם מחדש', BAD_ITEM:'הפריט כבר לא בקטלוג — הכמות לא נשמרה', NOT_AVAILABLE:'הפריט אזל אצל הספק — הכמות לא נשמרה',
+  BAD_QTY:'כמות לא תקינה — לא נשמרה', CLOSED:'ההזמנה כבר נסגרה — הכמות לא נשמרה', NO_SHEET:'הגיליון עוד לא הוכן — הכמות לא נשמרה' };
+function scheduleSync(ms){ clearTimeout(syncTimer); syncTimer = setTimeout(sync, Math.max(50, ms)); }
+async function sync(){
+  if (syncing || !navigator.onLine) return;
+  syncing = true;
+  try{
+    while (queue.length){
+      const job = queue[0], v = job.variant_id, my = job.person === person;
+      if (job.notBefore > Date.now()){ scheduleSync(job.notBefore - Date.now()); break; }
+      if (Date.now() - job.ts > DAY){ queue.shift(); saveQ(); dropJob(job, 'עבר יום בלי חיבור'); continue; }
+      job.att = (job.att || 0) + 1; saveQ();
+      if (my){ st[v] = 'saving'; paintCard(v); }
+      let js = null;
+      try{ js = await post({ action:'jo_set', uuid: job.uuid, person: job.person, variant_id: v, qty: job.qty, device: DEVICE }, 40000); }catch(e){ js = null; }
+      if (!queue.includes(job)){   // a poll confirmed this job by its uuid while the request was out: the reply, late or lost, changes nothing
+        if (js && js.ok) written(job, js); else if (my){ if (mine[v] && mine[v].uuid === job.uuid) delete mine[v]; markSaved(v); }
+        continue;
+      }
+      if (js && js.ok){ queue = queue.filter(j => j !== job); saveQ(); written(job, js); continue; }
+      if (js && js.error === 'BAD_KEY'){ showGate('המפתח לא מתאים יותר. פתח שוב את הקישור שקיבלת.'); break; }
+      if (js && HARD.test(String(js.error||''))){ queue = queue.filter(j => j !== job); saveQ(); dropJob(job, js.error); continue; }
+      // no connection, Google slow, the sheet busy (BUSY_LOCK), the catalog being re-pushed (BUSY_CATALOG): again in 1, 2, 5, 15 s, then every 30 s, for a day
+      job.notBefore = Date.now() + (RETRY_MS[job.att - 1] != null ? RETRY_MS[job.att - 1] : RETRY_LATER_MS); saveQ();
+      if (my){ st[v] = 'retry'; paintCard(v); }
+      scheduleSync(job.notBefore - Date.now()); break;
+    }
+  } finally { syncing = false; badge(); }
+}
+/** "נשמר" on my card for 2.5 s, unless a newer value of mine is still queued for it */
+function markSaved(v){
+  if (queue.some(j => j.variant_id === v && j.person === person)) return;
+  st[v] = 'saved'; paintCard(v);
+  setTimeout(()=>{ if (st[v] === 'saved'){ st[v] = ''; paintCard(v); } }, 2500);
+}
+function written(job, js){
+  const v = job.variant_id, qty = Number.isFinite(Number(js.qty)) ? Number(js.qty) : job.qty, ord = Number(js.row) || (nLines + 2);
+  const k = kOf(job.person, v), cur = lines.get(k), r = cat && cat.byId.get(String(v));
+  if (!cur || ord >= cur.ord) lines.set(k, { qty, ord, shop: shopOf(job.person), sku: r ? r.sku : (cur ? cur.sku : ''), fresh: true });
+  saveMeta();   // the cached ledger carries the confirmed write, so a reopen before the first jo_load draws this value, not the last poll's
+  if (mine[v] && mine[v].uuid === job.uuid) delete mine[v];
+  if (job.person === person) markSaved(v); else paintCard(v);
+  renderTabs(); if (view === 'mine') render();
+}
+function dropJob(job, err){
+  const v = job.variant_id; if (mine[v] && mine[v].uuid === job.uuid) delete mine[v]; if (job.person === person) st[v] = '';
+  toast(HARD_MSG[err] || ('לא נשמר: ' + err), 'err', 5000);
+  if (err === 'CLOSED'){ state = { ...state, open:false }; render(); }
+  else if (err === 'BAD_PERSON'){ if (job.person === person){ person = ''; try{ localStorage.removeItem(LS.person); }catch(e){} showNames(); } }
+  else { paintCard(v); if (err === 'NOT_AVAILABLE' || err === 'BAD_ITEM') load(true); }
+}
+window.addEventListener('online', ()=>{ $('dot').classList.add('on'); sync(); load(false); });
+window.addEventListener('offline', ()=> $('dot').classList.remove('on'));
+setInterval(()=>{ if (queue.length && KEY) sync(); }, 5000);   // safety net: a retry timer that fired while a send was in flight is not lost
+
+/* ================= LOAD (poll) ================= */
+async function load(full){
+  if (loading){ loadAgain = true; return; }
+  loading = true; $('refreshBtn').disabled = true;
+  let structural = !firstLoadDone, changedV = null;   // structural = the whole view is redrawn; otherwise only the cards whose quantities changed are repainted
+  try{
+    if (full) nLines = 0;
+    const js = await post({ action:'jo_load', since: nLines, catStamp: cat ? cat.stamp : '' }, 60000);
+    if (js && js.ok){
+      sheetMissing = false; netDown = false;
+      if (js.catalog && js.catalog.rows){ setCatalog(js.catalog); saveLS(LS.cat, js.catalog); structural = true; }
+      const pl = (js.people || []).map(p => ({ name: String(p.name||''), shop: String(p.shop||'') })).filter(p => p.name);
+      if (JSON.stringify(pl) !== JSON.stringify(people)){ people = pl; structural = true; }
+      const s = js.state || {}; const ns = { open: s.open !== false, closed_at: String(s.closed_at||''), closed_by: String(s.closed_by||'') };
+      if (JSON.stringify(ns) !== JSON.stringify(state)){ state = ns; structural = true; }
+      const L = js.lines || { from: 0, rows: [] };
+      const from = Number(L.from) || 0, rows = L.rows || [];
+      const res = mergeLines(from, rows);
+      if (res === null) loadAgain = true; else if (from === 0) structural = true; else changedV = res;
+      saveMeta();
+      lastOk = Date.now(); $('dot').classList.add('on');
+      if (person && people.length && !people.some(p => p.name === person)){ person = ''; try{ localStorage.removeItem(LS.person); }catch(e){} showNames(); }
+    } else if (js && js.error === 'BAD_KEY') showGate('המפתח לא מתאים. פתח שוב את הקישור שקיבלת.');
+    else if (js && js.error === 'NO_SHEET'){ sheetMissing = true; structural = true; }
+    else if (!js){ netDown = true; $('dot').classList.remove('on'); }
+    else toast('לא הצלחתי לקרוא את ההזמנה: ' + (js && js.error || '?'), 'err', 4000);
+  } catch(e){ netDown = true; $('dot').classList.remove('on'); }
+  finally {
+    loading = false; firstLoadDone = true; $('refreshBtn').disabled = false;
+    if (structural) render();
+    else if (changedV && changedV.size){
+      if (view === 'catalog'){ for (const v of changedV) paintCard(v); paintCounts(); renderTop(); renderTabs(); renderBanners(); }   // no re-sort under the thumb
+      else render();
+    }
+    else { renderTop(); renderBanners(); }
+    if (structural && !$('names').classList.contains('hide')) showNames();
+    if (loadAgain){ loadAgain = false; setTimeout(()=>load(false), 300); }
+  }
+}
+/** people, state and the ledger as this phone has them, for the next open (drawn at once, before the first jo_load) */
+function saveMeta(){ saveLS(LS.meta, { people, state, nLines, lines: [...lines].map(([k, l]) => [k, { qty: l.qty, ord: l.ord, shop: l.shop, sku: l.sku || '' }]) }); }
+setInterval(()=>{ if (!document.hidden && KEY) load(false); }, POLL_MS);
+document.addEventListener('visibilitychange', ()=>{ if (!document.hidden && KEY){ load(false); sync(); } });
+window.addEventListener('focus', ()=>{ if (KEY && Date.now() - lastOk > 5000) load(false); });
+
+/* ================= RENDER ================= */
+function renderTop(){
+  $('ver').textContent = BUILD + (MODE !== 'live' ? ' · ' + MODE : '');
+  $('meName').textContent = person || '';
+  $('upd').innerHTML = (lastOk ? 'עודכן ' + esc(hhmm(lastOk)) : 'לא עודכן') + (cat && cat.data_date ? '<br>קטלוג מ-' + esc(ddmm(cat.data_date)) : '');
+  $('upd').classList.toggle('stale', !!lastOk && Date.now() - lastOk > 3 * POLL_MS);
+  $('foot').textContent = 'גרסה ' + BUILD + (MODE !== 'live' ? ' · ' + (MODE === 'local' ? 'בדיקה מקומית' : 'שרת ניסיון') : '') + (who ? ' · ' + (ROLE_HE[who] || who) : '');
+}
+function renderTabs(){
+  const myN = myLines().length, allN = cat ? cat.rows.filter(r => totalOf(r.id) > 0).length + orphans().filter(r => totalOf(r.id) > 0).length : 0;
+  $('tabs').innerHTML = VIEWS.map(([k, t]) => '<button class="tab'+(k===view?' on':'')+'" data-view="'+k+'">'+esc(t)+(k==='mine'&&myN?'<span class="n">'+myN+'</span>':k==='summary'&&allN?'<span class="n">'+allN+'</span>':'')+'</button>').join('');
+}
+function renderBanners(){
+  const b = [];
+  if (!state.open) b.push('<div class="banner red"><b>ההזמנה נסגרה ב-' + esc(ddmm(state.closed_at)) + ' ' + esc(hhmm(state.closed_at)) + '</b>. אי אפשר לשנות כמויות; הסיכום עדיין עובד.</div>');
+  if (sheetMissing) b.push('<div class="banner amber">הגיליון של ההזמנה עוד לא הוכן. נסה שוב מאוחר יותר.</div>');
+  else if (cat && !cat.rows.length) b.push('<div class="banner amber">הקטלוג עוד לא נטען. נסה שוב מאוחר יותר.</div>');
+  if ((lastOk && Date.now() - lastOk > 3 * POLL_MS) || (!lastOk && netDown)) b.push('<div class="banner amber">אין חיבור כרגע — ' + (ready() ? 'מה שתרשום נשמר בטלפון ונשלח כשהחיבור חוזר.' : 'הכמויות יופיעו כשהחיבור יחזור.') + '</div>');
+  $('banners').innerHTML = b.join('');
+}
+function render(){
+  if (!$('app') || $('app').classList.contains('hide')) return;
+  renderTop(); renderTabs(); renderBanners();
+  // keep the focused input (a stepper's number or the search box) and what was typed in it across the re-render
+  const act = document.activeElement, keep = act && act.dataset && act.dataset.qin ? { v: act.dataset.qin, val: act.value, sel: act.selectionStart } : act && act.id === 'q' ? { q: true, val: act.value, sel: act.selectionStart } : null;
+  if (view === 'catalog') renderCatalog(); else if (view === 'mine') renderMine(); else renderSummary();
+  if (keep){ const inp = keep.q ? $('q') : document.querySelector('input[data-qin="' + CSS.escape(keep.v) + '"]'); if (inp){ inp.value = keep.val; inp.focus({ preventScroll:true }); try{ inp.setSelectionRange(keep.sel, keep.sel); }catch(e){} } }
+}
+
+/* ---------- catalog ---------- */
+function catRows(){
+  if (!cat) return [];
+  let rows = cat.rows;
+  if (chip === 'new') rows = rows.filter(r => r.is_new);
+  else if (chip === 'ordered') rows = rows.filter(r => totalOf(r.id) > 0);
+  else if (chip !== 'all') rows = rows.filter(r => groupOf(r.type) === chip);
+  rows = rows.filter(matches);
+  // "ordered first" is frozen at the last explicit draw (a tab, a chip, the search, ⟳, a tap on a line): a poll repaints cards but never moves them
+  if (!sortSnap) sortSnap = new Set(cat.rows.filter(r => totalOf(r.id) > 0).map(r => r.id));
+  return rows.slice().sort((a, b) => {
+    const ha = sortSnap.has(a.id), hb = sortSnap.has(b.id); if (ha !== hb) return ha ? -1 : 1;
+    if (a.available !== b.available) return a.available ? -1 : 1;
+    return a.title.localeCompare(b.title, 'en');
+  });
+}
+function renderCatalog(){
+  const counts = {}; if (cat) for (const r of cat.rows){ const g = groupOf(r.type); counts[g] = (counts[g]||0) + 1; }
+  const hasOther = !!counts.other, newN = cat ? cat.rows.filter(r => r.is_new).length : 0, ordN = cat ? cat.rows.filter(r => totalOf(r.id) > 0).length : 0;
+  const chips = [['all','הכל', cat ? cat.rows.length : 0], ...GROUPS.map(([id, t]) => [id, t, counts[id]||0]), ...(hasOther ? [['other','אחר', counts.other]] : []), ['new','חדש', newN], ['ordered','הוזמן', ordN]];
+  const rows = catRows();
+  $('view').innerHTML = '<div class="tools"><input id="q" type="search" placeholder="חיפוש לפי שם, מק״ט או ברקוד" value="'+esc(query)+'" autocomplete="off"></div>' +
+    '<div class="chipline">' + chips.map(([id, t, n]) => '<span class="chip'+(chip===id?' on':'')+'" data-chip="'+id+'">'+esc(t)+'<span class="n">'+n+'</span></span>').join('') + '</div>' +
+    '<div id="list">' + (rows.length ? rows.slice(0, shown).map(cardHtml).join('') + (rows.length > shown ? '<button class="more" data-more="1">עוד '+(rows.length - shown)+'</button>' : '') : '<div class="empty">' + (cat ? 'לא נמצא כלום' : 'טוען את הקטלוג…') + '</div>') + '</div>';
+  const q = $('q'); let qT = null;
+  q.addEventListener('input', e => { clearTimeout(qT); qT = setTimeout(()=>{ query = e.target.value.trim(); shown = PAGE; sortSnap = null; const a = document.activeElement === q; renderCatalog(); if (a){ const q2 = $('q'); q2.focus({ preventScroll:true }); q2.setSelectionRange(q2.value.length, q2.value.length); } }, 200); });
+}
+/** the "הוזמן" chip's count after a poll (the list itself is not redrawn) */
+function paintCounts(){ const n = document.querySelector('.chip[data-chip="ordered"] .n'); if (n && cat) n.textContent = cat.rows.filter(r => totalOf(r.id) > 0).length; }
+function chipsHtml(r){
+  const qs = qtysOf(r.id), total = qs.reduce((s, x) => s + x.qty, 0);
+  let h = qs.map(x => '<span class="qchip'+(x.me?' me':'')+'">'+esc(x.name)+' · <b>'+num(x.qty)+'</b></span>').join('');
+  if (total > 0) h += '<span class="qchip tot">סה״כ <b>'+num(total)+'</b></span>';
+  if (total > 0 && r.moq && total < r.moq) h += '<span class="short">חסר '+num(r.moq - total)+' למינימום</span>';
+  return h;
+}
+/** the steppers open only once this session knows the ledger: the first jo_load answered, or the first load failed (offline) and the phone's cached ledger is drawn */
+function ready(){ return lastOk > 0 || (firstLoadDone && cachedLines); }
+function stLabel(v){ if (!ready()) return firstLoadDone ? 'אין חיבור' : 'טוען…'; const s = st[v] || ''; return s === 'saving' ? 'שומר…' : s === 'saved' ? 'נשמר' : s === 'retry' ? 'עוד לא נשמר, מנסה שוב' : ''; }
+function stepperHtml(r){
+  if (!r.available) return '';
+  const q = myQty(r.id), s = st[r.id] || '', dis = !state.open || !person || !ready() ? ' disabled' : '', label = stLabel(r.id);
+  return '<div class="stepper"><button data-step="-1"'+dis+' aria-label="פחות">−</button>' +
+    '<input data-qin="'+esc(r.id)+'" type="text" inputmode="numeric" pattern="[0-9]*" value="'+q+'" aria-label="הכמות שלי"'+dis+'>' +
+    '<button data-step="1"'+dis+' aria-label="יותר">+</button><span class="st '+esc(s)+'">'+esc(label)+'</span></div>';
+}
+function cardHtml(r){
+  const total = totalOf(r.id);
+  let h = '<div class="card'+(total>0?' has':'')+(r.available?'':' out')+'" data-v="'+esc(r.id)+'">';
+  h += '<div class="crow"><img class="pic" loading="lazy" decoding="async" src="'+esc(r.image || PLACEHOLDER)+'" alt=""><div class="body">';
+  h += '<div class="ttl" dir="auto">'+esc(r.title)+'</div>';
+  h += '<div class="typ">'+esc(r.type)+(r.sku?' · <span class="sku">'+esc(r.sku)+'</span>':'')+(r.is_new?' · <span style="color:#9fe0b0">חדש</span>':'')+'</div>';
+  if (r.description) h += '<div class="desc'+(expanded.has(r.id)?' open':'')+'" dir="auto">'+esc(r.description)+'</div><button class="morebtn" data-more-desc="1">'+(expanded.has(r.id)?'פחות':'עוד')+'</button>';
+  h += '<div class="price"><span class="d">'+esc(eur(r.dealer_eur))+'</span><span class="lbl">מחיר סוחר</span>'+(r.price_eur!=null?'<span class="site">באתר '+esc(eur(r.price_eur))+'</span>':'')+'</div>';
+  h += '<div class="meta"><span>'+(r.moq ? 'מינימום '+num(r.moq) : 'מינימום לא ידוע')+'</span>'+(r.case_qty ? '<span>קרטון '+num(r.case_qty)+'</span>' : '')+'</div>';
+  if (!r.available) h += '<span class="outlbl">אזל אצל הספק</span>';
+  h += '</div></div>';
+  h += '<div class="chips">'+chipsHtml(r)+'</div>';
+  if (!r.available && total > 0) h += '<div class="outnote">אזל אצל הספק, אבל יש עליו כמות — כדאי לבדוק.</div>';
+  h += stepperHtml(r) + '</div>';
+  return h;
+}
+/** redraw only one card's chips, state and (unless being typed in) its number — no full re-render per tap */
+function paintCard(v){
+  const el = document.querySelector('.card[data-v="' + CSS.escape(String(v)) + '"]'), r = cat && cat.byId.get(String(v)); if (!el || !r) return;
+  const total = totalOf(r.id); el.classList.toggle('has', total > 0);
+  const c = el.querySelector('.chips'); if (c) c.innerHTML = chipsHtml(r);
+  const stp = el.querySelector('.stepper'), inp = el.querySelector('input[data-qin]');
+  if (stp){ const s = st[r.id] || '', lab = stp.querySelector('.st'); lab.className = 'st ' + s; lab.textContent = stLabel(r.id); }
+  if (inp && document.activeElement !== inp && !deb[r.id]) inp.value = myQty(r.id);
+  const ln = document.querySelector('.srow[data-v="' + CSS.escape(String(v)) + '"] .chips'); if (ln) ln.innerHTML = chipsHtml(r);
+}
+/** my stepper changed: show at once, send ONE jo_set 700 ms after the last change */
+function change(v, qty, atOnce){
+  const r = cat && cat.byId.get(String(v)); if (!r || !person || !state.open || !r.available || !ready()) return;
+  if (!(Number.isInteger(qty) && qty >= 0 && qty <= MAX_QTY)){ toast('כמות בין 0 ל-' + MAX_QTY, 'err'); const inp = document.querySelector('input[data-qin="' + CSS.escape(String(v)) + '"]'); if (inp) inp.value = myQty(v); return; }
+  if (deb[v]) clearTimeout(deb[v].t);
+  mine[v] = { qty, uuid: '' };   // optimistic at once (chips, totals); the uuid comes with the job, so an older job's reply never clears a newer value
+  const inp = document.querySelector('input[data-qin="' + CSS.escape(String(v)) + '"]'); if (inp && document.activeElement !== inp) inp.value = qty;
+  const fire = ()=>{ delete deb[v]; const l = lines.get(kOf(person, v)); if (!queue.some(j => j.variant_id === v) && l && l.qty === qty){ delete mine[v]; st[v] = ''; paintCard(v); return; } if (!queue.some(j => j.variant_id === v) && !l && qty === 0){ delete mine[v]; st[v] = ''; paintCard(v); return; } enqueue(v, qty); };
+  deb[v] = { qty, fire, t: setTimeout(fire, atOnce ? 0 : DEBOUNCE_MS) };
+  st[v] = 'saving'; paintCard(v);
+}
+/** every pending debounce settles now, into the localStorage queue: the page is hidden, left or reloaded, or the name changes */
+function settleAll(){ for (const v of Object.keys(deb)){ const d = deb[v]; clearTimeout(d.t); d.fire(); } }
+document.addEventListener('visibilitychange', ()=>{ if (document.hidden) settleAll(); });
+window.addEventListener('pagehide', settleAll);
+window.addEventListener('beforeunload', settleAll);
+
+/* ---------- my order ---------- */
+/** a ledger pair whose variant is no longer in the catalog, as a card-less row (the sheet's סיכום lists it as "(לא בקטלוג)") */
+function orphanRow(v, l){ return { id: String(v), sku: l && l.sku || '', barcode: '', title: '(לא בקטלוג) ' + (l && l.sku || v), type: '', description: '', image: '', url: '', price_eur: null, dealer_eur: null, moq: null, case_qty: null, available: false, is_new: false, orphan: true }; }
+function orphans(){ const out = []; if (!cat) return out; for (const [k, l] of lines){ const v = k.split('\u0001')[1]; if (!cat.byId.has(v) && !out.some(o => o.id === v)) out.push(orphanRow(v, l)); } return out; }
+function myLines(){
+  if (!cat) return [];
+  const ls = cat.rows.filter(r => myQty(r.id) > 0).map(r => ({ r, qty: myQty(r.id), eur: r.dealer_eur != null ? round2(myQty(r.id) * r.dealer_eur) : null }));
+  for (const r of orphans()) if (myQty(r.id) > 0) ls.push({ r, qty: myQty(r.id), eur: null });
+  return ls;
+}
+/** zero my quantity on a variant that left the catalog (it has no card) */
+function removeOrphan(v){ if (!person || !state.open || !ready()) return; mine[v] = { qty: 0, uuid: '' }; enqueue(v, 0); render(); }
+function renderMine(){
+  const ls = myLines(), units = ls.reduce((s, x) => s + x.qty, 0), total = round2(ls.reduce((s, x) => s + (x.eur || 0), 0));
+  $('view').innerHTML = (ls.length ? '<div class="tot-box"><b>'+ls.length+'</b> שורות · <b>'+num(units)+'</b> יחידות · <b>'+esc(eur(total))+'</b> במחיר סוחר</div>' +
+    ls.map(x => x.r.orphan
+      ? '<div class="line"><div class="t"><div dir="auto">'+esc(x.r.title)+'</div><div class="s">הפריט ירד מהקטלוג — הכמות עדיין רשומה</div></div><div class="q">×'+num(x.qty)+'</div>' + (state.open && ready() ? '<button class="rm" data-rm="'+esc(x.r.id)+'">הסר</button>' : '') + '</div>'
+      : '<div class="line" data-go="'+esc(x.r.id)+'"><div class="t"><div dir="auto">'+esc(x.r.title)+'</div><div class="s">'+esc(x.r.sku)+'</div></div><div class="q">×'+num(x.qty)+'</div><div class="e">'+esc(eur(x.eur))+'</div></div>').join('')
+    : '<div class="empty">' + (ready() ? 'עוד לא רשמת כמויות.<br>עבור לקטלוג ורשום כמה אתה רוצה מכל פריט.' : firstLoadDone ? 'אין חיבור — הכמויות יופיעו כשהחיבור יחזור.' : 'טוען…') + '</div>');
+}
+
+/* ---------- summary ---------- */
+/** per item / person / shop; confirmedOnly = the ledger as the server has it (the text and the CSV), else with my unconfirmed values (the view) */
+function summary(confirmedOnly){
+  const items = [], perPerson = new Map(), perShop = new Map(), short = [];
+  const names = people.map(p => p.name);                     // active people in sheet order, then anyone else who still has a quantity
+  for (const [k, l] of lines){ const p = k.split('\u0001')[0]; if (l.qty > 0 && !names.includes(p)) names.push(p); }
+  if (person && !names.includes(person)) names.push(person);
+  let pending = false;
+  const add = r => {
+    const qs = qtysOf(r.id, confirmedOnly); if (!qs.length) return;
+    if (!confirmedOnly && mine[r.id]) pending = true;
+    const total = qs.reduce((s, x) => s + x.qty, 0), lineEur = r.dealer_eur != null ? round2(total * r.dealer_eur) : null;
+    items.push({ r, qs, total, lineEur });
+    if (r.moq && total < r.moq) short.push({ r, total });
+    for (const x of qs){
+      const pp = perPerson.get(x.name) || { name: x.name, shop: shopOf(x.name) || (lines.get(kOf(x.name, r.id)) || {}).shop || '', lines: 0, units: 0, eur: 0 };
+      pp.lines++; pp.units += x.qty; pp.eur = round2(pp.eur + (r.dealer_eur != null ? x.qty * r.dealer_eur : 0)); perPerson.set(x.name, pp);
+    }
+  };
+  for (const r of (cat ? cat.rows : [])) add(r);
+  for (const r of orphans()) add(r);                         // pairs on variants that left the catalog: counted as the sheet's סיכום counts them
+  for (const pp of perPerson.values()){ const s = perShop.get(pp.shop || '—') || { shop: pp.shop || '—', lines: 0, units: 0, eur: 0 }; s.lines += pp.lines; s.units += pp.units; s.eur = round2(s.eur + pp.eur); perShop.set(pp.shop || '—', s); }
+  const grand = { lines: items.length, units: items.reduce((s, x) => s + x.total, 0), eur: round2(items.reduce((s, x) => s + (x.lineEur || 0), 0)) };
+  return { items, names, perPerson: [...perPerson.values()].sort((a, b) => names.indexOf(a.name) - names.indexOf(b.name)), perShop: [...perShop.values()], grand, short, pending };
+}
+function renderSummary(){
+  const S = summary(false), admin = who === 'admin', busy = queue.length > 0;
+  let h = '<div class="acts"><button data-act="copy">העתק כטקסט</button><button data-act="csv">הורד CSV</button>' +
+    (admin ? (state.open ? '<button class="danger" data-act="close" id="closeBtn"'+(busy ? ' disabled' : '')+'>סגור הזמנה</button>' : '<button class="ok" data-act="open" id="openBtn">פתח מחדש</button>') : '') + '</div>';
+  if (S.pending || busy) h += '<div class="banner amber">יש כמויות שלך שעוד לא נשמרו: הן מופיעות כאן, אבל הטקסט וה-CSV כוללים רק מה שכבר נשמר' + (admin && busy && state.open ? '; אפשר לסגור כשהכול נשמר' : '') + '.</div>';
+  if (!S.items.length){ $('view').innerHTML = h + '<div class="empty">' + (ready() ? 'עוד אין כמויות בהזמנה.' : firstLoadDone ? 'אין חיבור — הסיכום יופיע כשהחיבור יחזור.' : 'טוען…') + '</div>'; return; }
+  h += '<div class="tot-box">סה״כ להזמנה: <b>'+S.grand.lines+'</b> פריטים · <b>'+num(S.grand.units)+'</b> יחידות · <b>'+esc(eur(S.grand.eur))+'</b> במחיר סוחר</div>';
+  h += '<h2>לפי פריט</h2>' + S.items.map(x => '<div class="srow" data-v="'+esc(x.r.id)+'"'+(x.r.orphan ? '' : ' data-go="'+esc(x.r.id)+'"')+'><div class="h"><div class="t" dir="auto">'+esc(x.r.title)+'</div><div class="q">×'+num(x.total)+'</div><div class="e">'+esc(eur(x.lineEur))+'</div></div>' +
+    '<div class="s">'+esc(x.r.sku)+(x.r.moq ? ' · מינימום '+num(x.r.moq) : '')+(x.r.orphan || x.r.available ? '' : ' · אזל אצל הספק')+'</div><div class="chips">'+chipsHtml(x.r)+'</div></div>').join('');
+  h += '<h2>לפי אדם</h2>' + S.perPerson.map(p => '<div class="srow"><div class="h"><div class="t">'+esc(p.name)+(p.shop ? ' <span class="s">'+esc(p.shop)+'</span>' : '')+'</div><div class="q">'+p.lines+' שורות · '+num(p.units)+' יח׳</div><div class="e">'+esc(eur(p.eur))+'</div></div></div>').join('');
+  h += '<h2>לפי חנות</h2>' + S.perShop.map(s => '<div class="srow"><div class="h"><div class="t">'+esc(s.shop)+'</div><div class="q">'+s.lines+' שורות · '+num(s.units)+' יח׳</div><div class="e">'+esc(eur(s.eur))+'</div></div></div>').join('');
+  h += '<h2>פריטים שחסר להם למינימום</h2>' + (S.short.length ? S.short.map(x => '<div class="srow" data-go="'+esc(x.r.id)+'"><div class="h"><div class="t" dir="auto">'+esc(x.r.title)+'</div><div class="q short">חסר '+num(x.r.moq - x.total)+'</div><div class="e">'+num(x.total)+' / '+num(x.r.moq)+'</div></div></div>').join('') : '<div class="srow" style="color:var(--dim)">אין — כל הפריטים עוברים את המינימום.</div>');
+  $('view').innerHTML = h;
+}
+function csvCell(v){
+  let s = String(v == null ? '' : v);
+  if (/^[=+\-@]/.test(s)) s = "'" + s;                  // a spreadsheet must not run a cell as a formula
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function csvText(){
+  const S = summary(true), head = ['SKU', 'Barcode', 'Product', 'Total', ...S.names, 'Dealer €', 'Line €'];   // the ledger only: a value still saving is not exported
+  const rows = S.items.map(x => [x.r.sku, x.r.barcode, x.r.title, x.total, ...S.names.map(n => { const q = x.qs.find(y => y.name === n); return q ? q.qty : ''; }), x.r.dealer_eur != null ? x.r.dealer_eur.toFixed(2) : '', x.lineEur != null ? x.lineEur.toFixed(2) : '']);
+  return '﻿' + [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
+}
+function plainText(){
+  const S = summary(true), now = new Date();
+  const out = ['הזמנה משותפת Glassstaff — ' + ddmm(now.toISOString()) + ' ' + hhmm(now.toISOString()) + (cat && cat.data_date ? ' (קטלוג מ-' + ddmm(cat.data_date) + ')' : ''), ''];
+  for (const x of S.items) out.push(x.r.title + ' · ' + x.r.sku + ' · סה״כ ' + x.total + ' (' + x.qs.map(q => q.name + ' ' + q.qty).join(', ') + ')' + (x.lineEur != null ? ' · ' + eur(x.lineEur) : '') + (x.r.moq && x.total < x.r.moq ? ' · חסר ' + (x.r.moq - x.total) + ' למינימום' : ''));
+  out.push('', 'לפי אדם:'); for (const p of S.perPerson) out.push(p.name + (p.shop ? ' (' + p.shop + ')' : '') + ' · ' + p.lines + ' שורות · ' + p.units + ' יח׳ · ' + eur(p.eur));
+  out.push('', 'לפי חנות:'); for (const s of S.perShop) out.push(s.shop + ' · ' + s.lines + ' שורות · ' + s.units + ' יח׳ · ' + eur(s.eur));
+  out.push('', 'סה״כ: ' + S.grand.lines + ' פריטים · ' + S.grand.units + ' יח׳ · ' + eur(S.grand.eur));
+  if (S.short.length) out.push('', 'חסר למינימום: ' + S.short.map(x => x.r.title + ' (' + x.total + '/' + x.r.moq + ')').join('; '));
+  return out.join('\n');
+}
+async function copyText(){
+  const t = plainText();
+  try{ await navigator.clipboard.writeText(t); toast('הועתק'); }
+  catch(e){ const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); let ok = false; try{ ok = document.execCommand('copy'); }catch(e2){} ta.remove(); toast(ok ? 'הועתק' : 'לא הצלחתי להעתיק', ok ? '' : 'err'); }
+}
+function downloadCsv(){
+  const blob = new Blob([csvText()], { type: 'text/csv;charset=utf-8' }), a = document.createElement('a'), d = new Date();
+  a.href = URL.createObjectURL(blob); a.download = 'glassstaff-joint-order-' + d.toISOString().slice(0, 10) + '.csv'; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+async function setOpen(open){
+  const msg = open ? 'לפתוח מחדש את ההזמנה? כולם יוכלו שוב לשנות כמויות.' : 'לסגור את ההזמנה? אחרי הסגירה אי אפשר לשנות כמויות (אפשר לפתוח מחדש).';
+  if (!confirm(msg)) return;
+  const btn = $(open ? 'openBtn' : 'closeBtn'); if (btn) btn.disabled = true;
+  try{ const js = await post({ action: open ? 'jo_open' : 'jo_close', uuid: uuid() }, 60000);
+    if (js && js.ok){ const s = js.state || {}; state = { open: s.open !== false, closed_at: String(s.closed_at||''), closed_by: String(s.closed_by||'') }; toast(open ? 'ההזמנה נפתחה מחדש' : 'ההזמנה נסגרה'); render(); load(false); }
+    else { toast(js && js.error === 'NOT_ADMIN' ? 'רק המנהל סוגר את ההזמנה' : 'לא הצלחתי: ' + (js && js.error || '?'), 'err', 5000); if (btn) btn.disabled = false; } }
+  catch(e){ toast('אין חיבור — נסה שוב', 'err'); if (btn) btn.disabled = false; }
+}
+function goCard(v){
+  view = 'catalog'; query = ''; chip = 'all'; shown = PAGE; sortSnap = null; saveLS(LS.view, view); render();
+  let el = document.querySelector('.card[data-v="' + CSS.escape(String(v)) + '"]');
+  if (!el){ shown = 100000; renderCatalog(); el = document.querySelector('.card[data-v="' + CSS.escape(String(v)) + '"]'); }
+  if (el){ el.scrollIntoView({ block:'center' }); el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'), 1600); }
+}
+
+/* ================= EVENTS ================= */
+document.addEventListener('click', ev => {
+  const t = ev.target.closest('button, .chip, .tab, [data-go]'); if (!t) return;
+  if (t.dataset.view){ view = t.dataset.view; sortSnap = null; saveLS(LS.view, view); window.scrollTo(0, 0); render(); return; }
+  if (t.dataset.chip){ chip = t.dataset.chip; shown = PAGE; sortSnap = null; renderCatalog(); return; }
+  if (t.dataset.more){ shown += PAGE; renderCatalog(); return; }
+  if (t.dataset.moreDesc){ const card = t.closest('.card'); const v = card.dataset.v; if (expanded.has(v)) expanded.delete(v); else expanded.add(v); card.querySelector('.desc').classList.toggle('open', expanded.has(v)); t.textContent = expanded.has(v) ? 'פחות' : 'עוד'; return; }
+  if (t.dataset.step){ const card = t.closest('.card'); const v = card.dataset.v, inp = card.querySelector('input[data-qin]'); const cur = deb[v] ? deb[v].qty : (parseInt(inp && inp.value, 10) || 0); change(v, Math.max(0, cur + Number(t.dataset.step)), false); return; }
+  if (t.dataset.act === 'copy') return copyText();
+  if (t.dataset.act === 'csv') return downloadCsv();
+  if (t.dataset.act === 'close') return setOpen(false);
+  if (t.dataset.act === 'open') return setOpen(true);
+  if (t.dataset.rm) return removeOrphan(t.dataset.rm);
+  if (t.dataset.go) return goCard(t.dataset.go);
+});
+document.addEventListener('input', ev => {
+  const inp = ev.target; if (!inp.dataset || !inp.dataset.qin) return;
+  const s = inp.value.replace(/[^\d]/g, ''); if (s !== inp.value) inp.value = s;
+  if (s === '') return;                                    // still typing (the field is empty): nothing is sent until a number is there
+  change(inp.dataset.qin, parseInt(s, 10), false);
+});
+document.addEventListener('focusout', ev => {
+  const inp = ev.target; if (!inp.dataset || !inp.dataset.qin) return;
+  const v = inp.dataset.qin; if (inp.value === '') inp.value = deb[v] ? deb[v].qty : myQty(v);
+  if (deb[v]) change(v, deb[v].qty, true);                 // leaving the field settles the value at once
+});
+document.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.dataset && ev.target.dataset.qin) ev.target.blur(); });
+// a supplier picture that fails: the neutral placeholder (error events do not bubble, so capture)
+document.addEventListener('error', ev => { const img = ev.target; if (img && img.tagName === 'IMG' && !img.dataset.ph){ img.dataset.ph = '1'; img.src = PLACEHOLDER; } }, true);
+$('refreshBtn').onclick = () => { sortSnap = null; load(true); };
+$('meBtn').onclick = () => showNames();
+
+/* ================= START ================= */
+function showGate(msg){ KEY = ''; $('app').classList.add('hide'); $('names').classList.add('hide'); $('gate').classList.remove('hide'); $('gateMsg').textContent = msg || ''; }
+function showNames(){
+  settleAll();   // a value still debounced belongs to the name that typed it
+  $('app').classList.add('hide'); $('gate').classList.add('hide'); $('names').classList.remove('hide');
+  $('nameList').innerHTML = people.length ? people.map(p => '<button class="pbtn" data-name="'+esc(p.name)+'">אני '+esc(p.name)+(p.shop ? '<span class="shop">'+esc(p.shop)+'</span>' : '')+'</button>').join('') : '';
+  $('namesMsg').textContent = people.length ? '' : (sheetMissing ? 'הגיליון של ההזמנה עוד לא הוכן. נסה שוב מאוחר יותר.' : lastOk ? 'עוד לא הוגדרו שמות. נסה שוב מאוחר יותר.' : 'טוען…');
+  $('nameList').querySelectorAll('[data-name]').forEach(b => b.onclick = () => { person = b.dataset.name; try{ localStorage.setItem(LS.person, person); }catch(e){} seedMine(); showApp(); });
+}
+/** my optimistic layer = the queued jobs of the name now picked (another name's pending saves are not mine) */
+function seedMine(){ mine = {}; st = {}; for (const j of queue){ if (j.person === person){ mine[j.variant_id] = { qty: j.qty, uuid: j.uuid }; st[j.variant_id] = 'saving'; } } }
+function showApp(){ $('gate').classList.add('hide'); $('names').classList.add('hide'); $('app').classList.remove('hide'); sortSnap = null; render(); if (Date.now() - lastOk > 5000) load(false); }
+$('keyBtn').onclick = async ()=>{
+  const k = $('keyIn').value.trim(); if (!/^[\w\-]{20,100}$/.test(k)){ $('gateMsg').textContent = 'המפתח לא נראה תקין.'; return; }
+  $('gateMsg').textContent = 'בודק…'; KEY = k;
+  const js = await ping();
+  if (js && js.ok){ try{ localStorage.setItem(LS.key, k); }catch(e){} $('keyIn').value = ''; start(); }
+  else { KEY = ''; $('gateMsg').textContent = js && js.error === 'BAD_KEY' ? 'המפתח לא מתאים.' : 'אין חיבור לשרת. נסה שוב.'; }
+};
+async function start(){
+  takeKeyFromHash();
+  KEY = rawLS(LS.key); AK = rawLS('fs_key').replace(/^"|"$/g, ''); if (!/^[\w\-]{8,100}$/.test(AK)) AK = '';
+  if (!KEY){ showGate(''); return; }
+  DEVICE = rawLS(LS.device); if (!/^[\w\-]{6,40}$/.test(DEVICE)){ DEVICE = 'p-' + uuid().replace(/-/g, '').slice(0, 12); try{ localStorage.setItem(LS.device, DEVICE); }catch(e){} }
+  person = rawLS(LS.person); view = loadLS(LS.view, 'catalog'); if (!VIEWS.some(v => v[0] === view)) view = 'catalog';
+  queue = loadLS(LS.queue, []).filter(j => j && j.uuid && j.variant_id); seedMine(); badge();
+  const c = loadLS(LS.cat, null); if (c && c.rows) setCatalog(c);     // draws at once; the poll brings a newer catalog only when the stamp changed
+  const m = loadLS(LS.meta, null);
+  if (m && m.people){
+    people = m.people; state = m.state || state;
+    if (Array.isArray(m.lines)){   // the ledger as this phone last saw it: drawn at once (steppers closed until the first jo_load answers), then replaced
+      lines = new Map(m.lines.filter(x => Array.isArray(x) && x[0] && x[1]).map(([k, l]) => [k, { qty: Math.max(0, Number(l.qty) || 0), ord: Number(l.ord) || 0, shop: String(l.shop||''), sku: String(l.sku||'') }]));
+      nLines = Math.max(0, Number(m.nLines) || 0); cachedLines = true;
+    }
+  }
+  const p = await ping();
+  if (p && p.error === 'BAD_KEY'){ showGate('המפתח לא מתאים. פתח שוב את הקישור שקיבלת.'); return; }
+  if (p && p.ok && p.sheet === false) sheetMissing = true;
+  if (person && people.length) showApp(); else { showNames(); }
+  await load(true);
+  if (!person || !people.some(x => x.name === person)){ person = ''; showNames(); }
+  else if ($('app').classList.contains('hide')) showApp();
+  sync();
+}
+start();
+</script>
+</body>
+</html>
