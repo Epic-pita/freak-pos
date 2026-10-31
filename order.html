@@ -255,7 +255,7 @@ const BUILD = 'or1.0';
 // so this file holds no supplier code. ?api=test → the ORDER TEST deployment (it writes only the TEST sheets), ?api=local only on
 // this PC (the mock of the page test), else the ORDER LIVE deployment. Never a URL from the address bar. The page holds no key and
 // no sheet id. The two placeholders below are the deployment ids, filled at integration (the page test patches them in memory).
-const LIVE_API = 'https://script.google.com/macros/s/__ORDER_LIVE__/exec';
+const LIVE_API = 'https://script.google.com/macros/s/AKfycbzDvrT0jbX2hQFUu1kDMr9H5Kxgd7gqrqs2iSuylv74E3MrjDkQAkd3a3NDUD6b7Ds7EA/exec';
 const TEST_API = 'https://script.google.com/macros/s/AKfycbx2pqc9UO21RvM4yvD0oyeGfA1lm8snPQYuFIcKSyBDh0X0cdpGBVxAC2Wj_nGu5SUo5g/exec';
 const LOCAL_API = 'http://localhost:8788/';
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
