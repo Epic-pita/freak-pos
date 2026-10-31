@@ -613,7 +613,7 @@ function leaveMsg(e){
 // again on a restore (not on another tab's change: two tabs of one supplier would then both send the same jobs and fight over their retry
 // counters; two such tabs still overwrite each other's queue, as in or1.0-or1.2, noted for the next pass); a resend is harmless (repeated uuid)
 function reloadQ(){ queue = loadLS(LS.queue, []).filter(j => j && j.uuid && j.variant_id); seedMine(); badge(); if (!$('app').classList.contains('hide')){ render(); sync(); } }
-window.addEventListener('pageshow', ev => { if (!ev.persisted) return; leaving = false; closeSupMenu(); reloadQ(); scanOtherQ(); if (!$('app').classList.contains('hide')){ renderBanners(); load(false); } });
+window.addEventListener('pageshow', ev => { if (!ev.persisted) return; parked = false; leaving = false; closeSupMenu(); reloadQ(); scanOtherQ(); if (!$('app').classList.contains('hide')){ renderBanners(); load(false); } });
 window.addEventListener('storage', ev => { if (/^jo_queue_/.test(ev.key || '')){ scanOtherQ(); if (!$('app').classList.contains('hide')) renderBanners(); } });   // another tab sent or added values
 /** order.html without ?s=: the only supplier this device opens, a picker when it opens several (the last used first), else "חסר ספק" */
 async function pickSupplier(){
@@ -794,7 +794,10 @@ function mergeLines(from, rows){
 }
 
 /* ================= QUEUE (localStorage; latest value per item; in order; retries 1/2/5/15 s then every 30 s, for a day) ================= */
-function saveQ(){ saveLS(LS.queue, queue); badge(); }
+// third review 31/10 (major): between going into the back/forward cache and its pageshow, a page must not write its old queue (Chromium fires
+// visibilitychange → sync → saveQ BEFORE pageshow, which overwrote a newer stored queue): `parked` from pagehide (after settleAll) to pageshow
+let parked = false;
+function saveQ(){ if (parked) return; saveLS(LS.queue, queue); badge(); }
 function badge(){ const b = $('queueBadge'); b.textContent = queue.length; b.classList.toggle('hide', !queue.length); }
 function enqueue(v, qty){
   // a job not yet tried is replaced by the newer value; one already sent once stays ahead so its uuid is settled first (order = last row wins)
@@ -807,7 +810,7 @@ const HARD_MSG = { BAD_PERSON:'השם שלך לא ברשימה — בחר שם �
   BAD_QTY:'כמות לא תקינה — לא נשמרה', CLOSED:'ההזמנה כבר נסגרה — הכמות לא נשמרה', NO_SHEET:'הגיליון עוד לא הוכן — הכמות לא נשמרה', 'bad sup':'הקישור לא מתאים לספק הזה — הכמות לא נשמרה' };
 function scheduleSync(ms){ clearTimeout(syncTimer); syncTimer = setTimeout(sync, Math.max(50, ms)); }
 async function sync(){
-  if (syncing || !navigator.onLine) return;
+  if (parked || syncing || !navigator.onLine) return;
   syncing = true;
   try{
     while (queue.length){
@@ -1237,7 +1240,7 @@ function change(v, qty, atOnce){
 /** every pending debounce settles now, into the localStorage queue: the page is hidden, left or reloaded, or the name changes */
 function settleAll(){ for (const v of Object.keys(deb)){ const d = deb[v]; clearTimeout(d.t); d.fire(); } }
 document.addEventListener('visibilitychange', ()=>{ if (document.hidden) settleAll(); });
-window.addEventListener('pagehide', settleAll);
+window.addEventListener('pagehide', ev => { settleAll(); if (ev.persisted) parked = true; });   // settle first: a value in its 700 ms wait goes into the queue
 window.addEventListener('beforeunload', settleAll);
 
 /* ---------- my order ---------- */
