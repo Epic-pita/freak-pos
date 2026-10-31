@@ -50,24 +50,32 @@
 
   .tools{display:flex; gap:8px; margin:10px 0 6px}
   .tools input{flex:1; padding:9px 10px; font-size:15px}
-  .chipline{display:flex; flex-wrap:nowrap; gap:6px; margin:6px 0 2px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; padding-bottom:2px}   /* the group row is one scrolling line */
-  .chipline::-webkit-scrollbar{display:none}
-  .chipline .chip{flex:none; white-space:nowrap}
+  /* or1.1: no chip row scrolls sideways any more (a chip off-screen was a hidden chip): every row wraps */
+  .chipline{display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 2px}   /* the group row wraps: every group is on screen */
+  .chipline .chip{white-space:nowrap; padding:10px 10px}
   .chip{background:var(--surface2); border:1px solid var(--line); border-radius:16px; padding:10px 12px; font-size:13px; cursor:pointer}
   .chip.on{background:var(--teal); border-color:var(--teal)}
-  .chip .n{font-family:var(--mono); font-size:11px; opacity:.8; margin-inline-start:6px; unicode-bidi:isolate}   /* isolated + 6 px, so a Latin label and its count never read as one number */
-  /* filters: a labelled row per facet (from settings) + the pace row, each scrolling sideways (one line each), the sort box and the dealer-price range */
-  .frow{display:flex; flex-wrap:nowrap; gap:6px; margin:4px 0 2px; align-items:center; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; padding-bottom:2px}
-  .frow::-webkit-scrollbar{display:none}
-  .frow .chip{flex:none; white-space:nowrap}
-  .frow .flbl{font-size:12px; color:var(--dim); margin-inline-end:2px; white-space:nowrap; flex:none}
-  .frow .fq{width:118px; min-height:40px; padding:8px 8px; font-size:14px; flex:none}   /* a big facet (many values): a small box that filters its chips */
+  .chip .n{font-family:var(--mono); font-size:11px; opacity:.6; margin-inline-start:6px; unicode-bidi:isolate}   /* dimmed; isolated + 6 px, so a Latin label and its count never read as one number */
+  .chip.on .n{opacity:.85}
+  /* filters: a section per facet (from settings) + the pace section: a header line, then chips that wrap; the sort box and the dealer-price range */
+  .frow{display:flex; flex-wrap:wrap; gap:6px; margin:0; padding:10px 0 8px; align-items:center; border-top:1px solid var(--line)}
+  .frow:first-child{border-top:0}
+  .frow .chip{white-space:nowrap}
+  .fhead{flex-basis:100%; display:flex; align-items:center; gap:8px; min-height:24px; margin-bottom:2px}
+  .fhead .flbl,.shead{font-size:13.5px; font-weight:600; color:#c9d6dc; letter-spacing:.2px; white-space:nowrap}
+  .fhead .fq{margin-inline-start:auto}
+  .fq{width:140px; min-height:40px; padding:8px 8px; font-size:14px; flex:none}   /* a big facet (many values): a small box that filters its chips */
+  .chipline .chip.gx{display:none}   /* a group folded behind "עוד N קבוצות ▾" (phone only; a tap there wraps them all in) */
+  .gmore{background:none; border:1px dashed var(--line); border-radius:16px; color:var(--teal-hi); padding:10px 12px; font-size:13px; min-height:40px}
+  .chip.fmore{background:none; border-style:dashed; color:var(--teal-hi)}   /* "עוד N" opens a big facet's full list (A→Z); "פחות" folds it */
+  .showbtn{display:block; width:100%; margin:8px 0 2px; background:var(--teal); font-weight:700; min-height:44px; position:sticky; bottom:8px; z-index:5; box-shadow:0 -6px 14px rgba(15,26,32,.85)}
   .chip.fac.on{background:#4a3d7a; border-color:#7a66c4}
   .chip.pace-chip.on{background:#2b5a3a; border-color:#43a047}
   .tools select{font-family:inherit; font-size:14px; color:var(--ink); background:var(--surface2); border:1px solid var(--line); border-radius:10px; padding:9px 8px; min-height:40px; max-width:46%}
-  .range{display:flex; gap:6px; align-items:center; margin:4px 0 2px; flex-wrap:wrap}
+  .range{display:flex; gap:6px; align-items:center; margin:0; padding:10px 0 8px; flex-wrap:wrap; border-top:1px solid var(--line)}
   .range input{width:78px; min-height:40px; padding:9px 6px; font-size:15px; text-align:center; font-family:var(--mono)}
   .range .flbl{font-size:12px; color:var(--dim)}
+  .range .flbl:first-child{flex-basis:100%; font-size:13.5px; font-weight:600; color:#c9d6dc; margin-bottom:2px}
   .cnt{font-size:12.5px; color:var(--dim); margin:4px 0 2px; display:flex; align-items:center; gap:8px; flex-wrap:wrap}
   .clear{background:none; border:1px solid var(--line); color:#ffd479; padding:8px 12px; font-size:13px; min-height:40px}
   .pace{display:inline-flex; align-items:center; gap:4px; border-radius:10px; padding:2px 8px; font-size:12px; margin-top:5px; border:1px solid var(--line); background:var(--surface2); color:var(--dim)}
@@ -79,7 +87,8 @@
   .pline{font-size:12px; color:var(--dim); margin-top:2px}
   .fct{font-size:12px; color:#9fd8ea; margin-top:2px}
   /* one "סינון" toggle holds the facet rows and the price range; the bar shows only the active chips; a list view; a picture zoom */
-  #fpanel{border:1px solid var(--line); border-radius:12px; padding:2px 8px 6px; margin:4px 0; background:var(--surface)}
+  #fpanel{border:1px solid var(--line); border-radius:12px; padding:2px 10px 6px; margin:6px 0; background:var(--surface)}
+  .fbar{display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:6px 0 2px}   /* the bar wraps too: an active chip is never off-screen */
   .chip.tog{border-color:var(--teal-hi); color:#c9e6f2}
   .chip.tog.on{background:var(--teal); color:var(--ink)}
   .chip.act{background:#2a4450; border-color:var(--teal-hi)}
@@ -126,7 +135,7 @@
   .typ{font-size:12px; color:var(--dim); margin-top:2px}
   .typ .sku{font-family:var(--mono); unicode-bidi:isolate; direction:ltr}
   .fct bdi{unicode-bidi:isolate}   /* each facet value keeps its own direction ("14+", "3–4", a Latin publisher) inside the Hebrew line */
-  #fbar .cnt{flex:none; white-space:nowrap}   /* the bar scrolls sideways; the count never folds into three lines */
+  #fbar .cnt{flex:none; white-space:nowrap; margin:0 4px}   /* the count never folds into three lines */
   .desc{font-size:12.5px; color:var(--dim); margin-top:4px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere}
   .desc.open{display:block; -webkit-line-clamp:unset}
   .morebtn{background:none; color:var(--teal-hi); padding:0 12px; min-height:40px; margin:-9px -12px; font-size:12.5px}   /* a 40 px thumb target that takes the room of one text line */
@@ -201,6 +210,69 @@
     #list .more{grid-column:1 / -1}
   }
   @media (min-width:1000px){ #list{grid-template-columns:repeat(3,minmax(0,1fr))} }
+  /* or1.1 desktop (≥ 1000 px): one top bar (title · tabs · me · updated · ⟳), the filters as a sidebar on the right that is always open and
+     scrolls on its own, the list in the rest of the width (dense table-like rows; cards in 3 columns, 4 from 1600 px) */
+  @media (min-width:1000px){
+    .wrap{max-width:none; padding:0 16px}
+    #top{display:flex; align-items:center; gap:10px; padding:6px 16px; flex-wrap:wrap}
+    #topline{display:contents}
+    #dot{order:1} #title{order:2; font-size:16px} #ver{order:3}
+    #tabs{order:4; padding:0; margin:0 14px; max-width:none; flex:none}
+    .tab{flex:none; padding:8px 18px; min-height:40px}
+    #me{order:5; margin-inline-start:auto; max-width:300px}
+    #queueBadge{order:6} #upd{order:7; margin-inline-start:0} #refreshBtn{order:8}
+    #view.v-other,#banners{max-width:1000px; margin-left:auto; margin-right:auto}
+    .dlay{display:grid; grid-template-columns:300px minmax(0,1fr); gap:20px; align-items:start; margin-top:12px}   /* RTL: the first column is on the right */
+    #side{position:fixed; top:calc(var(--toph, 56px) + 12px); bottom:12px; right:16px; width:300px; overflow-y:auto; overscroll-behavior:contain; z-index:30;
+          background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 12px 16px; scrollbar-width:thin; scrollbar-color:var(--line) transparent}
+    #side .tools{flex-direction:column; margin:0 0 4px}
+    #side .tools select{max-width:none; width:100%}
+    #side .shd{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 0 6px; border-top:1px solid var(--line); margin-top:8px}
+    #side .clear{min-height:32px; padding:5px 10px}
+    #side #fpanel{border:0; padding:0; margin:0; background:none}
+    #side .frow{padding:12px 0 10px}
+    #side .frow:first-child{border-top:1px solid var(--line)}
+    #side .chip{padding:6px 10px}
+    .glist{display:flex; flex-direction:column; gap:2px}
+    .glist .chip{display:flex; align-items:center; justify-content:space-between; border:0; background:none; border-radius:8px; padding:6px 10px; font-size:14px}
+    .glist .chip:hover{background:var(--surface2)}
+    .glist .chip.on{background:var(--teal)}
+    .glist .chip .n{font-size:12px}
+    .glist .gsep{height:1px; background:var(--line); margin:6px 4px}
+    #main{grid-column:2; min-width:0; max-width:1500px}   /* the sidebar is fixed: its column stays empty in the grid */
+    #main .fbar{position:sticky; top:var(--toph, 56px); z-index:40; background:var(--bg); margin:0; padding:6px 0; min-height:46px}
+    #main .fbar .chip{padding:7px 10px}
+    #main .fbar .tog-list{margin-inline-start:auto}
+    #main #list{margin-top:0}
+    #main #list .card{margin:0}
+    #main #list.listmode{display:block; border:1px solid var(--line); border-radius:12px; background:var(--surface); overflow:hidden}
+    #main #list.listmode > .card{margin:6px; border-color:var(--teal)}
+    .drow{display:grid; grid-template-columns:44px minmax(200px,2fr) 112px 140px minmax(0,1.9fr) 140px; gap:12px; align-items:center; padding:2px 12px; min-height:48px}
+    .drow:hover{background:#1a2d36}
+    .drow .thumb{width:44px; height:44px; border-radius:6px}
+    .drow .rb{min-height:0}
+    .drow .rt{font-size:14px; -webkit-line-clamp:1}
+    .drow .rm2{margin-top:1px}
+    .drow .rp{display:flex; align-items:baseline; gap:5px; white-space:nowrap; font-size:12px; color:var(--dim)}
+    .drow .rp .d{font-family:var(--mono); color:var(--ink); font-weight:700; font-size:15px; unicode-bidi:isolate}
+    .drow .rq{min-width:0; display:flex; align-items:center; gap:4px}
+    .drow .chips{margin-top:0; gap:4px}
+    .drow .qchip{padding:1px 7px; font-size:12px}
+    .drow .stepper{justify-self:end; gap:4px}
+    .drow .stepper button{width:40px; height:36px; font-size:20px}
+    .drow .stepper input{width:52px; height:36px; padding:4px; font-size:15px}
+    .drow .pace{margin-top:0}
+  }
+  @media (min-width:1280px){ .dlay{grid-template-columns:330px minmax(0,1fr)} #side{width:330px} }
+  /* 1000–1279 px: three card columns of ~220 px are too narrow for picture + text side by side: a 72 px picture floats at the start and the
+     text wraps around it, then uses the card's full width */
+  @media (min-width:1000px) and (max-width:1279px){
+    #main #list:not(.listmode) .crow{display:block}
+    #main #list:not(.listmode) .picbox{float:right; margin:0 0 4px 8px}
+    #main #list:not(.listmode) .pic{width:72px; height:72px}
+    #main #list:not(.listmode) .card .chips{clear:both}
+  }
+  @media (min-width:1600px){ #main #list:not(.listmode){grid-template-columns:repeat(4,minmax(0,1fr))} }
 </style>
 </head>
 <body>
@@ -249,7 +321,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.0';
+const BUILD = 'or1.1';
 // One order page for every supplier (B-CAT-9): ?s=<sup> names the supplier; the backend keeps one order sheet per supplier and
 // answers the v2 catalog contract (34 columns, `head` with the rows) plus a `settings` block (labels, currency, groups, facets),
 // so this file holds no supplier code. ?api=test → the ORDER TEST deployment (it writes only the TEST sheets), ?api=local only on
@@ -305,6 +377,10 @@ let person = '';                 // my name (LS person)
 let view = 'catalog', query = '', chip = 'all', shown = PAGE;
 let F = { fac:{}, pace:[], pmin:'', pmax:'', sort:'ordered', open:false, list:null };   // filters beyond the group chip; kept on this device (LS.filters) with the chip; open = the סינון panel, list = the list view (null = by the catalog size)
 const fq = {};                   // facet id → the text typed in a big facet's search box (this draw only)
+const fx = {};                   // facet id → true when a big facet shows its full list (A→Z) instead of the 12 most common ("עוד N")
+let gAll = false;                 // phone: the group row shows every group (else the most common ones, the flags, the active one and "עוד N קבוצות ▾")
+const G_TOP = 2;
+const DESK = window.matchMedia('(min-width:1000px)');   // or1.1: the desktop layout (a filter sidebar that is always open, dense rows)
 let showShort = false;           // the summary's "under the supplier's minimum" list is folded until tapped
 const expanded = new Set();      // item ids with the description opened
 let mine = {};                   // item_id → { qty, uuid } my value not yet confirmed by the server (optimistic layer)
@@ -651,11 +727,19 @@ function renderBanners(){
 function render(){
   if (!$('app') || $('app').classList.contains('hide')) return;
   renderTop(); renderTabs(); renderBanners();
+  $('view').className = view === 'catalog' ? 'v-cat' : 'v-other';
+  setTopH();
   // keep the focused input (a stepper's number, the search box, a price bound or a facet's search box) and what was typed in it across the re-render
   const act = document.activeElement, keep = act && act.dataset && act.dataset.qin ? { v: act.dataset.qin, val: act.value, sel: act.selectionStart } : act && (['q', 'pmin', 'pmax'].includes(act.id) || /^fq_/.test(act.id || '')) ? { fid: act.id, val: act.value, sel: act.selectionStart } : null;
   if (view === 'catalog') renderCatalog(); else if (view === 'mine') renderMine(); else renderSummary();
   if (keep){ const inp = keep.fid ? $(keep.fid) : document.querySelector('input[data-qin="' + CSS.escape(keep.v) + '"]'); if (inp){ inp.value = keep.val; inp.focus({ preventScroll:true }); try{ inp.setSelectionRange(keep.sel, keep.sel); }catch(e){} } }
 }
+
+/** the sticky top bar's height, for the desktop sidebar and strip that stick under it */
+function setTopH(){ const t = $('top'); if (t && t.offsetHeight) document.documentElement.style.setProperty('--toph', t.offsetHeight + 'px'); }
+window.addEventListener('resize', setTopH);
+// crossing 1000 px (a window resized, a tablet turned) redraws the catalog in the other layout
+DESK.addEventListener('change', () => { if (view === 'catalog') render(); else setTopH(); });
 
 /* ---------- catalog (group chip × the settings' facets × pace × dealer-price range × search, one sort) ---------- */
 /** the group chip alone (new / ordered / ours / a group / all) */
@@ -712,37 +796,44 @@ function catRows(){
     return byTitle(a, b);
   });
 }
-/** one labelled row of chips for a facet of the settings: its values in the settings' order, counted with every OTHER filter on, only values that
- *  still have rows (or are selected); a big facet shows the 12 most common and a small box that filters its chips by what is typed */
+/** one section of chips for a facet of the settings (a header line, then chips that wrap): its values in the settings' order, counted with every
+ *  OTHER filter on, only values that still have rows (or are selected); a big facet shows the 12 most common, a chip "עוד N" that opens the full
+ *  list A→Z (never a hidden chip), and a small box in the header that filters its chips by what is typed */
 function facetRow(f){
   const sel = F.fac[f.id] || [], counts = {};
   if (f.groups && f.groups.length && !f.groups.includes(chip) && !sel.length) return '';   // a facet that belongs to some groups only
   for (const r of cat.rows){ if (!passes(r, f.id)) continue; for (const v of (r.f[f.id] || [])) counts[v] = (counts[v]||0) + 1; }
-  let vals = f.values.filter(v => counts[v.id] > 0 || sel.includes(v.id)), box = '', more = 0;
+  let vals = f.values.filter(v => counts[v.id] > 0 || sel.includes(v.id)), box = '', more = '';
   if (!vals.length) return '';
   if (f.big){
     const q = (fq[f.id] || '').toLowerCase();
     const pool = q ? vals.filter(v => v.he.toLowerCase().includes(q) || v.id.toLowerCase().includes(q)) : vals;
-    const top = pool.slice().sort((a, b) => (counts[b.id]||0) - (counts[a.id]||0) || a.he.localeCompare(b.he)).slice(0, BIG_N);
-    vals = [...vals.filter(v => sel.includes(v.id) && !top.includes(v)), ...top]; more = pool.length - top.length;
+    if (fx[f.id]){
+      vals = [...vals.filter(v => sel.includes(v.id) && !pool.includes(v)), ...pool.slice().sort((a, b) => a.he.localeCompare(b.he, 'en', { sensitivity:'base' }))];
+      if (pool.length > BIG_N) more = '<span class="chip fmore" data-fmore="'+esc(f.id)+'">פחות</span>';
+    } else {
+      const top = pool.slice().sort((a, b) => (counts[b.id]||0) - (counts[a.id]||0) || a.he.localeCompare(b.he)).slice(0, BIG_N);
+      vals = [...vals.filter(v => sel.includes(v.id) && !top.includes(v)), ...top];
+      if (pool.length > top.length) more = '<span class="chip fmore" data-fmore="'+esc(f.id)+'">עוד <bdi dir="ltr">'+num(pool.length - top.length)+'</bdi></span>';
+    }
     box = '<input class="fq" id="fq_'+esc(f.id)+'" data-fq="'+esc(f.id)+'" type="search" placeholder="חיפוש" value="'+esc(fq[f.id] || '')+'" autocomplete="off" aria-label="חיפוש ב'+esc(f.he)+'">';
   } else if (vals.length < 2 && !sel.length) return '';
-  return '<div class="frow" data-frow="'+esc(f.id)+'"><span class="flbl">'+esc(f.he)+'</span>' + box +
-    vals.map(v => '<span class="chip fac'+(sel.includes(v.id)?' on':'')+'" data-fac="'+esc(f.id)+'" data-val="'+esc(v.id)+'">'+bidiNums(v.he)+'<span class="n">'+num(counts[v.id]||0)+'</span></span>').join('') +
-    (more > 0 ? '<span class="flbl"><bdi dir="ltr">+'+num(more)+'</bdi></span>' : '') + '</div>';
+  return '<div class="frow" data-frow="'+esc(f.id)+'"><div class="fhead"><span class="flbl">'+esc(f.he)+'</span>' + box + '</div>' +
+    vals.map(v => '<span class="chip fac'+(sel.includes(v.id)?' on':'')+'" data-fac="'+esc(f.id)+'" data-val="'+esc(v.id)+'"><bdi>'+bidiNums(v.he)+'</bdi><span class="n">'+num(counts[v.id]||0)+'</span></span>').join('') +
+    more + '</div>';
 }
 /** the pace row (built in): ids in a fixed order, counted with every other filter on */
 function paceRow(){
   const counts = {}; for (const r of cat.rows){ if (!passes(r, 'pace')) continue; if (r.pace) counts[r.pace] = (counts[r.pace]||0) + 1; }
   const ids = PACE_IDS.filter(id => counts[id] > 0 || F.pace.includes(id));
   if (ids.length < 2 && !F.pace.length) return '';
-  return '<div class="frow" data-frow="pace"><span class="flbl">קצב אצלנו</span>' + ids.map(id => '<span class="chip pace-chip'+(F.pace.includes(id)?' on':'')+'" data-pace="'+esc(id)+'">'+esc(PACE_HE[id] || id)+'<span class="n">'+num(counts[id]||0)+'</span></span>').join('') + '</div>';
+  return '<div class="frow" data-frow="pace"><div class="fhead"><span class="flbl">קצב אצלנו</span></div>' + ids.map(id => '<span class="chip pace-chip'+(F.pace.includes(id)?' on':'')+'" data-pace="'+esc(id)+'">'+esc(PACE_HE[id] || id)+'<span class="n">'+num(counts[id]||0)+'</span></span>').join('') + '</div>';
 }
 function renderCatalog(){
   const counts = {}; let newN = 0, ordN = 0, oursN = 0;
   if (cat) for (const r of cat.rows){ const g = groupOf(r); counts[g] = (counts[g]||0) + 1; if (r.is_new) newN++; if (totalOf(r.id) > 0) ordN++; if (isOurs(r)) oursN++; }
   // הכל, then the supplier's groups (the first filter promised), then the flags at the end
-  const chips = [['all','הכל', cat ? cat.rows.length : 0, ''], ...S.groups.filter(g => counts[g.id] || chip === g.id).map(g => [g.id, g.he, counts[g.id]||0, '']), ...(counts.other ? [['other','אחר', counts.other, '']] : []),
+  const chips = [['all','הכל', cat ? cat.rows.length : 0, ''], ...S.groups.filter(g => counts[g.id] || chip === g.id).map(g => [g.id, g.he, counts[g.id]||0, '']), ...(counts.other && !GH.other ? [['other','אחר', counts.other, '']] : []),   // "אחר" = rows whose group is not in settings.groups; when the settings list `other` themselves, that chip is the one
     ['new', S.flags.new_he, newN, S.flags.new_note_he], ['ordered','הוזמן', ordN, ''], ['ours', S.flags.ours_he, oursN, '']];
   const rows = catRows();
   let facets = '';
@@ -750,21 +841,43 @@ function renderCatalog(){
     for (const f of S.facets) facets += facetRow(f);
     if (cat.rows.some(r => r.pace)) facets += paceRow();
   }
-  const total = cat ? cat.rows.length : 0, act = activeChips(), list = isList();
-  // search + sort on one line, the groups on one scrolling line, then one bar: the סינון toggle, the list/cards toggle, the ACTIVE filter
-  // chips only (each with ×) and the count; the facet rows and the price range live in a panel that opens on the toggle
-  const bar = '<div class="frow" id="fbar"><span class="chip tog'+(F.open?' on':'')+'" data-tog="filters">סינון'+(act.length ? ' · '+act.length : '')+' '+(F.open ? '▴' : '▾')+'</span>' +
-    '<span class="chip" data-tog="list">'+(list ? 'תצוגת כרטיסים' : 'תצוגת רשימה')+'</span>' +
-    act.map(([kind, a, b, he]) => '<span class="chip act" '+(kind === 'fac' ? 'data-fac="'+esc(a)+'" data-val="'+esc(b)+'"' : kind === 'pace' ? 'data-pace="'+esc(a)+'"' : 'data-price="1"')+'>'+bidiNums(he)+'<span class="x">×</span></span>').join('') +
-    '<span class="cnt" id="cnt">מציג <b>'+num(rows.length)+'</b> מתוך '+num(total)+'</span>' + (anyFilter() ? '<button class="clear" data-clear="1">נקה</button>' : '') + '</div>';
+  const total = cat ? cat.rows.length : 0, act = activeChips(), list = isList(), desk = DESK.matches;
   const plbl = S.price.dealer_he + (S.currency.symbol ? ' ' + S.currency.symbol : '');
-  const panel = '<div id="fpanel"'+(F.open ? '' : ' class="hide"')+'>' + facets +
-    '<div class="range"><span class="flbl">'+esc(plbl)+'</span><input id="pmin" type="text" inputmode="decimal" placeholder="מ-" value="'+esc(F.pmin)+'" aria-label="'+esc(plbl)+' מ-"><span class="flbl">–</span><input id="pmax" type="text" inputmode="decimal" placeholder="עד" value="'+esc(F.pmax)+'" aria-label="'+esc(plbl)+' עד"></div></div>';
-  $('view').innerHTML = '<div class="tools"><input id="q" type="search" placeholder="חיפוש: כמה מילים, מק״ט, ברקוד או קוד" value="'+esc(query)+'" autocomplete="off">' +
-      '<select id="sort" aria-label="סידור">' + SORTS.map(([id, t]) => '<option value="'+id+'"'+(F.sort===id?' selected':'')+'>'+esc(t)+'</option>').join('') + '</select></div>' +
-    '<div class="chipline">' + chips.map(([id, t, n, note]) => '<span class="chip'+(chip===id?' on':'')+'" data-chip="'+esc(id)+'"'+(note ? ' title="'+esc(note)+'"' : '')+'>'+esc(t)+'<span class="n">'+num(n)+'</span></span>').join('') + '</div>' +
-    bar + panel +
-    '<div id="list"'+(list ? ' class="listmode"' : '')+'>' + (rows.length ? rows.slice(0, shown).map(list ? rowHtml : cardHtml).join('') + (rows.length > shown ? '<button class="more" data-more="1">עוד '+(rows.length - shown)+'</button>' : '') : '<div class="empty">' + (cat ? 'לא נמצא כלום' : 'טוען את הקטלוג…') + '</div>') + '</div>';
+  const range = '<div class="range"><span class="flbl">'+esc(plbl)+'</span><input id="pmin" type="text" inputmode="decimal" placeholder="מ-" value="'+esc(F.pmin)+'" aria-label="'+esc(plbl)+' מ-"><span class="flbl">–</span><input id="pmax" type="text" inputmode="decimal" placeholder="עד" value="'+esc(F.pmax)+'" aria-label="'+esc(plbl)+' עד"></div>';
+  const tools = '<div class="tools"><input id="q" type="search" placeholder="חיפוש: כמה מילים, מק״ט, ברקוד או קוד" value="'+esc(query)+'" autocomplete="off">' +
+    '<select id="sort" aria-label="סידור">' + SORTS.map(([id, t]) => '<option value="'+id+'"'+(F.sort===id?' selected':'')+'>'+esc(t)+'</option>').join('') + '</select></div>';
+  const chipHtml = ([id, t, n, note], x) => '<span class="chip'+(x ? ' ' + x : '')+(chip===id?' on':'')+'" data-chip="'+esc(id)+'"'+(note ? ' title="'+esc(note)+'"' : '')+'><bdi>'+esc(t)+'</bdi><span class="n">'+num(n)+'</span></span>';
+  const actHtml = act.map(([kind, a, b, he]) => '<span class="chip act" '+(kind === 'fac' ? 'data-fac="'+esc(a)+'" data-val="'+esc(b)+'"' : kind === 'pace' ? 'data-pace="'+esc(a)+'"' : 'data-price="1"')+'><bdi>'+bidiNums(he)+'</bdi><span class="x">×</span></span>').join('');
+  const cnt = '<span class="cnt" id="cnt">מציג <b>'+num(rows.length)+'</b> מתוך '+num(total)+'</span>';
+  const listTog = '<span class="chip tog-list" data-tog="list">'+(list ? 'תצוגת כרטיסים' : 'תצוגת רשימה')+'</span>';
+  const listHtml = '<div id="list"'+(list ? ' class="listmode"' : '')+'>' + (rows.length ? rows.slice(0, shown).map(list ? rowHtml : cardHtml).join('') + (rows.length > shown ? '<button class="more" data-more="1">עוד '+(rows.length - shown)+'</button>' : '') : '<div class="empty">' + (cat ? 'לא נמצא כלום' : 'טוען את הקטלוג…') + '</div>') + '</div>';
+  const oldSide = $('side'), sideTop = oldSide ? oldSide.scrollTop : 0;
+  if (desk){
+    // desktop: the sidebar (search, sort, every group as a line with its count, every facet as a section, the range, "נקה סינון") is always open
+    // and scrolls on its own; the main column has one sticky strip (the count, the ACTIVE chips with ×, the list/cards toggle) and the list
+    const glist = chips.map(c => (c[0] === 'new' ? '<div class="gsep"></div>' : '') + chipHtml(c)).join('');
+    $('view').innerHTML = '<div class="dlay"><aside id="side" aria-label="סינון">' + tools +
+        '<div class="shd"><span class="shead">קבוצות</span></div><div class="glist">' + glist + '</div>' +
+        '<div class="shd"><span class="shead">סינון</span>' + (anyFilter() ? '<button class="clear" data-clear="1">נקה סינון</button>' : '') + '</div>' +
+        '<div id="fpanel">' + facets + range + '</div></aside>' +
+      '<section id="main"><div class="fbar" id="fbar">' + cnt + actHtml + listTog + '</div>' + listHtml + '</section></div>';
+    const ns = $('side'); if (ns && sideTop) ns.scrollTop = sideTop;   // a tap in the sidebar never throws it back to its top
+  } else {
+    // phone: search + sort on one line, the groups wrapped onto as many lines as they need, then one bar: the סינון toggle (with the number of
+    // active filters), the list/cards toggle, the ACTIVE filter chips only (each with ×) and the count; the facet sections and the price range
+    // live in a panel that opens on the toggle and ends with "הצג N פריטים", which closes it
+    const bar = '<div class="fbar" id="fbar"><span class="chip tog'+(F.open?' on':'')+'" data-tog="filters">סינון'+(act.length ? ' · '+act.length : '')+' '+(F.open ? '▴' : '▾')+'</span>' +
+      listTog + actHtml + cnt + (anyFilter() ? '<button class="clear" data-clear="1">נקה</button>' : '') + '</div>';
+    const panel = '<div id="fpanel"'+(F.open ? '' : ' class="hide"')+'>' + facets + range + '<button class="showbtn" data-show="1">הצג '+num(rows.length)+' פריטים</button></div>';
+    // the group row: הכל, the most common groups, the active one and the flags, then "עוד N קבוצות ▾" that wraps every group in (never a chip
+    // scrolled off-screen); the chips keep their order in the row, a folded one is only not drawn
+    const fixed = new Set(['all', 'new', 'ordered', 'ours', chip]);
+    const top = new Set(chips.filter(c => !fixed.has(c[0])).sort((a, b) => b[2] - a[2]).slice(0, G_TOP).map(c => c[0]));
+    const folded = gAll ? [] : chips.filter(c => !fixed.has(c[0]) && !top.has(c[0]));
+    const fold = folded.length > 1 ? new Set(folded.map(c => c[0])) : new Set();
+    const gmore = fold.size ? '<button class="gmore" data-gall="1">עוד '+num(folded.length)+' קבוצות ▾</button>' : gAll && chips.length - 4 > G_TOP + 1 ? '<button class="gmore" data-gall="1">פחות קבוצות ▴</button>' : '';
+    $('view').innerHTML = tools + '<div class="chipline">' + chips.map(c => chipHtml(c, fold.has(c[0]) ? 'gx' : '')).join('') + gmore + '</div>' + bar + panel + listHtml;
+  }
   if (rows.length && !drawn){ drawn = true; mark('first-draw'); }
   const refocus = id => { const el = $(id); if (el){ el.focus({ preventScroll:true }); try{ el.setSelectionRange(el.value.length, el.value.length); }catch(e){} } };
   const q = $('q'); let qT = null;
@@ -789,6 +902,7 @@ function priceHtml(r, cls){ return r.price_dealer != null ? '<span class="'+cls+
 /** list view: a thumbnail, the name, publisher · group · age, the dealer price, the pace and the total, my stepper; an opened row is the full card with a bigger picture */
 function rowHtml(r){
   if (expanded.has(r.id)) return cardHtml(r);
+  if (DESK.matches) return drowHtml(r);
   const total = totalOf(r.id), meta = rowMeta(r);
   let h = '<div class="row'+(r.available?'':' out')+'" data-v="'+esc(r.id)+'">';
   h += '<img class="thumb'+(r.image ? '' : ' ph')+'" loading="lazy" decoding="async" src="'+esc(r.image || PLACEHOLDER)+'" alt="">';
@@ -796,6 +910,21 @@ function rowHtml(r){
     (r.pace && r.pace !== 'none' ? '<span class="pace '+esc(r.pace)+'">'+esc(badgeText(r))+'</span>' : '') +   // a row shows a pace only for an item we carried ("חדש אצלנו" on most of a long list is noise; the card still says it)
     '<span class="qchip tot" data-tot'+(total>0?'':' style="display:none"')+'>סה״כ <b>'+num(total)+'</b></span>' + (r.available ? '' : '<span class="outlbl" style="margin-top:0">אזל</span>') + '</div></div>';
   h += stepperHtml(r) + '</div>';
+  return h;
+}
+/** pictures: lazy on the phone (data and the 40-per-page list), eager on a desktop, whose page of 40 is drawn at once (no grey squares while scrolling) */
+const imgLoad = () => DESK.matches ? 'eager' : 'lazy';
+/** desktop list view (or1.1): one dense table-like line per item (~50 px): thumbnail · name + grey meta · dealer price "סוחר" · the pace badge ·
+ *  every person's chips (when any) · my stepper; a tap on the name opens the full card in place, as on the phone */
+function drowHtml(r){
+  const meta = rowMeta(r);
+  let h = '<div class="row drow'+(r.available?'':' out')+'" data-v="'+esc(r.id)+'">';
+  h += '<img class="thumb'+(r.image ? '' : ' ph')+'" loading="eager" decoding="async" src="'+esc(r.image || PLACEHOLDER)+'" alt="">';
+  h += '<div class="rb" data-open="'+esc(r.id)+'"><div class="rt" dir="auto" title="'+esc(r.title)+'">'+esc(r.title)+'</div>' + (meta ? '<div class="rm2">'+meta+'</div>' : '') + '</div>';
+  h += '<div class="rp">' + priceHtml(r, 'd') + (r.price_dealer != null ? '<span>סוחר</span>' : '') + '</div>';
+  h += '<div class="rq">' + (r.pace && r.pace !== 'none' ? '<span class="pace '+esc(r.pace)+'">'+esc(badgeText(r))+'</span>' : '') + (r.available ? '' : '<span class="outlbl" style="margin-top:0">אזל</span>') + '</div>';
+  h += '<div class="chips">'+chipsHtml(r)+'</div>';
+  h += (stepperHtml(r) || '<span></span>') + '</div>';
   return h;
 }
 /** the picture, large, over the page; a tap anywhere closes it (a URL that names a width gets 1200) */
@@ -843,7 +972,7 @@ function stepperHtml(r){
 function cardHtml(r){
   const total = totalOf(r.id), hasMin = S.minimum.kind !== 'none';
   let h = '<div class="card'+(total>0?' has':'')+(r.available?'':' out')+(expanded.has(r.id)?' big':'')+'" data-v="'+esc(r.id)+'">';   // big = the description is open: the picture grows
-  h += '<div class="crow"><div class="picbox"><img class="pic'+(r.image ? '' : ' ph')+'" loading="lazy" decoding="async" src="'+esc(r.image || PLACEHOLDER)+'" alt="">' + (r.image ? '' : glink(r)) + '</div><div class="body">';
+  h += '<div class="crow"><div class="picbox"><img class="pic'+(r.image ? '' : ' ph')+'" loading="'+imgLoad()+'" decoding="async" src="'+esc(r.image || PLACEHOLDER)+'" alt="">' + (r.image ? '' : glink(r)) + '</div><div class="body">';
   h += '<div class="ttl" dir="auto">'+esc(r.title)+'</div>';
   h += '<div class="typ">'+esc(groupHe(r.group))+(r.sku?' · <span class="sku">'+esc(r.sku)+'</span>':'')+(r.id !== r.sku ? ' · <span class="sku">'+esc(r.id)+'</span>' : '')+(r.is_new?' · <span style="color:#9fe0b0"'+(S.flags.new_note_he ? ' title="'+esc(S.flags.new_note_he)+'"' : '')+'>'+esc(S.flags.new_he)+'</span>':'')+'</div>';
   const fct = facetText(r); if (fct) h += '<div class="fct">'+fct+'</div>';   // already escaped, value by value
@@ -1036,6 +1165,9 @@ document.addEventListener('click', ev => {
   if (img){ const host = img.closest('[data-v]'); zoom(host && cat ? cat.byId.get(host.dataset.v) : null); return; }
   const t = ev.target.closest('button, .chip, .tab, [data-go], [data-open], [data-tog]'); if (!t) return;
   if (t.dataset.tog === 'filters'){ F.open = !F.open; saveF(); renderCatalog(); return; }
+  if (t.dataset.show){ F.open = false; saveF(); renderCatalog(); window.scrollTo(0, 0); return; }   // "הצג N פריטים" at the panel's end: close it and show the list from its top
+  if (t.dataset.gall){ gAll = !gAll; renderCatalog(); return; }   // phone: every group in the row, or back to the most common ones
+  if (t.dataset.fmore){ const id = t.dataset.fmore; fx[id] = !fx[id]; renderCatalog(); return; }   // a big facet: the full list A→Z, or back to the 12 most common
   if (t.dataset.tog === 'list'){ F.list = !isList(); saveF(); renderCatalog(); return; }
   if (t.dataset.tog === 'short'){ showShort = !showShort; renderSummary(); return; }
   if (t.dataset.open){ expanded.add(t.dataset.open); renderCatalog(); return; }   // a list row opens into its card
