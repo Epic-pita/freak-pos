@@ -64,6 +64,8 @@
   .banner.amber{background:#3a2c10; color:#ffd479; border:1px solid #5a4418}
   .banner.info{background:#10303a; color:#9fd8ea; border:1px solid #1f5a6a}
   .banner b{color:var(--ink)}
+  /* or1.3 fix round: "לפתוח את <ספק> עכשיו" on the banner of another supplier's values still on this phone */
+  .banner .qgo{display:block; margin-top:8px; min-height:40px; background:#5a4418; border:1px solid #ffd479; color:var(--ink); font-weight:700}
 
   .tools{display:flex; gap:8px; margin:10px 0 6px}
   .tools input{flex:1; padding:9px 10px; font-size:15px}
@@ -352,7 +354,7 @@
 const BUILD = 'or1.3';
 // or1.3 (B-CAT-10, Chris 31/10 "יש לי דף אחד לכל הספקים"): one page for every supplier on this device. order-suppliers.json (beside this
 // file; ids and Hebrew names only, never a key) lists the order pages in Chris's order; a device opens an entry when it holds the admin key
-// (fs_key, every supplier) or that supplier's own buyer key (jo_key_<id>; Glassstaff's joint page keeps its own, jo_key). With 2+ such
+// (fs_key, every order.html supplier) or that supplier's own buyer key (jo_key_<id>); Glassstaff's joint page only with its own, jo_key. With 2+ such
 // entries the top bar shows a "ספק" switch; order.html without ?s= opens the only one, or a picker (the last used first, jo_last_sup), or
 // the "חסר ספק" screen as before. A switch or a pick goes to order.html?s=<id> carrying only api= — never a key in an address. The admin
 // key alone opens a supplier (k empty, ak sent: the backend's joRole_ makes it admin), and a buyer key is only ever sent to its own supplier.
@@ -523,10 +525,12 @@ function storedKeys(){
   try{ for (let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i) || '', m = /^jo_key(?:_([a-z0-9_]{1,20}))?$/.exec(k); if (!m || !KEY_RE.test(rawLS(k))) continue; if (m[1]) ids.push(m[1]); else joint = true; } }catch(e){}
   return { ids, joint, n: ids.length + (joint ? 1 : 0) };
 }
-/** this device can open an entry: the admin key opens every one; else that supplier's own buyer key (Glassstaff's joint page: its own jo_key) */
+/** this device can open an entry: an entry with its own page (Glassstaff's joint-order.html) only with that page's own key (jo_key; the joint
+ *  page reads fs_key as admin but still needs its jo_key to open: fix round 31/10, review minor); an order.html entry with the admin key, else
+ *  with that supplier's own buyer key. The shape of a key only: one the backend has since refused still counts here (and is refused there) */
 function canOpen(e){
-  if (adminKey()) return true;
   if (e.href) return e.href === 'joint-order.html' && KEY_RE.test(rawLS('jo_key'));
+  if (adminKey()) return true;
   return KEY_RE.test(rawLS('jo_key_' + e.id));
 }
 /** the address of an entry: order.html?s=<id> (or the entry's own page) carrying only api= (test / local) — never a key, never the hash */
@@ -550,8 +554,17 @@ async function initSwitch(){
   SUPS = mine.length >= 2 ? mine : [];
   $('supBtn').classList.toggle('hide', !SUPS.length); $('top').classList.toggle('sw', !!SUPS.length);
   if (!SUPS.length) closeSupMenu();
+  scanOtherQ(); if (!$('app').classList.contains('hide')) renderBanners();
   swLabel(); swDone = true; setTopH();
 }
+/** or1.3 fix round (review major): the other suppliers on the switch whose queue on this phone (this mode) still holds values — they go out
+ *  only when that supplier is opened here, and are dropped after a day — so every order page shows a banner with a button to that page */
+let otherQ = [];   // [{ e, n }]
+function scanOtherQ(){
+  otherQ = SUPS.filter(e => e.id !== SUP && !e.href).map(e => { const q = loadLS('jo_queue_' + e.id + '_' + MODE, []); return { e, n: Array.isArray(q) ? q.filter(j => j && j.uuid && j.variant_id).length : 0 }; }).filter(x => x.n > 0);
+}
+const qtyHe = n => n === 1 ? 'כמות אחת' : n + ' כמויות';
+const notSavedHe = n => ' עוד לא ' + (n === 1 ? 'נשמרה' : 'נשמרו');
 /** the switch names the supplier on screen (it stands where the title stood); a supplier not in the file yet takes its settings' name once they come */
 function swLabel(){ const e = SUPS.find(x => x.id === SUP); if (!e) return; const he = supHe(e); if ($('supBtn').lastChild.textContent !== he){ $('supBtn').lastChild.textContent = he; $('supBtn').setAttribute('aria-label', 'ספק: ' + he); } }
 function openSupMenu(){
@@ -561,24 +574,48 @@ function openSupMenu(){
 }
 function closeSupMenu(){ $('supMenu').classList.add('hide'); $('supBtn').setAttribute('aria-expanded', 'false'); }
 let leaving = false;
-/** another supplier: a value still in its debounce settles into this supplier's queue first and the queue gets up to 4 s to reach the server
- *  (what is left stays on this phone, under this supplier, and goes out at its next open); then the other page, by its address alone */
+/** another supplier: a value still in its debounce settles into this supplier's queue, a job waiting between its retries is due at once (fix
+ *  round 31/10, review major: before, a job in its 1/2/5/15/30 s wait was not sent in the 4 s and the page left without a word), and the queue
+ *  gets up to 4 s to reach the server. Values still not saved after that, or any switch while the phone is offline, ask first (the native
+ *  confirm, as "סגור הזמנה"): "ביטול" stays here and the retries go on; "אישור" leaves them queued under this supplier on this phone (they go
+ *  out at its next open, within a day; every other order page shows a banner until then). Then the other page, by its address alone */
 async function goSup(e){
   closeSupMenu();
   if (!e || e.id === SUP || leaving) return;
   leaving = true;
   settleAll();
   if (queue.length && keyed() && navigator.onLine){
+    const now = Date.now(); for (const j of queue) if (j.notBefore > now) j.notBefore = 0; saveQ();
     toast('שומר לפני המעבר…', '', 4500); sync();
     for (const t0 = Date.now(); queue.length && Date.now() - t0 < 4000; ) await new Promise(r => setTimeout(r, 100));
+  }
+  if (queue.length || !navigator.onLine){
+    $('toast').style.display = 'none';
+    if (!confirm(leaveMsg(e))){ leaving = false; return; }
   }
   try{ localStorage.setItem(LS_LAST, e.id); }catch(x){}
   location.href = supHref(e);
 }
+/** the question before leaving: offline (the other page opens only if this phone opened it before: the service worker's own copy) and/or
+ *  this supplier's values still on the phone, then "לעבור אל <ספק> בכל זאת?" */
+function leaveMsg(e){
+  const n = queue.length, he = supHe(SUPS.find(x => x.id === SUP) || { id: SUP, he: '' }), to = supHe(e), m = [];
+  if (!navigator.onLine) m.push('אין חיבור לאינטרנט. ' + to + ' ייפתח רק אם כבר פתחת אותו בטלפון הזה.');
+  if (n) m.push(qtyHe(n) + ' של ' + he + notSavedHe(n) + '. ' + (n === 1 ? 'היא תישלח' : 'הן יישלחו') + ' כשתפתח שוב את ' + he + ' בטלפון הזה, תוך 24 שעות.');
+  return m.join('\n\n') + '\n\nלעבור אל ' + to + ' בכל זאת?';
+}
+// or1.3 fix round (review minor): a page the browser restores from its back/forward cache keeps its JS state: `leaving` of the switch that
+// left it is cleared (else every later choice returned at once), the menu closed, and the other suppliers' queues read again
+window.addEventListener('pageshow', ev => { if (!ev.persisted) return; leaving = false; closeSupMenu(); scanOtherQ(); if (!$('app').classList.contains('hide')) renderBanners(); });
+window.addEventListener('storage', ev => { if (/^jo_queue_/.test(ev.key || '')){ scanOtherQ(); if (!$('app').classList.contains('hide')) renderBanners(); } });   // another tab sent or added values
 /** order.html without ?s=: the only supplier this device opens, a picker when it opens several (the last used first), else "חסר ספק" */
 async function pickSupplier(){
   if (/[#&]a?k=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);   // a key in a link that names no supplier: off the address bar, not kept
-  if (!adminKey() && !storedKeys().n){ $('nosup').classList.remove('hide'); return; }   // nothing to open: as before, the list is not even read
+  const ak = adminKey(), sk = storedKeys();
+  if (!ak && !sk.n){ $('nosup').classList.remove('hide'); return; }   // nothing to open: as before, the list is not even read
+  // fix round (review minor): one buyer key and no admin key (the installed icon on a buyer's phone): straight to its page, the list never
+  // read — nothing of the other suppliers in this phone's storage; works offline on the icon's first open, and for a supplier not in the file yet
+  if (!ak && sk.n === 1){ location.replace(supHref(sk.joint ? { id: '', href: 'joint-order.html' } : { id: sk.ids[0], href: '' })); return; }
   const mine = (await supList()).filter(canOpen);
   if (!mine.length){ $('nosup').classList.remove('hide'); return; }
   if (mine.length === 1){ location.replace(supHref(mine[0])); return; }
@@ -884,8 +921,11 @@ function renderBanners(){
   else if (cat && cat.bad) b.push('<div class="banner red"><b>הקטלוג שהתקבל לא בפורמט המוכר.</b> אי אפשר לרשום כמויות עד שהוא יתוקן.</div>');
   else if (cat && !cat.rows.length) b.push('<div class="banner amber">הקטלוג עוד לא נטען. נסה שוב מאוחר יותר.</div>');
   if ((lastOk && Date.now() - lastOk > 3 * POLL_MS) || (!lastOk && netDown)) b.push('<div class="banner amber">אין חיבור כרגע — ' + (ready() ? 'מה שתרשום נשמר בטלפון ונשלח כשהחיבור חוזר.' : 'הכמויות יופיעו כשהחיבור יחזור.') + '</div>');
+  for (const { e, n } of otherQ){ const he = esc(supHe(e));   // or1.3 fix round: another supplier's values still on this phone (this supplier's own: the badge)
+    b.push('<div class="banner amber"><b>' + qtyHe(n) + ' של ' + he + notSavedHe(n) + '</b> — ' + (n === 1 ? 'היא נשלחת' : 'הן נשלחות') + ' רק כשפותחים את ' + he + ' בטלפון הזה, תוך 24 שעות.<button class="qgo" data-goq="' + esc(e.id) + '">לפתוח את ' + he + ' עכשיו</button></div>'); }
   $('banners').innerHTML = b.join('');
 }
+$('banners').addEventListener('click', ev => { const b = ev.target.closest('[data-goq]'); if (b) goSup(SUPS.find(e => e.id === b.dataset.goq)); });
 function render(){
   if (!$('app') || $('app').classList.contains('hide')) return;
   renderTop(); renderTabs(); renderBanners();

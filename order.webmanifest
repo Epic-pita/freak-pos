@@ -1,6 +1,7 @@
 {
   "name": "הזמנה מספק",
   "short_name": "הזמנה מספק",
+  "id": "/freak-pos/order.html?s=psi",
   "start_url": "./order.html",
   "scope": "./",
   "display": "standalone",
