@@ -1133,11 +1133,16 @@ const ddmmyyyy = d => d.toLocaleDateString('en-GB', { timeZone:TZ, day:'2-digit'
  *  supplier's currency, a line on an item now sold out kept and marked with the supplier's sold-out word; then the total labelled from
  *  settings.price.dealer_he ('מחיר לפני מע״מ' → 'סה״כ לפני מע״מ') */
 function supplierText(){
-  const S0 = summary(true), noPrice = S0.items.filter(x => x.lineSum == null).length;
+  // only the lines the supplier can deliver (in the catalog and available) make the total; a sold-out line or one that left the catalog is listed
+  // apart, under its own heading, outside the total (Chris sends this text as the order itself)
+  const S0 = summary(true), can = x => !x.r.orphan && x.r.available, go = S0.items.filter(can), off = S0.items.filter(x => !can(x));
   const skuHe = s => !s || s === NO_SKU_HE ? NO_SKU_HE : 'מק״ט ' + s;
+  const line = x => x.r.title + ' · ' + skuHe(x.r.sku) + ' · כמות ' + x.total + ' · ' + (x.lineSum != null ? money(x.lineSum) : 'אין מחיר');
+  const sum = round2(go.reduce((s, x) => s + (x.lineSum || 0), 0)), units = go.reduce((s, x) => s + x.total, 0), noPrice = go.filter(x => x.lineSum == null).length;
   const out = [(S.name_he || S.title_he) + ' — הזמנה ' + ddmmyyyy(new Date()), ''];
-  for (const x of S0.items) out.push(x.r.title + ' · ' + skuHe(x.r.sku) + ' · כמות ' + x.total + ' · ' + (x.lineSum != null ? money(x.lineSum) : 'אין מחיר') + (x.r.orphan || x.r.available ? '' : ' · ' + S.availability.out_he));
-  out.push('', 'סה״כ ' + S.price.dealer_he.replace(/^מחיר\s+/, '') + ': ' + money(S0.grand.sum) + ' · ' + S0.grand.lines + ' פריטים · ' + S0.grand.units + ' יח׳' + (noPrice ? ' (' + noPrice + ' בלי מחיר)' : ''));
+  for (const x of go) out.push(line(x));
+  out.push('', 'סה״כ ' + S.price.dealer_he.replace(/^מחיר\s+/, '') + ': ' + money(sum) + ' · ' + go.length + ' פריטים · ' + units + ' יח׳' + (noPrice ? ' (' + noPrice + ' בלי מחיר)' : ''));
+  if (off.length){ out.push('', 'לא נכלל בסה״כ:'); for (const x of off) out.push(line(x) + (x.r.orphan ? '' : ' · ' + S.availability.out_he)); }   // an orphan's title already says '(לא בקטלוג)'
   return out.join('\n');
 }
 function plainText(){
