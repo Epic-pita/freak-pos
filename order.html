@@ -97,6 +97,10 @@
   .row .rt{font-size:14px; font-weight:600; line-height:1.25; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere}
   .row .rs{font-size:12px; color:var(--dim); margin-top:2px; display:flex; gap:6px; flex-wrap:wrap; align-items:center}
   .row .rs .d{font-family:var(--mono); color:var(--ink); font-weight:600}
+  .row .rm2{font-size:12px; color:var(--dim); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}   /* publisher · group · age under the name */
+  .noprice,.price .d.noprice,.row .rs .d.noprice{color:#ffd479; font-family:inherit; font-weight:600; font-size:13px}   /* a row the supplier lists without a price */
+  .stepper input.pend{border-color:var(--amber); color:#ffd479}   /* my value is still saving or retrying (the same state the card's label shows) */
+  .xnote{font-size:12.5px; color:var(--dim); margin:-4px 0 10px; line-height:1.45}
   .row .pace{margin-top:0; padding:0 6px; font-size:11px}
   .row .stepper{margin-top:0; flex:none}
   .row .stepper button{width:36px}
@@ -284,12 +288,14 @@ const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns=
 // the settings block when the backend sent none (a catalog without labels still draws, in plain generic words)
 const DEF_SETTINGS = { v:1, sup:SUP, name_he:'', title_he:'הזמנה מספק', currency:{ code:'', symbol:'', after:false }, price:{ dealer_he:'מחיר סוחר', list_he:'מחירון', dealer_note_he:'' }, date_he:'קטלוג מ-',
   groups:[], facets:[], flags:{ new_he:'חדש', new_note_he:'', ours_he:'היה אצלנו' }, minimum:{ kind:'none', he:'מינימום' }, case_he:'קרטון', availability:{ out_he:'אזל אצל הספק' },
-  export:{ kingdom_list:false, he:'רשימה' }, search_fields:['title','sku','barcode','item_id','description'] };
+  export:{ kingdom_list:false, he:'רשימה', column_he:'עמודה לקובץ הממלכה', check_he:'רשימת בדיקה · הורדה', note_he:'להדביק בתא הראשון של העמודה "פריק" (שורה 3) בקובץ של הממלכה; זה מחליף את כל העמודה.' },
+  search_fields:['title','sku','barcode','item_id','description'] };
+const DIGIT_RUN = /\d+(?:[–-]\d+)?\+?/g;   // "3–4", "24–13" and "14+" keep their reading order inside Hebrew (chips, bar, cards)
 
 /* ================= STATE ================= */
 let KEY = '', AK = '', who = '', DEVICE = '';
 let S = DEF_SETTINGS;            // the supplier's settings (labels, currency, groups, facets), as jo_load sent them with the catalog
-let GH = {}, FV = {};            // group id → Hebrew; facet id → { value id → Hebrew }
+let GH = {}, FV = {}, FR = {};   // group id → Hebrew; facet id → { value id → Hebrew }; facet id → { value id → {lo, hi} } for a facet whose values are numeric bands (players)
 let people = [];                 // [{name, shop}] active, sheet order
 let state = { open: true, closed_at: '', closed_by: '' };
 let cat = null;                  // { stamp, data_date, rows:[{...}], byId: Map }
@@ -313,6 +319,8 @@ let drawn = false, loadMarked = false;   // performance marks for the page test:
 /* ================= UTIL ================= */
 const $ = id => document.getElementById(id);
 const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+/** escaped text whose digit runs ("3–4", "14+") are bidi-isolated LTR, so a band reads the same in a chip, on the bar and on a card */
+const bidiNums = s => esc(s).replace(DIGIT_RUN, m => '<bdi dir="ltr">' + m + '</bdi>');
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&3|8)).toString(16)}));
 /** a price in the supplier's currency (settings.currency: symbol before or after the number) */
 const money = n => n==null||n===''||isNaN(Number(n)) ? '' : (S.currency.after ? '' : S.currency.symbol) + Number(n).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + (S.currency.after && S.currency.symbol ? ' ' + S.currency.symbol : '');
@@ -366,24 +374,55 @@ function setSettings(raw){
     flags: { new_he: txt(s.flags && s.flags.new_he, D.flags.new_he), new_note_he: txt(s.flags && s.flags.new_note_he, ''), ours_he: txt(s.flags && s.flags.ours_he, D.flags.ours_he) },
     minimum: { kind: txt(s.minimum && s.minimum.kind, 'none', 20), he: txt(s.minimum && s.minimum.he, D.minimum.he) }, case_he: txt(s.case_he, D.case_he),
     availability: { out_he: txt(s.availability && s.availability.out_he, D.availability.out_he) },
-    export: { kingdom_list: !!(s.export && s.export.kingdom_list), he: txt(s.export && s.export.he, D.export.he) },
+    export: { kingdom_list: !!(s.export && s.export.kingdom_list), he: txt(s.export && s.export.he, D.export.he), column_he: txt(s.export && s.export.column_he, D.export.column_he), check_he: txt(s.export && s.export.check_he, D.export.check_he), note_he: txt(s.export && s.export.note_he, D.export.note_he, 300) },
+    card_facets: Array.isArray(s.card_facets) ? s.card_facets.filter(f => FACET_COLS.includes(String(f))).map(String) : null,
     search_fields: Array.isArray(s.search_fields) ? s.search_fields.filter(f => typeof f === 'string' && (CAT_HEADER.includes(f))).slice(0, 12) : D.search_fields.slice() };
   if (!o.search_fields.length) o.search_fields = D.search_fields.slice();
   for (const g of (Array.isArray(s.groups) ? s.groups : [])) if (g && ID_RE.test(String(g.id||'')) && !o.groups.some(x => x.id === g.id)) o.groups.push({ id: String(g.id), he: txt(g.he, String(g.id), 60) });
   for (const f of (Array.isArray(s.facets) ? s.facets : [])){
     if (!f || !FACET_COLS.includes(String(f.id)) || o.facets.some(x => x.id === f.id)) continue;
     const vals = [], seen = new Set();
-    for (const v of (Array.isArray(f.values) ? f.values : [])) if (v && ID_RE.test(String(v.id||'')) && !seen.has(String(v.id))){ seen.add(String(v.id)); vals.push({ id: String(v.id), he: txt(v.he, String(v.id), 80), n: Number(v.n) || 0 }); }
-    o.facets.push({ id: String(f.id), he: txt(f.he, String(f.id), 60), multi: f.multi !== false, big: f.big === true, groups: Array.isArray(f.groups) ? f.groups.filter(g => ID_RE.test(String(g||''))).map(String) : null, values: vals.slice(0, 2000) });
+    for (const v of (Array.isArray(f.values) ? f.values : [])) if (v && ID_RE.test(String(v.id||'')) && !seen.has(String(v.id))){ seen.add(String(v.id)); vals.push({ id: String(v.id), he: txt(v.he, String(v.id), 80), n: Number(v.n) || 0, lo: Number.isFinite(Number(v.lo)) && v.lo !== null && v.lo !== '' ? Number(v.lo) : null, hi: Number.isFinite(Number(v.hi)) && v.hi !== null && v.hi !== '' ? Number(v.hi) : null }); }
+    o.facets.push({ id: String(f.id), he: txt(f.he, String(f.id), 60), multi: f.multi !== false, big: f.big === true, card: f.card !== false, groups: Array.isArray(f.groups) ? f.groups.filter(g => ID_RE.test(String(g||''))).map(String) : null, values: vals.slice(0, 2000) });
   }
-  S = o; GH = {}; FV = {};
+  S = o; GH = {}; FV = {}; FR = {};
   for (const g of S.groups) GH[g.id] = g.he;
-  for (const f of S.facets){ FV[f.id] = {}; for (const v of f.values) FV[f.id][v.id] = v.he; }
+  for (const f of S.facets){
+    FV[f.id] = {}; for (const v of f.values) FV[f.id][v.id] = v.he;
+    if (f.values.length && f.values.every(v => v.lo !== null)){ FR[f.id] = {}; for (const v of f.values) FR[f.id][v.id] = { lo: v.lo, hi: v.hi }; }   // numeric bands: a row's values fold into one range ("1–4 שחקנים")
+  }
 }
 const groupHe = id => GH[id] || (!id || id === 'other' ? 'אחר' : String(id));
 const facetOf = id => S.facets.find(f => f.id === id);
-/** the grey meta line of a card: every facet's Hebrew values in the settings' order (publisher · age · players · carton …), each value bidi-isolated */
-function facetText(r){ if (!r.f) return ''; return S.facets.map(f => (r.f[f.id] || []).map(v => (FV[f.id] && FV[f.id][v]) || v).join('/')).filter(Boolean).map(t => '<bdi>' + esc(t) + '</bdi>').join(' · '); }
+/** the Hebrew values of one facet on a row, as text: a numeric-band facet folds into one range ("1–4 שחקנים", "7+ שחקנים", "2 שחקנים"), the others list their labels */
+function facetValueText(f, r){
+  const ids = r.f && r.f[f.id] || []; if (!ids.length) return '';
+  if (FR[f.id]){
+    const bands = ids.map(id => FR[f.id][id]).filter(Boolean); if (!bands.length) return '';
+    const lo = Math.min(...bands.map(b => b.lo)), open = bands.some(b => b.hi === null || b.hi >= 99), hi = open ? null : Math.max(...bands.map(b => b.hi));   // hi null or ≥ 99 = "and more"
+    return (hi === null ? lo + '+' : lo === hi ? String(lo) : lo + '–' + hi) + ' ' + f.he;
+  }
+  return ids.map(id => (FV[f.id] && FV[f.id][id]) || id).join('/');
+}
+/** the facets drawn on a card's grey line: settings.card_facets when given, else every facet except the ones that duplicate a built-in line (the case line, the release year) */
+function cardFacets(){ return S.card_facets ? S.facets.filter(f => S.card_facets.includes(f.id)) : S.facets.filter(f => f.card && f.he !== S.case_he && f.he !== 'יצא'); }
+/** the release from `published`: 'יצא 2023', or 'יוצא 11/26' for a date still ahead */
+function releaseText(r){ const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(r.published || '')); if (!m) return ''; return m[0] > new Date().toISOString().slice(0, 10) ? 'יוצא ' + m[2] + '/' + m[1].slice(2) : 'יצא ' + m[1]; }
+/** the grey meta line of a card: publisher · age · players (one range) · the release year — html, every value escaped and its digit runs bidi-isolated */
+function facetText(r){
+  if (!r.f) return '';
+  const parts = cardFacets().map(f => facetValueText(f, r)).filter(Boolean).map(t => '<bdi>' + bidiNums(t) + '</bdi>');
+  const rel = releaseText(r); if (rel) parts.push(bidiNums(rel));
+  return parts.join(' · ');
+}
+/** the grey line of a list row: the first facet (publisher) · the group · the second facet (age) — html */
+function rowMeta(r){
+  const fs = S.facets, parts = [];
+  if (fs[0]) parts.push(facetValueText(fs[0], r));
+  parts.push(groupHe(r.group));
+  if (fs[1]) parts.push(facetValueText(fs[1], r));
+  return parts.filter(Boolean).map(t => '<bdi>' + bidiNums(t) + '</bdi>').join(' · ');
+}
 
 /* ================= CATALOG ================= */
 function rowObj(header, r){ if (Array.isArray(r)){ const o = {}; header.forEach((h, i) => o[h] = r[i]); return o; } return r || {}; }
@@ -401,6 +440,7 @@ function hayOf(r, o){
 function setCatalog(c){
   // rows come as arrays in the order of `head` (the backend's contract header; the v2 names when none came) or as objects; settings travel with the catalog
   const head = Array.isArray(c.head) && c.head.length ? c.head.map(String) : CAT_HEADER;
+  if (!head.includes('item_id')){ cat = { stamp: '', data_date: '', rows: [], byId: new Map(), bad: true }; sortSnap = null; return false; }   // not the contract: nothing to tap, nothing cached
   setSettings(c.settings || null);
   const rows = [];
   for (const raw of (c.rows || [])){
@@ -420,6 +460,7 @@ function setCatalog(c){
   cat = { stamp: String(c.stamp||''), data_date: String(c.data_date||''), rows, byId: new Map(rows.map(r => [r.id, r])) };
   sortSnap = null;
   validateF();
+  return true;
 }
 const isOurs = r => !!r.our_code && r.pace !== 'none';
 /** the group chip of a row: a listed group id, else "other" */
@@ -548,7 +589,7 @@ async function load(full){
       sheetMissing = false; netDown = false;
       if (js.catalog && js.catalog.rows){   // the settings come with the catalog (same stamp semantics); both are cached together
         const c = { stamp: js.catalog.stamp, data_date: js.catalog.data_date, head: js.catalog.head, rows: js.catalog.rows, settings: js.settings !== undefined ? js.settings : (js.catalog.settings || null) };
-        setCatalog(c); saveLS(LS.cat, c); structural = true;
+        if (setCatalog(c)) saveLS(LS.cat, c); structural = true;
       }
       const pl = (js.people || []).map(p => ({ name: String(p.name||''), shop: String(p.shop||'') })).filter(p => p.name);
       if (JSON.stringify(pl) !== JSON.stringify(people)){ people = pl; structural = true; }
@@ -602,6 +643,7 @@ function renderBanners(){
   const b = [];
   if (!state.open) b.push('<div class="banner red"><b>ההזמנה נסגרה ב-' + esc(ddmm(state.closed_at)) + ' ' + esc(hhmm(state.closed_at)) + '</b>. אי אפשר לשנות כמויות; הסיכום עדיין עובד.</div>');
   if (sheetMissing) b.push('<div class="banner amber">הגיליון של ההזמנה עוד לא הוכן. נסה שוב מאוחר יותר.</div>');
+  else if (cat && cat.bad) b.push('<div class="banner red"><b>הקטלוג שהתקבל לא בפורמט המוכר.</b> אי אפשר לרשום כמויות עד שהוא יתוקן.</div>');
   else if (cat && !cat.rows.length) b.push('<div class="banner amber">הקטלוג עוד לא נטען. נסה שוב מאוחר יותר.</div>');
   if ((lastOk && Date.now() - lastOk > 3 * POLL_MS) || (!lastOk && netDown)) b.push('<div class="banner amber">אין חיבור כרגע — ' + (ready() ? 'מה שתרשום נשמר בטלפון ונשלח כשהחיבור חוזר.' : 'הכמויות יופיעו כשהחיבור יחזור.') + '</div>');
   $('banners').innerHTML = b.join('');
@@ -686,21 +728,22 @@ function facetRow(f){
     box = '<input class="fq" id="fq_'+esc(f.id)+'" data-fq="'+esc(f.id)+'" type="search" placeholder="חיפוש" value="'+esc(fq[f.id] || '')+'" autocomplete="off" aria-label="חיפוש ב'+esc(f.he)+'">';
   } else if (vals.length < 2 && !sel.length) return '';
   return '<div class="frow" data-frow="'+esc(f.id)+'"><span class="flbl">'+esc(f.he)+'</span>' + box +
-    vals.map(v => '<span class="chip fac'+(sel.includes(v.id)?' on':'')+'" data-fac="'+esc(f.id)+'" data-val="'+esc(v.id)+'">'+esc(v.he)+'<span class="n">'+(counts[v.id]||0)+'</span></span>').join('') +
-    (more > 0 ? '<span class="flbl">+'+more+'</span>' : '') + '</div>';
+    vals.map(v => '<span class="chip fac'+(sel.includes(v.id)?' on':'')+'" data-fac="'+esc(f.id)+'" data-val="'+esc(v.id)+'">'+bidiNums(v.he)+'<span class="n">'+num(counts[v.id]||0)+'</span></span>').join('') +
+    (more > 0 ? '<span class="flbl"><bdi dir="ltr">+'+num(more)+'</bdi></span>' : '') + '</div>';
 }
 /** the pace row (built in): ids in a fixed order, counted with every other filter on */
 function paceRow(){
   const counts = {}; for (const r of cat.rows){ if (!passes(r, 'pace')) continue; if (r.pace) counts[r.pace] = (counts[r.pace]||0) + 1; }
   const ids = PACE_IDS.filter(id => counts[id] > 0 || F.pace.includes(id));
   if (ids.length < 2 && !F.pace.length) return '';
-  return '<div class="frow" data-frow="pace"><span class="flbl">קצב אצלנו</span>' + ids.map(id => '<span class="chip pace-chip'+(F.pace.includes(id)?' on':'')+'" data-pace="'+esc(id)+'">'+esc(PACE_HE[id] || id)+'<span class="n">'+(counts[id]||0)+'</span></span>').join('') + '</div>';
+  return '<div class="frow" data-frow="pace"><span class="flbl">קצב אצלנו</span>' + ids.map(id => '<span class="chip pace-chip'+(F.pace.includes(id)?' on':'')+'" data-pace="'+esc(id)+'">'+esc(PACE_HE[id] || id)+'<span class="n">'+num(counts[id]||0)+'</span></span>').join('') + '</div>';
 }
 function renderCatalog(){
   const counts = {}; let newN = 0, ordN = 0, oursN = 0;
   if (cat) for (const r of cat.rows){ const g = groupOf(r); counts[g] = (counts[g]||0) + 1; if (r.is_new) newN++; if (totalOf(r.id) > 0) ordN++; if (isOurs(r)) oursN++; }
-  const chips = [['all','הכל', cat ? cat.rows.length : 0, ''], ['new', S.flags.new_he, newN, S.flags.new_note_he], ['ordered','הוזמן', ordN, ''], ['ours', S.flags.ours_he, oursN, ''],
-    ...S.groups.filter(g => counts[g.id] || chip === g.id).map(g => [g.id, g.he, counts[g.id]||0, '']), ...(counts.other ? [['other','אחר', counts.other, '']] : [])];
+  // הכל, then the supplier's groups (the first filter promised), then the flags at the end
+  const chips = [['all','הכל', cat ? cat.rows.length : 0, ''], ...S.groups.filter(g => counts[g.id] || chip === g.id).map(g => [g.id, g.he, counts[g.id]||0, '']), ...(counts.other ? [['other','אחר', counts.other, '']] : []),
+    ['new', S.flags.new_he, newN, S.flags.new_note_he], ['ordered','הוזמן', ordN, ''], ['ours', S.flags.ours_he, oursN, '']];
   const rows = catRows();
   let facets = '';
   if (cat && cat.rows.length){
@@ -711,15 +754,15 @@ function renderCatalog(){
   // search + sort on one line, the groups on one scrolling line, then one bar: the סינון toggle, the list/cards toggle, the ACTIVE filter
   // chips only (each with ×) and the count; the facet rows and the price range live in a panel that opens on the toggle
   const bar = '<div class="frow" id="fbar"><span class="chip tog'+(F.open?' on':'')+'" data-tog="filters">סינון'+(act.length ? ' · '+act.length : '')+' '+(F.open ? '▴' : '▾')+'</span>' +
-    '<span class="chip" data-tog="list">'+(list ? 'כרטיסים' : 'רשימה')+'</span>' +
-    act.map(([kind, a, b, he]) => '<span class="chip act" '+(kind === 'fac' ? 'data-fac="'+esc(a)+'" data-val="'+esc(b)+'"' : kind === 'pace' ? 'data-pace="'+esc(a)+'"' : 'data-price="1"')+'>'+esc(he)+'<span class="x">×</span></span>').join('') +
+    '<span class="chip" data-tog="list">'+(list ? 'תצוגת כרטיסים' : 'תצוגת רשימה')+'</span>' +
+    act.map(([kind, a, b, he]) => '<span class="chip act" '+(kind === 'fac' ? 'data-fac="'+esc(a)+'" data-val="'+esc(b)+'"' : kind === 'pace' ? 'data-pace="'+esc(a)+'"' : 'data-price="1"')+'>'+bidiNums(he)+'<span class="x">×</span></span>').join('') +
     '<span class="cnt" id="cnt">מציג <b>'+num(rows.length)+'</b> מתוך '+num(total)+'</span>' + (anyFilter() ? '<button class="clear" data-clear="1">נקה</button>' : '') + '</div>';
   const plbl = S.price.dealer_he + (S.currency.symbol ? ' ' + S.currency.symbol : '');
   const panel = '<div id="fpanel"'+(F.open ? '' : ' class="hide"')+'>' + facets +
     '<div class="range"><span class="flbl">'+esc(plbl)+'</span><input id="pmin" type="text" inputmode="decimal" placeholder="מ-" value="'+esc(F.pmin)+'" aria-label="'+esc(plbl)+' מ-"><span class="flbl">–</span><input id="pmax" type="text" inputmode="decimal" placeholder="עד" value="'+esc(F.pmax)+'" aria-label="'+esc(plbl)+' עד"></div></div>';
   $('view').innerHTML = '<div class="tools"><input id="q" type="search" placeholder="חיפוש: כמה מילים, מק״ט, ברקוד או קוד" value="'+esc(query)+'" autocomplete="off">' +
       '<select id="sort" aria-label="סידור">' + SORTS.map(([id, t]) => '<option value="'+id+'"'+(F.sort===id?' selected':'')+'>'+esc(t)+'</option>').join('') + '</select></div>' +
-    '<div class="chipline">' + chips.map(([id, t, n, note]) => '<span class="chip'+(chip===id?' on':'')+'" data-chip="'+esc(id)+'"'+(note ? ' title="'+esc(note)+'"' : '')+'>'+esc(t)+'<span class="n">'+n+'</span></span>').join('') + '</div>' +
+    '<div class="chipline">' + chips.map(([id, t, n, note]) => '<span class="chip'+(chip===id?' on':'')+'" data-chip="'+esc(id)+'"'+(note ? ' title="'+esc(note)+'"' : '')+'>'+esc(t)+'<span class="n">'+num(n)+'</span></span>').join('') + '</div>' +
     bar + panel +
     '<div id="list"'+(list ? ' class="listmode"' : '')+'>' + (rows.length ? rows.slice(0, shown).map(list ? rowHtml : cardHtml).join('') + (rows.length > shown ? '<button class="more" data-more="1">עוד '+(rows.length - shown)+'</button>' : '') : '<div class="empty">' + (cat ? 'לא נמצא כלום' : 'טוען את הקטלוג…') + '</div>') + '</div>';
   if (rows.length && !drawn){ drawn = true; mark('first-draw'); }
@@ -739,16 +782,18 @@ function activeChips(){
   if (F.pmin !== '' || F.pmax !== '') out.push(['price', '1', '', (F.pmin !== '' ? 'מ-' + sym + F.pmin : '') + (F.pmin !== '' && F.pmax !== '' ? ' ' : '') + (F.pmax !== '' ? 'עד ' + sym + F.pmax : '')]);
   return out;
 }
-/** a picture search for a row without a picture, in a new tab */
-function glink(r){ return '<a class="glink" href="'+esc('https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(r.title))+'" target="_blank" rel="noopener noreferrer">תמונות בגוגל</a>'; }
-/** list view: a thumbnail, the name, the dealer price, the pace and the total, my stepper; an opened row is the full card with a bigger picture */
+/** a picture search for a row without a picture (the title + its publisher label), in a new tab */
+function glink(r){ const pub = S.facets[0] && !FR[S.facets[0].id] ? facetValueText(S.facets[0], r) : ''; return '<a class="glink" href="'+esc('https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(r.title + (pub ? ' ' + pub : '')))+'" target="_blank" rel="noopener noreferrer">תמונות בגוגל</a>'; }
+/** the dealer price, or the plain word that the supplier lists no price */
+function priceHtml(r, cls){ return r.price_dealer != null ? '<span class="'+cls+'">'+esc(money(r.price_dealer))+'</span>' : '<span class="'+cls+' noprice">אין מחיר ברשימה</span>'; }
+/** list view: a thumbnail, the name, publisher · group · age, the dealer price, the pace and the total, my stepper; an opened row is the full card with a bigger picture */
 function rowHtml(r){
   if (expanded.has(r.id)) return cardHtml(r);
-  const total = totalOf(r.id);
+  const total = totalOf(r.id), meta = rowMeta(r);
   let h = '<div class="row'+(r.available?'':' out')+'" data-v="'+esc(r.id)+'">';
   h += '<img class="thumb'+(r.image ? '' : ' ph')+'" loading="lazy" decoding="async" src="'+esc(r.image || PLACEHOLDER)+'" alt="">';
-  h += '<div class="rb" data-open="'+esc(r.id)+'"><div class="rt" dir="auto">'+esc(r.title)+'</div><div class="rs"><span class="d">'+esc(money(r.price_dealer))+'</span>' +
-    (r.pace && r.pace !== 'none' ? '<span class="pace '+esc(r.pace)+'">'+esc(PACE_HE[r.pace] || r.pace)+'</span>' : '') +   // a row shows a pace only for an item we carried ("חדש אצלנו" on most of a long list is noise; the card still says it)
+  h += '<div class="rb" data-open="'+esc(r.id)+'"><div class="rt" dir="auto">'+esc(r.title)+'</div>' + (meta ? '<div class="rm2">'+meta+'</div>' : '') + '<div class="rs">' + priceHtml(r, 'd') + (r.price_dealer != null ? '<span>סוחר</span>' : '') +
+    (r.pace && r.pace !== 'none' ? '<span class="pace '+esc(r.pace)+'">'+esc(badgeText(r))+'</span>' : '') +   // a row shows a pace only for an item we carried ("חדש אצלנו" on most of a long list is noise; the card still says it)
     '<span class="qchip tot" data-tot'+(total>0?'':' style="display:none"')+'>סה״כ <b>'+num(total)+'</b></span>' + (r.available ? '' : '<span class="outlbl" style="margin-top:0">אזל</span>') + '</div></div>';
   h += stepperHtml(r) + '</div>';
   return h;
@@ -759,21 +804,23 @@ function zoom(r){
   let lb = $('lightbox'); if (!lb){ lb = document.createElement('div'); lb.id = 'lightbox'; lb.onclick = ()=> lb.remove(); document.body.appendChild(lb); }
   lb.innerHTML = '<img src="'+esc(r.image.replace(/([?&])width=\d+(?=&|$)/, '$1width=1200'))+'" alt=""><div class="cap" dir="auto">'+esc(r.title)+'</div>';
 }
-/** the pace badge of an item we already carry + one line of its figures (receipt, units, sold out / in stock, times received) */
+/** the badge text: the pace class; when the last receipt was 1–2 units the badge says so (a pace resting on so little is a weak sign) */
+function badgeText(r){ return (PACE_HE[r.pace] || r.pace) + (r.pace !== 'none' && r.pace !== 'unreceived' && r.last_receive_qty != null && r.last_receive_qty <= 2 ? ' · ' + num(r.last_receive_qty) + ' יח׳' : ''); }
+/** the pace badge of an item we already carry + one line of its figures (last receipt and its units, sold out / in stock, number of receipts) */
 function paceHtml(r){
   if (!r.pace) return '';
   let line = '';
   if (r.pace === 'unreceived') line = 'יש חשבונית, אין קליטה בקופה' + (r.our_code ? ' · קוד ' + r.our_code : '');
   else if (r.pace !== 'none'){
     const p = [], inStock = r.stock_now != null && r.stock_now > 0;
-    if (r.last_receive) p.push('נקלט ' + ddmmyy(r.last_receive) + (r.last_receive_qty != null ? ' · ' + num(r.last_receive_qty) + ' יח׳' : ''));
+    if (r.last_receive) p.push('קבלה אחרונה ' + ddmmyy(r.last_receive) + (r.last_receive_qty != null ? ' · ' + num(r.last_receive_qty) + ' יח׳' : ''));
     if (r.pace === 'unclear') p.push('לא נמכר מאז ולא במלאי');
-    else if (inStock){ p.push('במלאי ' + num(r.stock_now)); if (r.sold_after != null) p.push('נמכרו ' + num(r.sold_after) + ' מאז'); if (r.last_sale) p.push('מכירה אחרונה ' + ddmmyy(r.last_sale)); if (r.pace_days != null) p.push(num(r.pace_days) + ' ימים מהקליטה'); }
-    else if (r.last_sale){ p.push('אזל ' + ddmmyy(r.last_sale)); if (r.pace_days != null) p.push(num(r.pace_days) + ' ימים מהקליטה'); }   // for a sold-out item last_sale is the sale that emptied the stock
-    if (r.receipts_n != null && r.receipts_n > 1) p.push('נקלט ' + num(r.receipts_n) + ' פעמים');
+    else if (inStock){ p.push('במלאי ' + num(r.stock_now)); if (r.sold_after != null) p.push('נמכרו ' + num(r.sold_after) + ' מאז'); if (r.last_sale) p.push('מכירה אחרונה ' + ddmmyy(r.last_sale)); if (r.pace_days != null) p.push(num(r.pace_days) + ' ימים מהקבלה'); }
+    else if (r.last_sale){ p.push('אזל ' + ddmmyy(r.last_sale)); if (r.pace_days != null) p.push(num(r.pace_days) + ' ימים מהקבלה'); }   // for a sold-out item last_sale is the sale that emptied the stock
+    if (r.receipts_n != null && r.receipts_n > 1) p.push(num(r.receipts_n) + ' קבלות');
     line = p.join(' · ');
   }
-  return '<div><span class="pace '+esc(r.pace)+'">'+esc(PACE_HE[r.pace] || r.pace)+'</span>'+(line ? '<div class="pline">'+esc(line)+'</div>' : '')+'</div>';
+  return '<div><span class="pace '+esc(r.pace)+'">'+esc(badgeText(r))+'</span>'+(line ? '<div class="pline">'+esc(line)+'</div>' : '')+'</div>';
 }
 /** the "הוזמן" chip's count after a poll (the list itself is not redrawn) */
 function paintCounts(){ const n = document.querySelector('.chip[data-chip="ordered"] .n'); if (n && cat) n.textContent = cat.rows.filter(r => totalOf(r.id) > 0).length; }
@@ -790,7 +837,7 @@ function stepperHtml(r){
   if (!r.available) return '';
   const q = myQty(r.id), s = st[r.id] || '', dis = !state.open || !person || !ready() ? ' disabled' : '', label = stLabel(r.id);
   return '<div class="stepper"><button data-step="-1"'+dis+' aria-label="פחות">−</button>' +
-    '<input data-qin="'+esc(r.id)+'" type="text" inputmode="numeric" pattern="[0-9]*" value="'+q+'" aria-label="הכמות שלי"'+dis+'>' +
+    '<input data-qin="'+esc(r.id)+'" class="'+(s === 'saving' || s === 'retry' ? 'pend' : '')+'" type="text" inputmode="numeric" pattern="[0-9]*" value="'+q+'" aria-label="הכמות שלי"'+dis+'>' +
     '<button data-step="1"'+dis+' aria-label="יותר">+</button><span class="st '+esc(s)+'">'+esc(label)+'</span></div>';
 }
 function cardHtml(r){
@@ -801,7 +848,8 @@ function cardHtml(r){
   h += '<div class="typ">'+esc(groupHe(r.group))+(r.sku?' · <span class="sku">'+esc(r.sku)+'</span>':'')+(r.id !== r.sku ? ' · <span class="sku">'+esc(r.id)+'</span>' : '')+(r.is_new?' · <span style="color:#9fe0b0"'+(S.flags.new_note_he ? ' title="'+esc(S.flags.new_note_he)+'"' : '')+'>'+esc(S.flags.new_he)+'</span>':'')+'</div>';
   const fct = facetText(r); if (fct) h += '<div class="fct">'+fct+'</div>';   // already escaped, value by value
   if (r.description) h += '<div class="desc'+(expanded.has(r.id)?' open':'')+'" dir="auto">'+esc(r.description)+'</div><button class="morebtn" data-more-desc="1">'+(expanded.has(r.id)?'פחות':'עוד')+'</button>';
-  h += '<div class="price"><span class="d">'+esc(money(r.price_dealer))+'</span><span class="lbl"'+(S.price.dealer_note_he ? ' title="'+esc(S.price.dealer_note_he)+'"' : '')+'>'+esc(S.price.dealer_he)+'</span>'+(r.price_list!=null?'<span class="site">'+esc(S.price.list_he)+' '+esc(money(r.price_list))+'</span>':'')+'</div>';
+  else if (expanded.has(r.id) && isList() && view === 'catalog') h += '<button class="morebtn" data-more-desc="1">פחות</button>';   // a row without a description still folds back into its row
+  h += '<div class="price">' + priceHtml(r, 'd') + (r.price_dealer != null ? '<span class="lbl"'+(S.price.dealer_note_he ? ' title="'+esc(S.price.dealer_note_he)+'"' : '')+'>'+esc(S.price.dealer_he)+'</span>' : '') + (r.price_list!=null?'<span class="site">'+esc(S.price.list_he)+' '+esc(money(r.price_list))+'</span>':'')+'</div>';
   const meta = [];
   if (hasMin) meta.push(r.moq ? esc(S.minimum.he) + ' ' + num(r.moq) : esc(S.minimum.he) + ' לא ידוע');
   if (r.case_qty) meta.push(esc(S.case_he) + ' ' + num(r.case_qty));
@@ -823,7 +871,7 @@ function paintCard(v){
     if (el.classList.contains('card')) el.classList.toggle('has', total > 0);
     const c = el.querySelector('.chips'); if (c) c.innerHTML = chipsHtml(r);
     const stp = el.querySelector('.stepper'), inp = el.querySelector('input[data-qin]');
-    if (stp){ const s = st[r.id] || '', lab = stp.querySelector('.st'); lab.className = 'st ' + s; lab.textContent = stLabel(r.id); }
+    if (stp){ const s = st[r.id] || '', lab = stp.querySelector('.st'); lab.className = 'st ' + s; lab.textContent = stLabel(r.id); if (inp) inp.classList.toggle('pend', s === 'saving' || s === 'retry'); }
     if (inp && document.activeElement !== inp && !deb[r.id]) inp.value = my;
     if (el.classList.contains('line')){ const q = el.querySelector('.q'), e = el.querySelector('.e'); if (q) q.textContent = '×' + num(my); if (e) e.textContent = money(r.price_dealer != null ? round2(my * r.price_dealer) : null); }
     if (el.classList.contains('srow')){ const q = el.querySelector('.h .q'), e = el.querySelector('.h .e'); if (q && !q.classList.contains('short')){ q.textContent = '×' + num(total); if (e) e.textContent = money(r.price_dealer != null ? round2(total * r.price_dealer) : null); } }
@@ -850,7 +898,7 @@ window.addEventListener('beforeunload', settleAll);
 /* ---------- my order ---------- */
 /** a ledger pair whose item is no longer in the catalog, as a card-less row (the sheet's סיכום lists it as "(לא בקטלוג)") */
 function orphanRow(v, l){ return { id: String(v), sku: l && l.sku || '', barcode: '', title: '(לא בקטלוג) ' + (l && l.sku || v), group: '', description: '', image: '', url: '', price_list: null, price_dealer: null, moq: null, case_qty: null, available: false, is_new: false, f: {}, pace: '', our_code: '', orphan: true }; }
-function orphans(){ const out = []; if (!cat) return out; for (const [k, l] of lines){ const v = k.split('\u0001')[1]; if (!cat.byId.has(v) && !out.some(o => o.id === v)) out.push(orphanRow(v, l)); } return out; }
+function orphans(){ const out = []; if (!cat || !cat.rows.length) return out; for (const [k, l] of lines){ const v = k.split('\u0001')[1]; if (!cat.byId.has(v) && !out.some(o => o.id === v)) out.push(orphanRow(v, l)); } return out; }
 function myLines(){
   if (!cat) return [];
   const ls = cat.rows.filter(r => myQty(r.id) > 0).map(r => ({ r, qty: myQty(r.id), sum: r.price_dealer != null ? round2(myQty(r.id) * r.price_dealer) : null }));
@@ -859,16 +907,21 @@ function myLines(){
 }
 /** zero my quantity on an item that left the catalog (it has no card) */
 function removeOrphan(v){ if (!person || !state.open || !ready()) return; mine[v] = { qty: 0, uuid: '' }; enqueue(v, 0); render(); }
-/** the export buttons: text, CSV and (when the supplier's settings ask for it) the id<TAB>qty list of MY confirmed quantities */
-function exportBtns(){ return '<button data-act="copy">העתק כטקסט</button><button data-act="csv">הורד CSV</button>' + (S.export.kingdom_list ? '<button class="exp" data-act="klist">'+esc(S.export.he)+'</button><button class="exp" data-act="klist_dl">'+esc(S.export.he)+' — הורדה</button>' : ''); }
+/** the export buttons: text, CSV and (when the supplier's settings ask for it) the column for the buyer's file + the id<TAB>qty check list, both from MY confirmed quantities */
+function exportBtns(){
+  return '<div class="acts"><button data-act="copy">העתק כטקסט</button><button data-act="csv">הורד CSV</button>' + (S.export.kingdom_list ? '<button class="exp" data-act="column">'+esc(S.export.column_he)+'</button><button data-act="klist_dl">'+esc(S.export.check_he)+'</button>' : '') + '</div>' +
+    (S.export.kingdom_list ? '<div class="xnote">'+esc(S.export.note_he)+(cat && cat.data_date ? ' לפי סדר הרשימה מ-' + esc(ddmm(cat.data_date)) : '')+'</div>' : '');
+}
+/** "N פריטים בלי מחיר" for a total box, when an ordered line has no dealer price */
+function noPriceNote(rs){ const n = rs.filter(r => !r.orphan && r.price_dealer == null).length; return n ? ' · <b>'+num(n)+'</b> פריטים בלי מחיר' : ''; }
 function renderMine(){
   const ls = myLines(), units = ls.reduce((s, x) => s + x.qty, 0), total = round2(ls.reduce((s, x) => s + (x.sum || 0), 0));
-  $('view').innerHTML = (ls.length ? '<div class="acts">' + exportBtns() + '</div>' +
+  $('view').innerHTML = (ls.length ? exportBtns() +
     (Object.keys(mine).length ? '<div class="banner amber">יש כמויות שלך שעוד לא נשמרו: הן מופיעות כאן, אבל הרשימות המיוצאות כוללות רק מה שכבר נשמר.</div>' : '') +
-    '<div class="tot-box"><b>'+ls.length+'</b> שורות · <b>'+num(units)+'</b> יחידות · <b>'+esc(money(total))+'</b> ב'+esc(S.price.dealer_he)+'</div>' +
+    '<div class="tot-box"><b>'+ls.length+'</b> שורות · <b>'+num(units)+'</b> יחידות · <b>'+esc(money(total))+'</b> ב'+esc(S.price.dealer_he)+noPriceNote(ls.map(x => x.r))+'</div>' +
     ls.map(x => x.r.orphan
       ? '<div class="line"><div class="t"><div dir="auto">'+esc(x.r.title)+'</div><div class="s">הפריט ירד מהקטלוג — הכמות עדיין רשומה</div></div><div class="q">×'+num(x.qty)+'</div>' + (state.open && ready() ? '<button class="rm" data-rm="'+esc(x.r.id)+'">הסר</button>' : '') + '</div>'
-      : '<div class="line" data-v="'+esc(x.r.id)+'" data-go="'+esc(x.r.id)+'"><div class="t"><div dir="auto">'+esc(x.r.title)+'</div><div class="s">'+esc(x.r.sku || x.r.id)+'</div>'+paceHtml(x.r)+'</div><div class="q">×'+num(x.qty)+'</div><div class="e">'+esc(money(x.sum))+'</div>'+stepperHtml(x.r)+'</div>').join('')   // the pace and my stepper on every line
+      : '<div class="line" data-v="'+esc(x.r.id)+'" data-go="'+esc(x.r.id)+'"><div class="t"><div dir="auto">'+esc(x.r.title)+'</div><div class="s"><bdi dir="ltr">'+esc(x.r.sku || x.r.id)+'</bdi></div>'+paceHtml(x.r)+'</div><div class="q">×'+num(x.qty)+'</div><div class="e">'+(x.r.price_dealer != null ? esc(money(x.sum)) : '<span class="noprice">אין מחיר</span>')+'</div>'+stepperHtml(x.r)+'</div>').join('')   // the pace and my stepper on every line
     : '<div class="empty">' + (ready() ? 'עוד לא רשמת כמויות.<br>עבור לקטלוג ורשום כמה אתה רוצה מכל פריט.' : firstLoadDone ? 'אין חיבור — הכמויות יופיעו כשהחיבור יחזור.' : 'טוען…') + '</div>');
 }
 
@@ -899,13 +952,12 @@ function summary(confirmedOnly){
 }
 function renderSummary(){
   const S0 = summary(false), admin = who === 'admin', busy = queue.length > 0, hasMin = S.minimum.kind !== 'none';
-  let h = '<div class="acts">' + exportBtns() +
-    (admin ? (state.open ? '<button class="danger" data-act="close" id="closeBtn"'+(busy ? ' disabled' : '')+'>סגור הזמנה</button>' : '<button class="ok" data-act="open" id="openBtn">פתח מחדש</button>') : '') + '</div>';
+  let h = exportBtns() + (admin ? '<div class="acts">' + (state.open ? '<button class="danger" data-act="close" id="closeBtn"'+(busy ? ' disabled' : '')+'>סגור הזמנה</button>' : '<button class="ok" data-act="open" id="openBtn">פתח מחדש</button>') + '</div>' : '');
   if (S0.pending || busy) h += '<div class="banner amber">יש כמויות שלך שעוד לא נשמרו: הן מופיעות כאן, אבל הטקסט, ה-CSV והרשימות כוללים רק מה שכבר נשמר' + (admin && busy && state.open ? '; אפשר לסגור כשהכול נשמר' : '') + '.</div>';
   if (!S0.items.length){ $('view').innerHTML = h + '<div class="empty">' + (ready() ? 'עוד אין כמויות בהזמנה.' : firstLoadDone ? 'אין חיבור — הסיכום יופיע כשהחיבור יחזור.' : 'טוען…') + '</div>'; return; }
-  h += '<div class="tot-box">סה״כ להזמנה: <b>'+S0.grand.lines+'</b> פריטים · <b>'+num(S0.grand.units)+'</b> יחידות · <b>'+esc(money(S0.grand.sum))+'</b> ב'+esc(S.price.dealer_he)+'</div>';
-  h += '<h2>לפי פריט</h2>' + S0.items.map(x => '<div class="srow" data-v="'+esc(x.r.id)+'"'+(x.r.orphan ? '' : ' data-go="'+esc(x.r.id)+'"')+'><div class="h"><div class="t" dir="auto">'+esc(x.r.title)+'</div><div class="q">×'+num(x.total)+'</div><div class="e">'+esc(money(x.lineSum))+'</div></div>' +
-    '<div class="s">'+esc(x.r.sku || x.r.id)+(hasMin && x.r.moq ? ' · '+esc(S.minimum.he)+' '+num(x.r.moq) : '')+(x.r.orphan || x.r.available ? '' : ' · '+esc(S.availability.out_he))+'</div>'+paceHtml(x.r)+'<div class="chips">'+chipsHtml(x.r)+'</div>'+(x.r.orphan ? '' : stepperHtml(x.r))+'</div>').join('');   // the pace and my stepper per item
+  h += '<div class="tot-box">סה״כ להזמנה: <b>'+S0.grand.lines+'</b> פריטים · <b>'+num(S0.grand.units)+'</b> יחידות · <b>'+esc(money(S0.grand.sum))+'</b> ב'+esc(S.price.dealer_he)+noPriceNote(S0.items.map(x => x.r))+'</div>';
+  h += '<h2>לפי פריט</h2>' + S0.items.map(x => '<div class="srow" data-v="'+esc(x.r.id)+'"'+(x.r.orphan ? '' : ' data-go="'+esc(x.r.id)+'"')+'><div class="h"><div class="t" dir="auto">'+esc(x.r.title)+'</div><div class="q">×'+num(x.total)+'</div><div class="e">'+(x.r.orphan || x.r.price_dealer != null ? esc(money(x.lineSum)) : '<span class="noprice">אין מחיר</span>')+'</div></div>' +
+    '<div class="s"><bdi dir="ltr">'+esc(x.r.sku || x.r.id)+'</bdi>'+(hasMin && x.r.moq ? ' · '+esc(S.minimum.he)+' '+num(x.r.moq) : '')+(x.r.orphan || x.r.available ? '' : ' · '+esc(S.availability.out_he))+'</div>'+paceHtml(x.r)+'<div class="chips">'+chipsHtml(x.r)+'</div>'+(x.r.orphan ? '' : stepperHtml(x.r))+'</div>').join('');   // the pace and my stepper per item
   h += '<h2>לפי אדם</h2>' + S0.perPerson.map(p => '<div class="srow"><div class="h"><div class="t">'+esc(p.name)+(p.shop ? ' <span class="s">'+esc(p.shop)+'</span>' : '')+'</div><div class="q">'+p.lines+' שורות · '+num(p.units)+' יח׳</div><div class="e">'+esc(money(p.sum))+'</div></div></div>').join('');
   h += '<h2>לפי חנות</h2>' + S0.perShop.map(s => '<div class="srow"><div class="h"><div class="t">'+esc(s.shop)+'</div><div class="q">'+s.lines+' שורות · '+num(s.units)+' יח׳</div><div class="e">'+esc(money(s.sum))+'</div></div></div>').join('');
   // a supplier with a minimum: one folded line with the count; the list opens on a tap (no minimum: nothing)
@@ -933,19 +985,27 @@ function plainText(){
   if (S0.short.length) out.push('', 'חסר ל' + S.minimum.he + ': ' + S0.short.map(x => x.r.title + ' (' + x.total + '/' + x.r.moq + ')').join('; '));
   return out.join('\n');
 }
-/** the paste list for the buyer's file: `item id<TAB>my confirmed quantity`, one line per item with a quantity > 0, in the catalog's row order */
-function listLines(){ if (!cat || !person) return []; return cat.rows.filter(r => myConfirmed(r.id) > 0).map(r => r.id + '\t' + myConfirmed(r.id)); }
+/** a cell of a tab-separated export: no tab or line break inside, and a value starting with = + - @ gets a leading apostrophe (as csvCell) */
+function tsvCell(v){ let s = String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' '); if (/^[=+\-@]/.test(s)) s = "'" + s; return s; }
+/** the check list: `item id<TAB>my confirmed quantity`, one line per item with a quantity > 0, in the catalog's row order */
+function listLines(){ if (!cat || !person) return []; return cat.rows.filter(r => myConfirmed(r.id) > 0).map(r => tsvCell(r.id) + '\t' + tsvCell(myConfirmed(r.id))); }
 function listText(){ return listLines().join('\n'); }
+/** the column for the buyer's file: ONE line per catalog row, in the catalog's (the supplier list's) order — my confirmed quantity or empty — so a paste
+ *  into the first data cell of our column lands every quantity on its own row and clears the rest */
+function columnLines(){ if (!cat || !person) return []; return cat.rows.map(r => { const q = myConfirmed(r.id); return q > 0 ? tsvCell(q) : ''; }); }
+function columnText(){ return columnLines().join('\n'); }
+async function copyColumn(){
+  const ls = columnLines(), n = ls.filter(Boolean).length;
+  if (!n){ toast('אין עדיין כמויות שנשמרו', 'warn'); return; }   // never an all-empty column by accident (it would clear the file's column)
+  const left = orphans().filter(r => myConfirmed(r.id) > 0).length, pend = Object.keys(mine).length > 0 || queue.some(j => j.person === person);
+  const ok = await clip(ls.join('\n'));
+  toast(ok ? 'הועתקו ' + num(ls.length) + ' שורות, ' + num(n) + ' עם כמות' + (left ? ' · ' + num(left) + ' פריטים שירדו מהרשימה לא נכללו' : '') + (pend ? ' · רק מה שכבר נשמר' : '') : 'לא הצלחתי להעתיק', ok ? (left || pend ? 'warn' : '') : 'err', left || pend ? 5000 : 3200);
+}
 async function clip(t){
   try{ await navigator.clipboard.writeText(t); return true; }
   catch(e){ const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); let ok = false; try{ ok = document.execCommand('copy'); }catch(e2){} ta.remove(); return ok; }
 }
 async function copyText(){ const ok = await clip(plainText()); toast(ok ? 'הועתק' : 'לא הצלחתי להעתיק', ok ? '' : 'err'); }
-async function copyList(){
-  const ls = listLines(); if (!ls.length){ toast('אין עדיין כמויות שנשמרו', 'warn'); return; }
-  const ok = await clip(ls.join('\n')), pend = Object.keys(mine).length > 0 || queue.some(j => j.person === person);
-  toast(ok ? 'הועתקו ' + ls.length + ' שורות' + (pend ? ' — רק מה שכבר נשמר' : '') : 'לא הצלחתי להעתיק', ok ? (pend ? 'warn' : '') : 'err', pend ? 4000 : 2600);
-}
 function download(name, text, type){
   const blob = new Blob([text], { type }), a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
@@ -991,11 +1051,11 @@ document.addEventListener('click', ev => {
   if (t.dataset.pace !== undefined){ const id = t.dataset.pace, i = F.pace.indexOf(id); if (i >= 0) F.pace.splice(i, 1); else F.pace.push(id); shown = PAGE; sortSnap = null; saveF(); renderCatalog(); return; }
   if (t.dataset.clear){ clearFilters(); renderCatalog(); return; }
   if (t.dataset.more){ shown += PAGE; renderCatalog(); return; }
-  if (t.dataset.moreDesc){ const card = t.closest('.card'); const v = card.dataset.v; if (expanded.has(v)) expanded.delete(v); else expanded.add(v); if (isList() && view === 'catalog'){ renderCatalog(); return; } card.querySelector('.desc').classList.toggle('open', expanded.has(v)); card.classList.toggle('big', expanded.has(v)); t.textContent = expanded.has(v) ? 'פחות' : 'עוד'; return; }   // open = the picture grows; in the list view "פחות" folds the card back into its row
+  if (t.dataset.moreDesc){ const card = t.closest('.card'); const v = card.dataset.v; if (expanded.has(v)) expanded.delete(v); else expanded.add(v); if (isList() && view === 'catalog'){ renderCatalog(); return; } const d = card.querySelector('.desc'); if (d) d.classList.toggle('open', expanded.has(v)); card.classList.toggle('big', expanded.has(v)); t.textContent = expanded.has(v) ? 'פחות' : 'עוד'; return; }   // open = the picture grows; in the list view "פחות" folds the card back into its row
   if (t.dataset.step){ const host = t.closest('[data-v]'); if (!host) return; const v = host.dataset.v, inp = host.querySelector('input[data-qin]'); const cur = deb[v] ? deb[v].qty : (parseInt(inp && inp.value, 10) || 0); change(v, Math.max(0, cur + Number(t.dataset.step)), false); return; }   // a card, a row, a line of my order or a summary row
   if (t.dataset.act === 'copy') return copyText();
   if (t.dataset.act === 'csv') return downloadCsv();
-  if (t.dataset.act === 'klist') return copyList();
+  if (t.dataset.act === 'column') return copyColumn();
   if (t.dataset.act === 'klist_dl') return downloadList();
   if (t.dataset.act === 'close') return setOpen(false);
   if (t.dataset.act === 'open') return setOpen(true);
