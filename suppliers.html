@@ -606,7 +606,7 @@ async function orderSheet(supplier, step){
   if (pl.refresh) h += '<div class="banner amber">הקטלוג מתעדכן עכשיו — לחכות כמה דקות.</div>';
   h += pl.lines.map(l => '<div class="pl'+(l.action==='refuse'?' refuse':'')+'">'+esc(l.name)+' · <b>'+num(l.docQty)+'</b>'+(l.units>1?' קרטונים ('+num(l.qty)+' יח׳)':'')+(l.price!==''&&l.price!=null?' · '+esc(l.price)+' '+esc(l.cur):'')+
     '<div class="s">'+esc(lab[l.action]||l.action)+(l.why?' — '+esc(l.why):'')+(l.warn&&l.warn.length?' · '+esc(l.warn.join(' · ')):'')+'</div></div>').join('');
-  if (pl.doc) h += '<div class="banner info">מסמך ההזמנה כבר מוכן: <a href="'+esc(pl.doc.url)+'" target="_blank" rel="noopener">'+esc(pl.doc.no)+'</a></div>';
+  if (pl.doc) h += '<div class="banner info">מסמך ההזמנה כבר מוכן: <a href="'+esc(safeUrl(pl.doc.url) || '#')+'" target="_blank" rel="noopener">'+esc(pl.doc.no)+'</a></div>';   // fresh review 31/10: http(s) only
   if (step === 'doc' && !pl.doc) h += '<button class="bigbtn" id="mkDoc"'+(pl.refresh?' disabled':'')+'>📄 ליצור מסמך הזמנה</button>';
   const can = pl.counts.update + pl.counts.append + pl.counts.record;
   h += can ? '<button class="bigbtn go" id="mkSend"'+(pl.busy||pl.refresh?' disabled':'')+'>✓ שלחתי לספק — לסמן "נשלח"</button>' + (pl.busy ? '<div class="why">גיליון ההזמנות מתעדכן; אפשר לסמן אחרי '+esc(pl.busy)+'.</div>' : '') +
@@ -632,7 +632,7 @@ async function orderSheet(supplier, step){
     if (!js.ok) delete btn.dataset.uuid;   // refused or failed: the next tap is a new request
     if (js.ok && (js.result === 'sent' || js.result === 'partial')){
       showSheet('<h3>'+esc(supplier)+(js.result==='sent'?' — נשלח':' — נשלח חלקית')+'</h3><div class="why">הזמנה '+esc(js.no)+': '+js.written+' שורות נכתבו לגיליון ההזמנות כ"הוזמן"'+(js.recorded?', '+js.recorded+' נרשמו רק כאן':'')+(js.refused?', '+js.refused+' נשארו בסל':'')+'.</div>'+
-        (js.error ? '<div class="warn">'+esc(js.error)+'</div>' : '') + (js.doc ? '<div class="why"><a href="'+esc(js.doc)+'" target="_blank" rel="noopener">מסמך ההזמנה</a></div>' : '') + closeBtn());
+        (js.error ? '<div class="warn">'+esc(js.error)+'</div>' : '') + (safeUrl(js.doc) ? '<div class="why"><a href="'+esc(safeUrl(js.doc))+'" target="_blank" rel="noopener">מסמך ההזמנה</a></div>' : '') + closeBtn());
       load(true);
     } else if (js.ok && js.result === 'dup'){ toast('כבר נשלח ב-'+js.at, 'warn', 5000); closeSheet(); load(true); }
     else if (js.ok && js.result === 'changed'){ toast('הסל השתנה בינתיים — בודק שוב', 'warn'); orderSheet(supplier, step); }

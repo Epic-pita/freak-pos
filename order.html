@@ -584,11 +584,13 @@ async function goSup(e){
   if (!e || e.id === SUP || leaving) return;
   leaving = true;
   settleAll();
+  const d0 = drops;   // fresh review 31/10 (minor): a value the server refuses during the wait stays on screen (its toast), never a silent switch
   if (queue.length && keyed() && navigator.onLine){
     const now = Date.now(); for (const j of queue) if (j.notBefore > now) j.notBefore = 0; saveQ();
     toast('שומר לפני המעבר…', '', 4500); sync();
     for (const t0 = Date.now(); queue.length && Date.now() - t0 < 4000; ) await new Promise(r => setTimeout(r, 100));
   }
+  if (drops !== d0){ leaving = false; return; }
   if (queue.length || !navigator.onLine){
     $('toast').style.display = 'none';
     if (!confirm(leaveMsg(e))){ leaving = false; return; }
@@ -606,8 +608,12 @@ function leaveMsg(e){
 }
 // or1.3 fix round (review minor): a page the browser restores from its back/forward cache keeps its JS state: `leaving` of the switch that
 // left it is cleared (else every later choice returned at once), the menu closed, and the other suppliers' queues read again
-window.addEventListener('pageshow', ev => { if (!ev.persisted) return; leaving = false; closeSupMenu(); scanOtherQ(); if (!$('app').classList.contains('hide')) renderBanners(); });
-window.addEventListener('storage', ev => { if (/^jo_queue_/.test(ev.key || '')){ scanOtherQ(); if (!$('app').classList.contains('hide')) renderBanners(); } });   // another tab sent or added values
+// fresh review 31/10 (major): a restored page also held its OLD in-memory queue, and its next saveQ wrote that copy over the stored one (a
+// value typed on a newer load of this supplier was lost): storage is the truth (every queue change is saved at once), so the queue is read
+// again on a restore and when another tab changes this supplier's queue; a resend after that is harmless (the server skips a repeated uuid)
+function reloadQ(){ queue = loadLS(LS.queue, []).filter(j => j && j.uuid && j.variant_id); seedMine(); badge(); if (!$('app').classList.contains('hide')){ render(); sync(); } }
+window.addEventListener('pageshow', ev => { if (!ev.persisted) return; leaving = false; closeSupMenu(); reloadQ(); scanOtherQ(); if (!$('app').classList.contains('hide')){ renderBanners(); load(false); } });
+window.addEventListener('storage', ev => { if (ev.key === LS.queue) reloadQ(); if (/^jo_queue_/.test(ev.key || '')){ scanOtherQ(); if (!$('app').classList.contains('hide')) renderBanners(); } });   // another tab sent or added values
 /** order.html without ?s=: the only supplier this device opens, a picker when it opens several (the last used first), else "חסר ספק" */
 async function pickSupplier(){
   if (/[#&]a?k=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);   // a key in a link that names no supplier: off the address bar, not kept
@@ -840,7 +846,9 @@ function written(job, js){
   if (job.person === person) markSaved(v); else paintCard(v);
   renderTabs(); if (view === 'mine') render();
 }
+let drops = 0;   // refused values so far (goSup stays on the page when one is refused during its wait)
 function dropJob(job, err){
+  drops++;
   const v = job.variant_id; if (mine[v] && mine[v].uuid === job.uuid) delete mine[v]; if (job.person === person) st[v] = '';
   toast(HARD_MSG[err] || ('לא נשמר: ' + err), 'err', 5000);
   if (err === 'CLOSED'){ state = { ...state, open:false }; render(); }
