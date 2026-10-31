@@ -1137,12 +1137,12 @@ function supplierText(){
   // apart, under its own heading, outside the total (Chris sends this text as the order itself)
   const S0 = summary(true), can = x => !x.r.orphan && x.r.available, go = S0.items.filter(can), off = S0.items.filter(x => !can(x));
   const skuHe = s => !s || s === NO_SKU_HE ? NO_SKU_HE : 'מק״ט ' + s;
-  const line = x => x.r.title + ' · ' + skuHe(x.r.sku) + ' · כמות ' + x.total + ' · ' + (x.lineSum != null ? money(x.lineSum) : 'אין מחיר');
+  const line = x => (x.r.orphan ? '(לא בקטלוג)' : x.r.title) + ' · ' + skuHe(x.r.sku) + ' · כמות ' + x.total + ' · ' + (x.lineSum != null ? money(x.lineSum) : 'אין מחיר');   // never the item id: on a site that id can be another product's code
   const sum = round2(go.reduce((s, x) => s + (x.lineSum || 0), 0)), units = go.reduce((s, x) => s + x.total, 0), noPrice = go.filter(x => x.lineSum == null).length;
   const out = [(S.name_he || S.title_he) + ' — הזמנה ' + ddmmyyyy(new Date()), ''];
   for (const x of go) out.push(line(x));
   out.push('', 'סה״כ ' + S.price.dealer_he.replace(/^מחיר\s+/, '') + ': ' + money(sum) + ' · ' + go.length + ' פריטים · ' + units + ' יח׳' + (noPrice ? ' (' + noPrice + ' בלי מחיר)' : ''));
-  if (off.length){ out.push('', 'לא נכלל בסה״כ:'); for (const x of off) out.push(line(x) + (x.r.orphan ? '' : ' · ' + S.availability.out_he)); }   // an orphan's title already says '(לא בקטלוג)'
+  if (off.length){ out.push('', 'לא נכלל בסה״כ:'); for (const x of off) out.push(line(x) + (x.r.orphan ? '' : ' · ' + S.availability.out_he)); }   // an orphan's line already starts '(לא בקטלוג)'
   return out.join('\n');
 }
 function plainText(){
@@ -1179,7 +1179,8 @@ async function clip(t){
 async function copyText(){
   // or1.2 (export.text 'supplier': a text pasted straight to the supplier): never an empty list, and a copy while values of mine are still saving says so, as copyColumn
   const sup = S.export.text === 'supplier', pend = sup && (Object.keys(mine).length > 0 || queue.length > 0);
-  if (sup && !summary(true).items.length){ toast('אין עדיין כמויות שנשמרו', 'warn'); return; }
+  const its = sup ? summary(true).items : [];
+  if (sup && !its.some(x => !x.r.orphan && x.r.available)){ toast(its.length ? 'אין מה לשלוח: כל השורות אזלו אצלם או ירדו מהרשימה' : 'אין עדיין כמויות שנשמרו', 'warn'); return; }   // the supplier text's total counts only these lines
   const ok = await clip(plainText());
   toast(ok ? 'הועתק' + (pend ? ' · רק מה שכבר נשמר' : '') : 'לא הצלחתי להעתיק', ok ? (pend ? 'warn' : '') : 'err', pend ? 5000 : 2600);
 }
