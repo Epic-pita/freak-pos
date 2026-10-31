@@ -3,5 +3,6 @@
   { "id": "schoolmarket", "he": "סקול מרקט", "names": ["School market"] },
   { "id": "hakubia", "he": "הקובייה", "names": ["הקובייה"] },
   { "id": "ico", "he": "ICO", "names": ["ICO"] },
+  { "id": "kaissa", "he": "קאייסה", "names": ["Kaissa"] },
   { "id": "glassstaff", "he": "גלאסטאף — הזמנה משותפת", "href": "joint-order.html", "names": ["Glassstaff"] }
 ]
