@@ -37,9 +37,15 @@
   #upd.stale{color:#ffd479}
   #queueBadge{background:var(--amber); color:#000; font-size:12px; font-weight:700; border-radius:9px; padding:2px 8px}
   #refreshBtn{padding:6px 10px; font-size:15px; flex:none; min-width:40px; min-height:40px}
-  /* or1.3: the "ספק" switch (only on a device that can open 2+ suppliers) and its menu under the top bar */
-  #supBtn{padding:6px 8px; min-height:40px; font-size:12px; flex:none; color:#c9e6f2; background:none; border:1px solid var(--teal); white-space:nowrap}
-  #supBtn[aria-expanded="true"]{background:var(--teal); color:var(--ink)}
+  /* or1.3: the "ספק" switch (only on a device that can open 2+ suppliers) and its menu under the top bar. The switch takes the title's
+     place: a small "ספק ▾" over the current supplier's name, so on a 390 px phone the person's name and "החלף" keep their room */
+  #supBtn{display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:1px; padding:3px 9px; min-height:40px; min-width:0; max-width:46vw;
+          flex:0 1 auto; line-height:1.15; color:var(--ink); background:none; border:1px solid var(--teal); text-align:start}
+  #supBtn .sl{font-size:10.5px; color:#9fd8ea; white-space:nowrap}
+  #supBtn .sn{font-size:14.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%}
+  #supBtn[aria-expanded="true"]{background:var(--teal)}
+  #supBtn[aria-expanded="true"] .sl{color:var(--ink)}
+  #top.sw #title{display:none}
   #supMenu{position:absolute; top:100%; inset-inline-start:12px; z-index:60; min-width:230px; max-width:calc(100vw - 24px); margin-top:4px; padding:6px;
            background:var(--surface); border:1px solid var(--teal); border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.55)}
   #supMenu .mh{font-size:12px; color:var(--dim); padding:4px 8px 6px}
@@ -48,7 +54,6 @@
   .supopt.on{background:var(--surface2); color:#c9e6f2; font-weight:700; cursor:default}
   .supopt .ck{width:16px; flex:none; color:var(--green-hi)}
   #top.sw #topline{gap:6px}
-  #top.sw #me{min-width:92px}   /* with the switch on a phone the title gives way (ellipsis), never the name and "החלף" */
   #tabs{display:flex; gap:6px; padding:0 12px 8px; max-width:640px; margin:0 auto}
   .tab{flex:1; background:var(--surface2); border:1px solid var(--line); border-radius:20px; padding:10px 6px; font-size:14px; white-space:nowrap; text-align:center}
   .tab.on{background:var(--teal); border-color:var(--teal)}
@@ -322,7 +327,7 @@
 <div id="app" class="hide">
   <div id="top">
     <div id="topline">
-      <span id="dot"></span><span id="title">הזמנה מספק</span><button id="supBtn" class="hide" aria-haspopup="true" aria-expanded="false" aria-controls="supMenu">ספק ▾</button><span id="ver"></span>
+      <span id="dot"></span><span id="title">הזמנה מספק</span><button id="supBtn" class="hide" aria-haspopup="true" aria-expanded="false" aria-controls="supMenu" aria-label="ספק"><span class="sl">ספק ▾</span><span class="sn"></span></button><span id="ver"></span>
       <span id="me"><span id="meName"></span><button id="meBtn">החלף</button></span>
       <span id="queueBadge" class="hide">0</span>
       <span id="upd"></span>
@@ -394,8 +399,9 @@ const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns=
 //   availability.remove     true: a line of mine on an item now sold out shows 'הסר' (qty 0) in my order and the summary (or1.1: false)
 //   export.text             'supplier': "העתק כטקסט" gives the list for the supplier (one line per item, order totals); '' = the or1.1 text
 // or1.3: code_he             the name of the supplier's code (the sku column): "<code_he> X" in the supplier text, "אין <code_he>" for a row
-//                           without one (also read as the no-code value in sku, beside the older 'אין מק״ט'), and in the search box's hint
-//                           (default 'מק״ט': PSI and School market draw and copy byte for byte as or1.2)
+//                           without one (also read as the no-code value in sku, beside the older 'אין מק״ט') there and on the card, my
+//                           order and the summary, and in the search box's hint (default 'מק״ט': PSI and School market draw and copy byte
+//                           for byte as or1.2)
 const DEF_SETTINGS = { v:1, sup:SUP, name_he:'', title_he:'הזמנה מספק', currency:{ code:'', symbol:'', after:false }, price:{ dealer_he:'מחיר סוחר', dealer_short_he:'סוחר', list_he:'מחירון', dealer_note_he:'' }, date_he:'קטלוג מ-', code_he:'מק״ט',
   groups:[], facets:[], flags:{ new_he:'חדש', new_note_he:'', ours_he:'היה אצלנו' }, minimum:{ kind:'none', he:'מינימום' }, case_he:'קרטון', availability:{ out_he:'אזל אצל הספק', remove:false },
   export:{ kingdom_list:false, text:'', he:'רשימה', column_he:'עמודה לקובץ הממלכה', check_he:'רשימת בדיקה · הורדה', note_he:'להדביק בתא הראשון של העמודה "פריק" (שורה 3) בקובץ של הממלכה; זה מחליף את כל העמודה.' },
@@ -448,6 +454,16 @@ const round2 = n => Math.round(Number(n) * 100) / 100;
 const truthy = v => v === true || /^true$/i.test(String(v));
 const kOf = (p, v) => p + '\u0001' + String(v);
 const mark = n => { try{ performance.mark(n); }catch(e){} };
+/** or1.3 (automated review 31/10): an address from catalog or settings data goes into an href only as http(s): a plain address (no space,
+ *  quote or angle bracket) whose scheme the URL parser reads as http: or https:, returned as it came (a valid address draws byte for byte as
+ *  before); '' otherwise, so a "javascript:" or "data:" address never reaches a tap */
+function safeUrl(u){
+  const s = String(u == null ? '' : u); if (!/^https?:\/\/[^\s"'<>]+$/i.test(s)) return '';
+  try{ const p = new URL(s).protocol; return p === 'https:' || p === 'http:' ? s : ''; }catch(e){ return ''; }
+}
+/** a picture's address: https only (as the catalog's HTTPS_RE); '' draws the placeholder */
+const safeImg = u => { const s = safeUrl(u); return /^https:/i.test(s) ? s : ''; };
+const imgOf = r => safeImg(r && r.image);
 function toast(msg, cls='', ms=2600){
   const t=$('toast'); $('toastMsg').textContent=msg; t.className=cls; t.style.display='flex';
   clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', ms);
@@ -501,6 +517,12 @@ async function supList(){
   try{ const r = await fetchT(SUPS_URL, { cache: 'no-cache' }, 8000); if (r.ok){ const l = cleanSups(await r.json()); if (l && l.length){ saveLS(LS_SUPS, l); return l; } } }catch(e){}
   return cleanSups(loadLS(LS_SUPS, null)) || [];
 }
+/** the buyer keys on this device: the suppliers of jo_key_<id> that hold a key's shape, and whether the joint page's own jo_key is there */
+function storedKeys(){
+  const ids = []; let joint = false;
+  try{ for (let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i) || '', m = /^jo_key(?:_([a-z0-9_]{1,20}))?$/.exec(k); if (!m || !KEY_RE.test(rawLS(k))) continue; if (m[1]) ids.push(m[1]); else joint = true; } }catch(e){}
+  return { ids, joint, n: ids.length + (joint ? 1 : 0) };
+}
 /** this device can open an entry: the admin key opens every one; else that supplier's own buyer key (Glassstaff's joint page: its own jo_key) */
 function canOpen(e){
   if (adminKey()) return true;
@@ -514,20 +536,27 @@ function supHref(e){
   if (a === 'test' || a === 'local') q.set('api', a);
   const s = q.toString(); return (e.href || 'order.html') + (s ? '?' + s : '');
 }
-let SUPS = [];   // the entries this device can open (the switch); the current supplier among them
-/** the switch: shown only when this device opens 2+ entries; a device with one supplier's link sees no switch and no other supplier's name */
+/** an entry's name on the switch: the file's Hebrew name; a supplier not in the file yet (on TEST) by its settings' name */
+const supHe = e => e.he || S.name_he || e.id;
+let SUPS = [], swDone = false;   // the entries this device can open, the current one among them (the switch: 2+); swDone = the switch is settled (the page test waits on it)
+/** the switch: shown only when this device opens 2+ entries. A device that cannot (no admin key, fewer than two buyer keys) never reads the
+ *  list at all: no switch and no other supplier's name, on the screen or in its storage */
 async function initSwitch(){
-  const all = await supList();
-  let mine = all.filter(canOpen);
-  if (SUP && !mine.some(e => e.id === SUP)) mine = [{ id: SUP, he: S.name_he || SUP, href: '', names: [] }, ...mine];   // a supplier not in the file yet (on TEST): it heads the list
+  let mine = [];
+  if (adminKey() || storedKeys().n >= 2){
+    mine = (await supList()).filter(canOpen);
+    if (SUP && !mine.some(e => e.id === SUP)) mine.unshift({ id: SUP, he: '', href: '', names: [] });   // a supplier not in the file yet (on TEST): it heads the list
+  }
   SUPS = mine.length >= 2 ? mine : [];
   $('supBtn').classList.toggle('hide', !SUPS.length); $('top').classList.toggle('sw', !!SUPS.length);
   if (!SUPS.length) closeSupMenu();
-  setTopH();
+  swLabel(); swDone = true; setTopH();
 }
+/** the switch names the supplier on screen (it stands where the title stood); a supplier not in the file yet takes its settings' name once they come */
+function swLabel(){ const e = SUPS.find(x => x.id === SUP); if (!e) return; const he = supHe(e); if ($('supBtn').lastChild.textContent !== he){ $('supBtn').lastChild.textContent = he; $('supBtn').setAttribute('aria-label', 'ספק: ' + he); } }
 function openSupMenu(){
   if (!SUPS.length) return;
-  $('supMenu').innerHTML = '<div class="mh">ספק</div>' + SUPS.map(e => '<button class="supopt'+(e.id === SUP ? ' on' : '')+'" role="menuitem" data-sup="'+esc(e.id)+'"'+(e.id === SUP ? ' aria-current="page"' : '')+'><span class="ck">'+(e.id === SUP ? '✓' : '')+'</span><span dir="auto">'+esc(e.he)+'</span></button>').join('');
+  $('supMenu').innerHTML = '<div class="mh">ספק</div>' + SUPS.map(e => '<button class="supopt'+(e.id === SUP ? ' on' : '')+'" role="menuitem" data-sup="'+esc(e.id)+'"'+(e.id === SUP ? ' aria-current="page"' : '')+'><span class="ck">'+(e.id === SUP ? '✓' : '')+'</span><span dir="auto">'+esc(supHe(e))+'</span></button>').join('');
   $('supMenu').classList.remove('hide'); $('supBtn').setAttribute('aria-expanded', 'true');
 }
 function closeSupMenu(){ $('supMenu').classList.add('hide'); $('supBtn').setAttribute('aria-expanded', 'false'); }
@@ -548,7 +577,8 @@ async function goSup(e){
 }
 /** order.html without ?s=: the only supplier this device opens, a picker when it opens several (the last used first), else "חסר ספק" */
 async function pickSupplier(){
-  if (!adminKey() && !hasStoredKey()){ $('nosup').classList.remove('hide'); return; }   // nothing to open: as before, the list is not even read
+  if (/[#&]a?k=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);   // a key in a link that names no supplier: off the address bar, not kept
+  if (!adminKey() && !storedKeys().n){ $('nosup').classList.remove('hide'); return; }   // nothing to open: as before, the list is not even read
   const mine = (await supList()).filter(canOpen);
   if (!mine.length){ $('nosup').classList.remove('hide'); return; }
   if (mine.length === 1){ location.replace(supHref(mine[0])); return; }
@@ -556,11 +586,6 @@ async function pickSupplier(){
   $('pickList').innerHTML = order.map(e => '<button class="sbtn" data-pick="'+esc(e.id)+'"><span dir="auto">'+esc(e.he)+'</span>'+(e.id === last ? '<span class="last">האחרון שפתחת</span>' : '')+'</button>').join('');
   $('pickList').querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { const e = order.find(x => x.id === b.dataset.pick); if (!e) return; try{ localStorage.setItem(LS_LAST, e.id); }catch(x){} location.href = supHref(e); });
   $('pick').classList.remove('hide');
-}
-/** a buyer key of any supplier on this device (jo_key_<id>, or the joint page's jo_key) */
-function hasStoredKey(){
-  try{ for (let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i) || ''; if (/^jo_key(_[a-z0-9_]{1,20})?$/.test(k) && KEY_RE.test(rawLS(k))) return true; } }catch(e){}
-  return false;
 }
 $('supBtn').onclick = ev => { ev.stopPropagation(); if ($('supMenu').classList.contains('hide')) openSupMenu(); else closeSupMenu(); };
 $('supMenu').addEventListener('click', ev => { ev.stopPropagation(); const b = ev.target.closest('[data-sup]'); if (b) goSup(SUPS.find(e => e.id === b.dataset.sup)); });
@@ -601,6 +626,11 @@ function setSettings(raw){
 const groupHe = id => GH[id] || (!id || id === 'other' ? 'אחר' : String(id));
 /** a pace id in Hebrew: 'none' (an item we never carried) in the supplier's words (settings.pace_none_he, or1.2), the others fixed */
 const paceHe = id => id === 'none' ? S.pace_none_he : (PACE_HE[id] || id);
+/** or1.3: the supplier's code by the supplier's own name for it (settings.code_he, default 'מק״ט'): a row without one — blank, the older
+ *  'אין מק״ט' the School market feed writes, or 'אין ' + code_he — reads 'אין ' + code_he; with the default every text is or1.2's, byte for byte */
+const noCodeHe = () => 'אין ' + S.code_he;
+const isNoCode = s => !s || s === NO_SKU_HE || s === noCodeHe();
+const codeText = s => isNoCode(s) ? (s ? noCodeHe() : '') : s;
 const facetOf = id => S.facets.find(f => f.id === id);
 /** the Hebrew values of one facet on a row, as text: a numeric-band facet folds into one range ("1–4 שחקנים", "7+ שחקנים", "2 שחקנים"), the others list their labels */
 function facetValueText(f, r){
@@ -835,7 +865,7 @@ window.addEventListener('focus', ()=>{ if (keyed() && Date.now() - lastOk > 5000
 
 /* ================= RENDER ================= */
 function renderTop(){
-  document.title = S.title_he; $('title').textContent = S.title_he; $('gateTitle').textContent = S.title_he;
+  document.title = S.title_he; $('title').textContent = S.title_he; $('gateTitle').textContent = S.title_he; swLabel();
   $('ver').textContent = BUILD + (MODE !== 'live' ? ' · ' + MODE : '');
   $('meName').textContent = person || '';
   $('upd').innerHTML = (lastOk ? 'עודכן ' + esc(hhmm(lastOk)) : 'לא עודכן') + (cat && cat.data_date ? '<br>' + esc(S.date_he) + esc(ddmm(cat.data_date)) : '');
@@ -1031,17 +1061,18 @@ function activeChips(){
   return out;
 }
 /** a row without a picture: its product page on the supplier's site when the row has one and the settings name the link (or1.2,
- *  settings.site_link_he), else a picture search (the title + its publisher label); both in a new tab */
-function glink(r){ if (r.url && S.site_link_he) return '<a class="glink" href="'+esc(r.url)+'" target="_blank" rel="noopener noreferrer">'+esc(S.site_link_he)+'</a>'; const pub = S.facets[0] && !FR[S.facets[0].id] ? facetValueText(S.facets[0], r) : ''; return '<a class="glink" href="'+esc('https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(r.title + (pub ? ' ' + pub : '')))+'" target="_blank" rel="noopener noreferrer">תמונות בגוגל</a>'; }
+ *  settings.site_link_he), else a picture search (the title + its publisher label); both in a new tab. or1.3: the product page only through
+ *  safeUrl (http/https); any other address draws the picture search */
+function glink(r){ const site = S.site_link_he ? safeUrl(r.url) : ''; if (site) return '<a class="glink" href="'+esc(site)+'" target="_blank" rel="noopener noreferrer">'+esc(S.site_link_he)+'</a>'; const pub = S.facets[0] && !FR[S.facets[0].id] ? facetValueText(S.facets[0], r) : ''; return '<a class="glink" href="'+esc('https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(r.title + (pub ? ' ' + pub : '')))+'" target="_blank" rel="noopener noreferrer">תמונות בגוגל</a>'; }
 /** the dealer price, or the plain word that the supplier lists no price */
 function priceHtml(r, cls){ return r.price_dealer != null ? '<span class="'+cls+'">'+esc(money(r.price_dealer))+'</span>' : '<span class="'+cls+' noprice">אין מחיר ברשימה</span>'; }
 /** list view: a thumbnail, the name, publisher · group · age, the dealer price, the pace and the total, my stepper; an opened row is the full card with a bigger picture */
 function rowHtml(r){
   if (expanded.has(r.id)) return cardHtml(r);
   if (DESK.matches) return drowHtml(r);
-  const total = totalOf(r.id), meta = rowMeta(r);
+  const total = totalOf(r.id), meta = rowMeta(r), im = imgOf(r);
   let h = '<div class="row'+(r.available?'':' out')+'" data-v="'+esc(r.id)+'">';
-  h += '<img class="thumb'+(r.image ? '' : ' ph')+'" loading="lazy" decoding="async" src="'+esc(r.image || PLACEHOLDER)+'" alt="">';
+  h += '<img class="thumb'+(im ? '' : ' ph')+'" loading="lazy" decoding="async" src="'+esc(im || PLACEHOLDER)+'" alt="">';
   h += '<div class="rb" data-open="'+esc(r.id)+'"><div class="rt" dir="auto">'+esc(r.title)+'</div>' + (meta ? '<div class="rm2">'+meta+'</div>' : '') + '<div class="rs">' + priceHtml(r, 'd') + (r.price_dealer != null ? '<span>'+esc(S.price.dealer_short_he)+'</span>' : '') +
     (r.pace && r.pace !== 'none' ? '<span class="pace '+esc(r.pace)+'">'+esc(badgeText(r))+'</span>' : '') +   // a row shows a pace only for an item we carried ("חדש אצלנו" on most of a long list is noise; the card still says it)
     '<span class="qchip tot" data-tot'+(total>0?'':' style="display:none"')+'>סה״כ <b>'+num(total)+'</b></span>' + (r.available ? '' : '<span class="outlbl" style="margin-top:0">אזל</span>') + '</div></div>';
@@ -1053,9 +1084,9 @@ const imgLoad = () => DESK.matches ? 'eager' : 'lazy';
 /** desktop list view (or1.1): one dense table-like line per item (~50 px): thumbnail · name + grey meta · dealer price + its short word (settings.price.dealer_short_he, or1.2) · the pace badge ·
  *  every person's chips (when any) · my stepper; a tap on the name opens the full card in place, as on the phone */
 function drowHtml(r){
-  const meta = rowMeta(r);
+  const meta = rowMeta(r), im = imgOf(r);
   let h = '<div class="row drow'+(r.available?'':' out')+'" data-v="'+esc(r.id)+'">';
-  h += '<img class="thumb'+(r.image ? '' : ' ph')+'" loading="eager" decoding="async" src="'+esc(r.image || PLACEHOLDER)+'" alt="">';
+  h += '<img class="thumb'+(im ? '' : ' ph')+'" loading="eager" decoding="async" src="'+esc(im || PLACEHOLDER)+'" alt="">';
   h += '<div class="rb" data-open="'+esc(r.id)+'"><div class="rt" dir="auto" title="'+esc(r.title)+'">'+esc(r.title)+'</div>' + (meta ? '<div class="rm2">'+meta+'</div>' : '') + '</div>';
   h += '<div class="rp">' + priceHtml(r, 'd') + (r.price_dealer != null ? '<span>'+esc(S.price.dealer_short_he)+'</span>' : '') + '</div>';
   h += '<div class="rq">' + (r.pace && r.pace !== 'none' ? '<span class="pace '+esc(r.pace)+'">'+esc(badgeText(r))+'</span>' : '') + (r.available ? '' : '<span class="outlbl" style="margin-top:0">אזל</span>') + '</div>';
@@ -1065,9 +1096,9 @@ function drowHtml(r){
 }
 /** the picture, large, over the page; a tap anywhere closes it (a URL that names a width gets 1200) */
 function zoom(r){
-  if (!r || !r.image) return;
+  const im = imgOf(r); if (!im) return;
   let lb = $('lightbox'); if (!lb){ lb = document.createElement('div'); lb.id = 'lightbox'; lb.onclick = ()=> lb.remove(); document.body.appendChild(lb); }
-  lb.innerHTML = '<img src="'+esc(r.image.replace(/([?&])width=\d+(?=&|$)/, '$1width=1200'))+'" alt=""><div class="cap" dir="auto">'+esc(r.title)+'</div>';
+  lb.innerHTML = '<img src="'+esc(im.replace(/([?&])width=\d+(?=&|$)/, '$1width=1200'))+'" alt=""><div class="cap" dir="auto">'+esc(r.title)+'</div>';
 }
 /** the badge text: the pace class; when the last receipt was 1–2 units the badge says so (a pace resting on so little is a weak sign) */
 function badgeText(r){ return paceHe(r.pace) + (r.pace !== 'none' && r.pace !== 'unreceived' && r.last_receive_qty != null && r.last_receive_qty <= 2 ? ' · ' + num(r.last_receive_qty) + ' יח׳' : ''); }
@@ -1106,11 +1137,11 @@ function stepperHtml(r){
     '<button data-step="1"'+dis+' aria-label="יותר">+</button><span class="st '+esc(s)+'">'+esc(label)+'</span></div>';
 }
 function cardHtml(r){
-  const total = totalOf(r.id), hasMin = S.minimum.kind !== 'none';
+  const total = totalOf(r.id), hasMin = S.minimum.kind !== 'none', im = imgOf(r);
   let h = '<div class="card'+(total>0?' has':'')+(r.available?'':' out')+(expanded.has(r.id)?' big':'')+'" data-v="'+esc(r.id)+'">';   // big = the description is open: the picture grows
-  h += '<div class="crow"><div class="picbox"><img class="pic'+(r.image ? '' : ' ph')+'" loading="'+imgLoad()+'" decoding="async" src="'+esc(r.image || PLACEHOLDER)+'" alt="">' + (r.image ? '' : glink(r)) + '</div><div class="body">';
+  h += '<div class="crow"><div class="picbox"><img class="pic'+(im ? '' : ' ph')+'" loading="'+imgLoad()+'" decoding="async" src="'+esc(im || PLACEHOLDER)+'" alt="">' + (im ? '' : glink(r)) + '</div><div class="body">';
   h += '<div class="ttl" dir="auto">'+esc(r.title)+'</div>';
-  h += '<div class="typ">'+esc(groupHe(r.group))+(r.sku?' · <span class="sku">'+esc(r.sku)+'</span>':'')+(r.id !== r.sku ? ' · <span class="sku">'+esc(r.id)+'</span>' : '')+(r.is_new?' · <span style="color:#9fe0b0"'+(S.flags.new_note_he ? ' title="'+esc(S.flags.new_note_he)+'"' : '')+'>'+esc(S.flags.new_he)+'</span>':'')+'</div>';
+  h += '<div class="typ">'+esc(groupHe(r.group))+(r.sku?' · <span class="sku">'+esc(codeText(r.sku))+'</span>':'')+(r.id !== r.sku ? ' · <span class="sku">'+esc(r.id)+'</span>' : '')+(r.is_new?' · <span style="color:#9fe0b0"'+(S.flags.new_note_he ? ' title="'+esc(S.flags.new_note_he)+'"' : '')+'>'+esc(S.flags.new_he)+'</span>':'')+'</div>';
   const fct = facetText(r); if (fct) h += '<div class="fct">'+fct+'</div>';   // already escaped, value by value
   if (r.description) h += '<div class="desc'+(expanded.has(r.id)?' open':'')+'" dir="auto">'+esc(r.description)+'</div><button class="morebtn" data-more-desc="1">'+(expanded.has(r.id)?'פחות':'עוד')+'</button>';
   else if (expanded.has(r.id) && isList() && view === 'catalog') h += '<button class="morebtn" data-more-desc="1">פחות</button>';   // a row without a description still folds back into its row
@@ -1194,7 +1225,7 @@ function renderMine(){
     '<div class="tot-box"><b>'+ls.length+'</b> שורות · <b>'+num(units)+'</b> יחידות · <b>'+esc(money(total))+'</b> ב'+esc(S.price.dealer_he)+noPriceNote(ls.map(x => x.r))+'</div>' +
     ls.map(x => x.r.orphan
       ? '<div class="line"><div class="t"><div dir="auto">'+esc(x.r.title)+'</div><div class="s">הפריט ירד מהקטלוג — הכמות עדיין רשומה</div></div><div class="q">×'+num(x.qty)+'</div>' + (state.open && ready() ? '<button class="rm" data-rm="'+esc(x.r.id)+'">הסר</button>' : '') + '</div>'
-      : '<div class="line" data-v="'+esc(x.r.id)+'" data-go="'+esc(x.r.id)+'"><div class="t"><div dir="auto">'+esc(x.r.title)+'</div><div class="s"><bdi dir="ltr">'+esc(x.r.sku || x.r.id)+'</bdi></div>'+paceHtml(x.r)+(S.availability.remove && !x.r.available ? '<span class="outlbl">'+esc(S.availability.out_he)+'</span>' : '')+'</div><div class="q">×'+num(x.qty)+'</div><div class="e">'+(x.r.price_dealer != null ? esc(money(x.sum)) : '<span class="noprice">אין מחיר</span>')+'</div>'+stepperHtml(x.r)+rmOutHtml(x.r)+'</div>').join('')   // the pace and my stepper on every line; a sold-out item: its label and 'הסר' (or1.2, when the settings ask)
+      : '<div class="line" data-v="'+esc(x.r.id)+'" data-go="'+esc(x.r.id)+'"><div class="t"><div dir="auto">'+esc(x.r.title)+'</div><div class="s"><bdi dir="ltr">'+esc(codeText(x.r.sku) || x.r.id)+'</bdi></div>'+paceHtml(x.r)+(S.availability.remove && !x.r.available ? '<span class="outlbl">'+esc(S.availability.out_he)+'</span>' : '')+'</div><div class="q">×'+num(x.qty)+'</div><div class="e">'+(x.r.price_dealer != null ? esc(money(x.sum)) : '<span class="noprice">אין מחיר</span>')+'</div>'+stepperHtml(x.r)+rmOutHtml(x.r)+'</div>').join('')   // the pace and my stepper on every line; a sold-out item: its label and 'הסר' (or1.2, when the settings ask)
     : '<div class="empty">' + (ready() ? 'עוד לא רשמת כמויות.<br>עבור לקטלוג ורשום כמה אתה רוצה מכל פריט.' : firstLoadDone ? 'אין חיבור — הכמויות יופיעו כשהחיבור יחזור.' : 'טוען…') + '</div>');
 }
 
@@ -1230,7 +1261,7 @@ function renderSummary(){
   if (!S0.items.length){ $('view').innerHTML = h + '<div class="empty">' + (ready() ? 'עוד אין כמויות בהזמנה.' : firstLoadDone ? 'אין חיבור — הסיכום יופיע כשהחיבור יחזור.' : 'טוען…') + '</div>'; return; }
   h += '<div class="tot-box">סה״כ להזמנה: <b>'+S0.grand.lines+'</b> פריטים · <b>'+num(S0.grand.units)+'</b> יחידות · <b>'+esc(money(S0.grand.sum))+'</b> ב'+esc(S.price.dealer_he)+noPriceNote(S0.items.map(x => x.r))+'</div>';
   h += '<h2>לפי פריט</h2>' + S0.items.map(x => '<div class="srow" data-v="'+esc(x.r.id)+'"'+(x.r.orphan ? '' : ' data-go="'+esc(x.r.id)+'"')+'><div class="h"><div class="t" dir="auto">'+esc(x.r.title)+'</div><div class="q">×'+num(x.total)+'</div><div class="e">'+(x.r.orphan || x.r.price_dealer != null ? esc(money(x.lineSum)) : '<span class="noprice">אין מחיר</span>')+'</div></div>' +
-    '<div class="s"><bdi dir="ltr">'+esc(x.r.sku || x.r.id)+'</bdi>'+(hasMin && x.r.moq ? ' · '+esc(S.minimum.he)+' '+num(x.r.moq) : '')+(x.r.orphan || x.r.available ? '' : ' · '+esc(S.availability.out_he))+'</div>'+paceHtml(x.r)+'<div class="chips">'+chipsHtml(x.r)+'</div>'+(x.r.orphan ? '' : stepperHtml(x.r) + rmOutHtml(x.r))+'</div>').join('');   // the pace and my stepper per item; 'הסר' on a sold-out item of mine (or1.2)
+    '<div class="s"><bdi dir="ltr">'+esc(codeText(x.r.sku) || x.r.id)+'</bdi>'+(hasMin && x.r.moq ? ' · '+esc(S.minimum.he)+' '+num(x.r.moq) : '')+(x.r.orphan || x.r.available ? '' : ' · '+esc(S.availability.out_he))+'</div>'+paceHtml(x.r)+'<div class="chips">'+chipsHtml(x.r)+'</div>'+(x.r.orphan ? '' : stepperHtml(x.r) + rmOutHtml(x.r))+'</div>').join('');   // the pace and my stepper per item; 'הסר' on a sold-out item of mine (or1.2)
   h += '<h2>לפי אדם</h2>' + S0.perPerson.map(p => '<div class="srow"><div class="h"><div class="t">'+esc(p.name)+(p.shop ? ' <span class="s">'+esc(p.shop)+'</span>' : '')+'</div><div class="q">'+p.lines+' שורות · '+num(p.units)+' יח׳</div><div class="e">'+esc(money(p.sum))+'</div></div></div>').join('');
   h += '<h2>לפי חנות</h2>' + S0.perShop.map(s => '<div class="srow"><div class="h"><div class="t">'+esc(s.shop)+'</div><div class="q">'+s.lines+' שורות · '+num(s.units)+' יח׳</div><div class="e">'+esc(money(s.sum))+'</div></div></div>').join('');
   // a supplier with a minimum: one folded line with the count; the list opens on a tap (no minimum: nothing)
@@ -1259,7 +1290,7 @@ function supplierText(){
   // only the lines the supplier can deliver (in the catalog and available) make the total; a sold-out line or one that left the catalog is listed
   // apart, under its own heading, outside the total (Chris sends this text as the order itself)
   const S0 = summary(true), can = x => !x.r.orphan && x.r.available, go = S0.items.filter(can), off = S0.items.filter(x => !can(x));
-  const noCode = 'אין ' + S.code_he, skuHe = s => !s || s === NO_SKU_HE || s === noCode ? noCode : S.code_he + ' ' + s;   // or1.3: the code's name from settings.code_he (default 'מק״ט')
+  const skuHe = s => isNoCode(s) ? noCodeHe() : S.code_he + ' ' + s;   // or1.3: the code's name from settings.code_he (default 'מק״ט', = or1.2)
   const line = x => (x.r.orphan ? '(לא בקטלוג)' : x.r.title) + ' · ' + skuHe(x.r.sku) + ' · כמות ' + x.total + ' · ' + (x.lineSum != null ? money(x.lineSum) : 'אין מחיר');   // never the item id: on a site that id can be another product's code
   const sum = round2(go.reduce((s, x) => s + (x.lineSum || 0), 0)), units = go.reduce((s, x) => s + x.total, 0), noPrice = go.filter(x => x.lineSum == null).length;
   const out = [(S.name_he || S.title_he) + ' — הזמנה ' + ddmmyyyy(new Date()), ''];

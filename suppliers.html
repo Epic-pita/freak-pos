@@ -64,6 +64,11 @@
   .ghead .gbtns{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap}
   .ghead .gbtns button{flex:1; min-width:130px}
   .other-lines{font-size:13px; color:var(--dim); margin-top:6px}
+  /* s1.3: the supplier's order page (order-suppliers.json) from its group's header, and every order page at the top of להזמין */
+  .olink{display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:0 14px; border:1px solid var(--teal); border-radius:10px;
+         color:#c9e6f2; text-decoration:none; font-size:14px; font-weight:600; white-space:nowrap}
+  .ghead .gt .olink{margin-inline-start:auto}
+  .olink.top{display:flex; width:100%; margin:10px 0 4px; background:var(--surface); font-size:15px}
 
   .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px; margin:8px 0}
   .card.ok{border-color:var(--green)}
@@ -161,7 +166,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 's1.2';
+const BUILD = 's1.3';   // s1.3 (B-CAT-10 or1.3, 31/10): "להזמנה" on a supplier group that has an order page, "הזמנות מספקים" at the top of להזמין
 // the two backends (Apps Script deployments of the catalog's script); ?api=test is the TEST one (it writes only to the TEST copies),
 // ?api=local only on this PC (the bench). Never a URL from the address bar.
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbyCy0D7QPJNjpVIPP7NkNC38rkACV0t-O1C_m-SDsBUTFysG-Q0QUjtDPjI3Go8iYUZfw/exec';   // LIVE deployment (version 7, 18/10)
@@ -176,6 +181,8 @@ const POLL_MS = 60000, UNDO_MS = 5000, PAGE = 25;
 const TABS = [
   ['order', 'להזמין'], ['transit', 'בדרך'], ['out', 'אזל אצל הספק'], ['nosup', 'בלי ספק'], ['noprice', 'בלי מחיר'], ['snack', 'חטיפים'] ];
 const COMMON_SUPS = ['Kaissa', 'ICO', 'Glassstaff', 'הקובייה', 'ACD', 'School market', 'VFI', 'PSI', 'Asmodee', 'סינאפסה', 'Breaking Games'];
+// s1.3: the suppliers' order pages (order-suppliers.json beside this page: ids, Hebrew names and how this page names each supplier, no key)
+const OS_URL = './order-suppliers.json', LS_OS = 'fs_order_sups';
 
 /* ================= STATE ================= */
 let KEY = '';
@@ -224,6 +231,39 @@ const FINAL_OK = { 'נכתב': true, 'כבר': true, 'נרשם': true };   // an
 function snoozed(key){ const a = latest(key); return !!(a && a.until && new Date(a.until) > new Date() && FINAL_OK[a.res]); }
 function saveLS(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 function loadLS(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
+/** s1.3: an address from the backend's data goes into an href only as http(s) (the URL parser decides the scheme); '' otherwise */
+function safeUrl(u){
+  const s = String(u == null ? '' : u); if (!/^https?:\/\/[^\s"'<>]+$/i.test(s)) return '';
+  try{ const p = new URL(s).protocol; return p === 'https:' || p === 'http:' ? s : ''; }catch(e){ return ''; }
+}
+
+/* ================= ORDER PAGES (s1.3) ================= */
+// order-suppliers.json, checked entry by entry as order.html checks it: [{ id, he, href?, names }]; an href is a page beside this one
+// (joint-order.html), never an address elsewhere. The phone's copy is used until the site answers (and when it cannot).
+function cleanOS(x){
+  if (!Array.isArray(x)) return null;
+  const out = [];
+  for (const e of x.slice(0, 40)){
+    if (!e || typeof e !== 'object' || !/^[a-z0-9_]{1,20}$/.test(String(e.id || '')) || out.some(o => o.id === e.id)) continue;
+    const href = typeof e.href === 'string' && /^[\w\-]{1,40}\.html$/.test(e.href) ? e.href : '';
+    out.push({ id: String(e.id), href, names: Array.isArray(e.names) ? e.names.filter(n => typeof n === 'string').map(n => n.trim().slice(0, 60)).filter(Boolean) : [] });
+  }
+  return out;
+}
+let orderSups = cleanOS(loadLS(LS_OS, null)) || [];
+async function loadOrderSups(){
+  try{ const r = await fetchT(OS_URL, { cache: 'no-cache' }, 8000); if (!r.ok) return; const l = cleanOS(await r.json()); if (!l) return;
+    const was = JSON.stringify(orderSups); orderSups = l; saveLS(LS_OS, l); if (data && JSON.stringify(l) !== was) render(); }catch(e){}
+}
+/** an order page's address: order.html?s=<id> (or the entry's own page; order.html alone = its picker), with ?api= when this page runs on
+ *  TEST or the local bench — never a key (the order page reads fs_key from this phone's storage, as this page does) */
+function orderHref(e){
+  const q = new URLSearchParams(); if (e && e.id && !e.href) q.set('s', e.id); if (MODE !== 'live') q.set('api', MODE);
+  const s = q.toString(); return ((e && e.href) || 'order.html') + (s ? '?' + s : '');
+}
+const supNorm = s => String(s || '').trim().toLowerCase();
+/** the order page of a supplier group, by the names order-suppliers.json lists for it ('' when it has none) */
+function orderLinkOf(sup){ const n = supNorm(sup), e = orderSups.find(x => x.names.some(y => supNorm(y) === n)); return e ? orderHref(e) : ''; }
 
 /* ================= KEY ================= */
 function takeKeyFromHash(){
@@ -412,7 +452,8 @@ function renderOrder(){
   for (const s of bsk) if (!groups.has(s.sup)) groups.set(s.sup, []);
   const approvedIn = s => bLines.filter(l => l.sup === s);
   const order = [...groups.keys()].sort((a,b) => (approvedIn(b).length?1:0) - (approvedIn(a).length?1:0) || groups.get(b).filter(r=>r.rank===0).length - groups.get(a).filter(r=>r.rank===0).length || groups.get(b).length - groups.get(a).length);
-  $('sub').innerHTML = '<div class="chipline"><span class="chip'+(sub===''?' on':'')+'" data-sub="">הכל</span>' + order.map(s => '<span class="chip'+(sub===s?' on':'')+'" data-sub="'+esc(s)+'">'+esc(s)+' '+groups.get(s).length+'</span>').join('') +
+  $('sub').innerHTML = '<a class="olink top" href="'+esc(orderHref(null))+'">🛒 הזמנות מספקים</a>' +   // s1.3: every order page (order.html opens the only one, or its picker)
+    '<div class="chipline"><span class="chip'+(sub===''?' on':'')+'" data-sub="">הכל</span>' + order.map(s => '<span class="chip'+(sub===s?' on':'')+'" data-sub="'+esc(s)+'">'+esc(s)+' '+groups.get(s).length+'</span>').join('') +
     (skipped.length ? '<span class="chip'+(sub==='__skip'?' on':'')+'" data-sub="__skip">נדחו '+skipped.length+'</span>' : '') +
     (sentRows.length ? '<span class="chip'+(sub==='__sent'?' on':'')+'" data-sub="__sent">נשלחו עכשיו '+sentRows.length+'</span>' : '') + '</div>';
   if (sub === '__sent'){ $('list').innerHTML = sentRows.map(r => '<div class="card ok"><div class="nm">'+esc(r.name)+'<span class="cd">'+esc(r.code)+'</span></div><div class="why">נשלח '+esc(hhmm(data.sent[r.code].at))+' · '+esc(data.sent[r.code].no)+' — מופיע במסך "בדרך"</div></div>').join(''); return; }
@@ -422,8 +463,9 @@ function renderOrder(){
     if (sub && sub !== s) continue;
     const rs = groups.get(s).sort((a,b) => (a.rank - b.rank) || ((b.d.vel||0) - (a.d.vel||0)));
     const ap = approvedIn(s), b = bsk.find(x => x.sup === s), total = b ? b.total : ap.reduce((a,l)=>a+(l.total||0),0);
-    const others = ap.filter(l => l.source !== 'מוצרים');
-    html.push('<div class="group"><div class="ghead"><div class="gt"><span class="gn">'+esc(s)+'</span><span class="gs">'+(leadOf(s)!=null?'אספקה '+esc(leadOf(s))+' ימים · ':'')+rs.length+' הצעות</span></div>' +
+    const others = ap.filter(l => l.source !== 'מוצרים'), ol = orderLinkOf(s);   // s1.3: this supplier's order page, when it has one
+    html.push('<div class="group"><div class="ghead"><div class="gt"><span class="gn">'+esc(s)+'</span><span class="gs">'+(leadOf(s)!=null?'אספקה '+esc(leadOf(s))+' ימים · ':'')+rs.length+' הצעות</span>' +
+      (ol ? '<a class="olink" href="'+esc(ol)+'">להזמנה</a>' : '') + '</div>' +
       '<div class="gsum">'+(ap.length ? 'אושרו <b>'+ap.length+'</b> שורות · <b>'+(total > 0 ? ils(total) : 'בלי מחיר')+'</b>' + (total > 0 && ap.some(l => !(l.total > 0)) ? ' (חלק בלי מחיר)' : '') + (b && b.aboveMin && b.aboveMin !== 'לא הוגדר' ? ' · מינימום: '+esc(b.aboveMin) : '') : 'עוד לא אושר כלום')+'</div>' +
       (others.length ? '<div class="other-lines">מלשוניות הספק: '+others.map(l=>esc(l.name)+' ×'+l.qty).join(' · ')+'</div>' : '') +
       (ap.length ? '<div class="gbtns"><button data-doc="'+esc(s)+'">📄 מסמך הזמנה</button><button data-send="'+esc(s)+'">✓ סמן נשלח</button></div>' : '') + '</div>');
@@ -479,7 +521,7 @@ function renderTransit(){
       '<div class="meta"><span>נשלח <b>'+esc(ddmm(o.at))+'</b></span>'+(o.days!=null?'<span>לפני <b>'+o.days+'</b> ימים</span>':'')+(exp?'<span>צפוי <b>'+esc(ddmm(exp.toISOString()))+'</b></span>':'')+(o.total?'<span><b>'+ils(o.total)+'</b></span>':'')+'</div>' +
       (o.late ? '<div class="warn">⚠ מאחר: עברו '+o.days+' ימים, ובדרך כלל לוקח '+o.lead+'</div>' : '') +
       '<div class="why">'+o.lines.slice(0,12).map(l => esc(l.name)+' ×'+esc(l.qty)+(l.state?' · '+esc(l.state):'')).join('<br>')+(o.lines.length>12?'<br>ועוד '+(o.lines.length-12):'')+'</div>' +
-      (o.doc ? '<div class="why"><a href="'+esc(o.doc)+'" target="_blank" rel="noopener">מסמך ההזמנה</a></div>' : '') +
+      (safeUrl(o.doc) ? '<div class="why"><a href="'+esc(safeUrl(o.doc))+'" target="_blank" rel="noopener">מסמך ההזמנה</a></div>' : '') +   // s1.3: http(s) only
       '<div class="acts"><button class="go" data-tact="arrived">הגיע</button><button class="alt" data-tact="checked">בדקתי, עדיין בדרך</button><button class="no" data-tact="note">הערה</button></div></div>';
   }).join('') || '<div class="empty">אין הזמנות בדרך. הזמנה שמסמנים "נשלח" במסך "להזמין" מופיעה כאן עד שהיא נקלטת בקופה.</div>';
 }
@@ -699,6 +741,7 @@ async function start(){
   pend = loadLS(LS.pend, {});
   if (MODE === 'live'){ const d = loadLS(LS.data, null); if (d && d.rows) data = d; }
   renderFailed(); render();
+  loadOrderSups();   // s1.3: the order pages; the list redraws when they arrive
   try{ db = await idb(); }catch(e){ toast('אין אחסון בטלפון — התשובות יישלחו רק עם קליטה', 'warn', 5000); }
   badge(); sync(); load(!data);
   setInterval(() => { if (!document.hidden) load(false); }, POLL_MS);
