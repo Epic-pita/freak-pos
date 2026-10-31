@@ -1052,6 +1052,7 @@ function myLines(){
 function removeLine(v){
   const r = cat && cat.byId.get(String(v));
   if (!person || !state.open || !ready() || (r && (r.available || !S.availability.remove))) return;
+  if (deb[v]){ clearTimeout(deb[v].t); delete deb[v]; }   // a stepper value still in its debounce (the item turned sold out meanwhile) is dropped: it would replace this qty-0 job
   mine[v] = { qty: 0, uuid: '' }; enqueue(v, 0); render();
 }
 /** or1.2: 'הסר' on a line of mine whose item is now sold out (my order and the summary), when the supplier's settings ask for it */
@@ -1170,7 +1171,13 @@ async function clip(t){
   try{ await navigator.clipboard.writeText(t); return true; }
   catch(e){ const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); let ok = false; try{ ok = document.execCommand('copy'); }catch(e2){} ta.remove(); return ok; }
 }
-async function copyText(){ const ok = await clip(plainText()); toast(ok ? 'הועתק' : 'לא הצלחתי להעתיק', ok ? '' : 'err'); }
+async function copyText(){
+  // or1.2 (export.text 'supplier': a text pasted straight to the supplier): never an empty list, and a copy while values of mine are still saving says so, as copyColumn
+  const sup = S.export.text === 'supplier', pend = sup && (Object.keys(mine).length > 0 || queue.length > 0);
+  if (sup && !summary(true).items.length){ toast('אין עדיין כמויות שנשמרו', 'warn'); return; }
+  const ok = await clip(plainText());
+  toast(ok ? 'הועתק' + (pend ? ' · רק מה שכבר נשמר' : '') : 'לא הצלחתי להעתיק', ok ? (pend ? 'warn' : '') : 'err', pend ? 5000 : 2600);
+}
 function download(name, text, type){
   const blob = new Blob([text], { type }), a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
