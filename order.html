@@ -610,10 +610,11 @@ function leaveMsg(e){
 // left it is cleared (else every later choice returned at once), the menu closed, and the other suppliers' queues read again
 // fresh review 31/10 (major): a restored page also held its OLD in-memory queue, and its next saveQ wrote that copy over the stored one (a
 // value typed on a newer load of this supplier was lost): storage is the truth (every queue change is saved at once), so the queue is read
-// again on a restore and when another tab changes this supplier's queue; a resend after that is harmless (the server skips a repeated uuid)
+// again on a restore (not on another tab's change: two tabs of one supplier would then both send the same jobs and fight over their retry
+// counters; two such tabs still overwrite each other's queue, as in or1.0-or1.2, noted for the next pass); a resend is harmless (repeated uuid)
 function reloadQ(){ queue = loadLS(LS.queue, []).filter(j => j && j.uuid && j.variant_id); seedMine(); badge(); if (!$('app').classList.contains('hide')){ render(); sync(); } }
 window.addEventListener('pageshow', ev => { if (!ev.persisted) return; leaving = false; closeSupMenu(); reloadQ(); scanOtherQ(); if (!$('app').classList.contains('hide')){ renderBanners(); load(false); } });
-window.addEventListener('storage', ev => { if (ev.key === LS.queue) reloadQ(); if (/^jo_queue_/.test(ev.key || '')){ scanOtherQ(); if (!$('app').classList.contains('hide')) renderBanners(); } });   // another tab sent or added values
+window.addEventListener('storage', ev => { if (/^jo_queue_/.test(ev.key || '')){ scanOtherQ(); if (!$('app').classList.contains('hide')) renderBanners(); } });   // another tab sent or added values
 /** order.html without ?s=: the only supplier this device opens, a picker when it opens several (the last used first), else "חסר ספק" */
 async function pickSupplier(){
   if (/[#&]a?k=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);   // a key in a link that names no supplier: off the address bar, not kept
