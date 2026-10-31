@@ -37,6 +37,18 @@
   #upd.stale{color:#ffd479}
   #queueBadge{background:var(--amber); color:#000; font-size:12px; font-weight:700; border-radius:9px; padding:2px 8px}
   #refreshBtn{padding:6px 10px; font-size:15px; flex:none; min-width:40px; min-height:40px}
+  /* or1.3: the "ספק" switch (only on a device that can open 2+ suppliers) and its menu under the top bar */
+  #supBtn{padding:6px 8px; min-height:40px; font-size:12px; flex:none; color:#c9e6f2; background:none; border:1px solid var(--teal); white-space:nowrap}
+  #supBtn[aria-expanded="true"]{background:var(--teal); color:var(--ink)}
+  #supMenu{position:absolute; top:100%; inset-inline-start:12px; z-index:60; min-width:230px; max-width:calc(100vw - 24px); margin-top:4px; padding:6px;
+           background:var(--surface); border:1px solid var(--teal); border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.55)}
+  #supMenu .mh{font-size:12px; color:var(--dim); padding:4px 8px 6px}
+  .supopt{display:flex; align-items:center; gap:8px; width:100%; text-align:start; min-height:44px; margin:2px 0; background:none; font-size:15px; border-radius:8px}
+  .supopt:hover{background:var(--surface2)}
+  .supopt.on{background:var(--surface2); color:#c9e6f2; font-weight:700; cursor:default}
+  .supopt .ck{width:16px; flex:none; color:var(--green-hi)}
+  #top.sw #topline{gap:6px}
+  #top.sw #me{min-width:92px}   /* with the switch on a phone the title gives way (ellipsis), never the name and "החלף" */
   #tabs{display:flex; gap:6px; padding:0 12px 8px; max-width:640px; margin:0 auto}
   .tab{flex:1; background:var(--surface2); border:1px solid var(--line); border-radius:20px; padding:10px 6px; font-size:14px; white-space:nowrap; text-align:center}
   .tab.on{background:var(--teal); border-color:var(--teal)}
@@ -190,9 +202,11 @@
   #pnote{color:var(--dim); font-size:12px; text-align:center; margin-top:18px}
   #foot{color:var(--dim); font-size:12px; text-align:center; margin-top:6px}
 
-  #gate,#names,#nosup{max-width:480px; margin:40px auto; padding:0 20px}
-  #gate h1,#names h1,#nosup h1{color:var(--teal-hi); font-size:22px}
-  #gate p,#names p,#nosup p{color:var(--dim); line-height:1.6}
+  #gate,#names,#nosup,#pick{max-width:480px; margin:40px auto; padding:0 20px}
+  #gate h1,#names h1,#nosup h1,#pick h1{color:var(--teal-hi); font-size:22px}
+  #gate p,#names p,#nosup p,#pick p{color:var(--dim); line-height:1.6}
+  .sbtn{display:block; width:100%; text-align:start; padding:16px 14px; margin-top:10px; background:var(--surface); border:1px solid var(--line); font-size:18px; font-weight:700; min-height:56px}
+  .sbtn .last{display:block; font-size:12.5px; color:var(--dim); font-weight:400; margin-top:2px}
   .bigbtn{width:100%; padding:14px; font-size:17px; font-weight:700; margin-top:10px}
   .bigbtn.go{background:var(--green)}
   .pbtn{width:100%; text-align:start; padding:14px; margin-top:10px; background:var(--surface); border:1px solid var(--line); font-size:18px}
@@ -218,7 +232,7 @@
     .wrap{max-width:none; padding:0 16px}
     #top{display:flex; align-items:center; gap:10px; padding:6px 16px; flex-wrap:wrap}
     #topline{display:contents}
-    #dot{order:1} #title{order:2; font-size:16px} #ver{order:3}
+    #dot{order:1} #title{order:2; font-size:16px} #supBtn{order:2} #ver{order:3}
     #tabs{order:4; padding:0; margin:0 14px; max-width:none; flex:none}
     .tab{flex:none; padding:8px 18px; min-height:40px}
     #me{order:5; margin-inline-start:auto; max-width:300px}
@@ -283,6 +297,12 @@
   <p>הקישור צריך לכלול את שם הספק. פתח שוב את הקישור שקיבלת.</p>
 </div>
 
+<div id="pick" class="hide">
+  <h1>לאיזה ספק להזמין?</h1>
+  <p>בחר ספק. הטלפון זוכר את הספק האחרון ומציג אותו ראשון.</p>
+  <div id="pickList"></div>
+</div>
+
 <div id="gate" class="hide">
   <h1 id="gateTitle">הזמנה מספק</h1>
   <p><b>פתח את הקישור שקיבלת.</b> הדף נפתח מהקישור שנשלח לך בהודעה, והטלפון זוכר אותו מאז.</p>
@@ -302,13 +322,14 @@
 <div id="app" class="hide">
   <div id="top">
     <div id="topline">
-      <span id="dot"></span><span id="title">הזמנה מספק</span><span id="ver"></span>
+      <span id="dot"></span><span id="title">הזמנה מספק</span><button id="supBtn" class="hide" aria-haspopup="true" aria-expanded="false" aria-controls="supMenu">ספק ▾</button><span id="ver"></span>
       <span id="me"><span id="meName"></span><button id="meBtn">החלף</button></span>
       <span id="queueBadge" class="hide">0</span>
       <span id="upd"></span>
       <button id="refreshBtn" title="רענון">⟳</button>
     </div>
     <div id="tabs"></div>
+    <div id="supMenu" class="hide" role="menu" aria-label="ספק"></div>
   </div>
   <div class="wrap">
     <div id="banners"></div>
@@ -323,7 +344,13 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.2';
+const BUILD = 'or1.3';
+// or1.3 (B-CAT-10, Chris 31/10 "יש לי דף אחד לכל הספקים"): one page for every supplier on this device. order-suppliers.json (beside this
+// file; ids and Hebrew names only, never a key) lists the order pages in Chris's order; a device opens an entry when it holds the admin key
+// (fs_key, every supplier) or that supplier's own buyer key (jo_key_<id>; Glassstaff's joint page keeps its own, jo_key). With 2+ such
+// entries the top bar shows a "ספק" switch; order.html without ?s= opens the only one, or a picker (the last used first, jo_last_sup), or
+// the "חסר ספק" screen as before. A switch or a pick goes to order.html?s=<id> carrying only api= — never a key in an address. The admin
+// key alone opens a supplier (k empty, ak sent: the backend's joRole_ makes it admin), and a buyer key is only ever sent to its own supplier.
 // One order page for every supplier (B-CAT-9): ?s=<sup> names the supplier; the backend keeps one order sheet per supplier and
 // answers the v2 catalog contract (34 columns, `head` with the rows) plus a `settings` block (labels, currency, groups, facets),
 // so this file holds no supplier code. ?api=test → the ORDER TEST deployment (it writes only the TEST sheets), ?api=local only on
@@ -366,11 +393,16 @@ const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns=
 //   pace_none_he            the pace badge and chip of an item we never carried (or1.1: 'חדש אצלנו')
 //   availability.remove     true: a line of mine on an item now sold out shows 'הסר' (qty 0) in my order and the summary (or1.1: false)
 //   export.text             'supplier': "העתק כטקסט" gives the list for the supplier (one line per item, order totals); '' = the or1.1 text
-const DEF_SETTINGS = { v:1, sup:SUP, name_he:'', title_he:'הזמנה מספק', currency:{ code:'', symbol:'', after:false }, price:{ dealer_he:'מחיר סוחר', dealer_short_he:'סוחר', list_he:'מחירון', dealer_note_he:'' }, date_he:'קטלוג מ-',
+// or1.3: code_he             the name of the supplier's code (the sku column): "<code_he> X" in the supplier text, "אין <code_he>" for a row
+//                           without one (also read as the no-code value in sku, beside the older 'אין מק״ט'), and in the search box's hint
+//                           (default 'מק״ט': PSI and School market draw and copy byte for byte as or1.2)
+const DEF_SETTINGS = { v:1, sup:SUP, name_he:'', title_he:'הזמנה מספק', currency:{ code:'', symbol:'', after:false }, price:{ dealer_he:'מחיר סוחר', dealer_short_he:'סוחר', list_he:'מחירון', dealer_note_he:'' }, date_he:'קטלוג מ-', code_he:'מק״ט',
   groups:[], facets:[], flags:{ new_he:'חדש', new_note_he:'', ours_he:'היה אצלנו' }, minimum:{ kind:'none', he:'מינימום' }, case_he:'קרטון', availability:{ out_he:'אזל אצל הספק', remove:false },
   export:{ kingdom_list:false, text:'', he:'רשימה', column_he:'עמודה לקובץ הממלכה', check_he:'רשימת בדיקה · הורדה', note_he:'להדביק בתא הראשון של העמודה "פריק" (שורה 3) בקובץ של הממלכה; זה מחליף את כל העמודה.' },
   site_link_he:'', pace_none_he:PACE_HE.none, search_fields:['title','sku','barcode','item_id','description'] };
-const NO_SKU_HE = 'אין מק״ט';   // the supplier text's word for a row without the supplier's code (the School market feed writes it as the sku itself)
+const NO_SKU_HE = 'אין מק״ט';   // the older no-code value in sku (the School market feed writes it as the sku itself); or1.3: 'אין ' + S.code_he is read the same way
+// or1.3: the supplier list (order-suppliers.json), this device's last supplier, the shape of a stored key (as takeKeyFromHash takes it)
+const SUPS_URL = './order-suppliers.json', LS_SUPS = 'jo_sups', LS_LAST = 'jo_last_sup', KEY_RE = /^[\w\-]{20,100}$/;
 const DIGIT_RUN = /\d+(?:[–-]\d+)?\+?/g;   // "3–4", "24–13" and "14+" keep their reading order inside Hebrew (chips, bar, cards)
 
 /* ================= STATE ================= */
@@ -446,6 +478,94 @@ function takeKeyFromHash(){
 async function ping(){
   try{ return await post({ action:'jo_ping' }, 30000); }catch(e){ return { ok:false, error:'NET' }; }
 }
+/** or1.3: this page has a key to send — its buyer key, or the admin key alone (the backend makes `ak` admin on every supplier; k stays '') */
+const keyed = () => !!(KEY || AK);
+/** Chris's admin key as suppliers.html keeps it (fs_key; a JSON-quoted copy is read too), '' when absent or not a key's shape */
+function adminKey(){ const a = rawLS('fs_key').replace(/^"|"$/g, ''); return /^[\w\-]{8,100}$/.test(a) ? a : ''; }
+
+/* ================= SUPPLIERS ON THIS DEVICE (or1.3: the "ספק" switch and the picker) ================= */
+/** order-suppliers.json checked entry by entry: [{ id, he, href?, names }] in the file's order; ids are short slugs, an href is a page beside
+ *  this one (joint-order.html), never an address elsewhere; anything else is dropped */
+function cleanSups(x){
+  if (!Array.isArray(x)) return null;
+  const out = [];
+  for (const e of x.slice(0, 40)){
+    if (!e || typeof e !== 'object' || !/^[a-z0-9_]{1,20}$/.test(String(e.id || '')) || out.some(o => o.id === e.id)) continue;
+    const href = typeof e.href === 'string' && /^[\w\-]{1,40}\.html$/.test(e.href) ? e.href : '';
+    out.push({ id: String(e.id), he: txt(e.he, String(e.id), 60), href, names: Array.isArray(e.names) ? e.names.filter(n => typeof n === 'string').map(n => n.trim().slice(0, 60)).filter(Boolean) : [] });
+  }
+  return out;
+}
+/** the list from the site (revalidated, so a supplier added at a release shows at once), else the copy this device kept */
+async function supList(){
+  try{ const r = await fetchT(SUPS_URL, { cache: 'no-cache' }, 8000); if (r.ok){ const l = cleanSups(await r.json()); if (l && l.length){ saveLS(LS_SUPS, l); return l; } } }catch(e){}
+  return cleanSups(loadLS(LS_SUPS, null)) || [];
+}
+/** this device can open an entry: the admin key opens every one; else that supplier's own buyer key (Glassstaff's joint page: its own jo_key) */
+function canOpen(e){
+  if (adminKey()) return true;
+  if (e.href) return e.href === 'joint-order.html' && KEY_RE.test(rawLS('jo_key'));
+  return KEY_RE.test(rawLS('jo_key_' + e.id));
+}
+/** the address of an entry: order.html?s=<id> (or the entry's own page) carrying only api= (test / local) — never a key, never the hash */
+function supHref(e){
+  const q = new URLSearchParams(), a = QS.get('api');
+  if (!e.href) q.set('s', e.id);
+  if (a === 'test' || a === 'local') q.set('api', a);
+  const s = q.toString(); return (e.href || 'order.html') + (s ? '?' + s : '');
+}
+let SUPS = [];   // the entries this device can open (the switch); the current supplier among them
+/** the switch: shown only when this device opens 2+ entries; a device with one supplier's link sees no switch and no other supplier's name */
+async function initSwitch(){
+  const all = await supList();
+  let mine = all.filter(canOpen);
+  if (SUP && !mine.some(e => e.id === SUP)) mine = [{ id: SUP, he: S.name_he || SUP, href: '', names: [] }, ...mine];   // a supplier not in the file yet (on TEST): it heads the list
+  SUPS = mine.length >= 2 ? mine : [];
+  $('supBtn').classList.toggle('hide', !SUPS.length); $('top').classList.toggle('sw', !!SUPS.length);
+  if (!SUPS.length) closeSupMenu();
+  setTopH();
+}
+function openSupMenu(){
+  if (!SUPS.length) return;
+  $('supMenu').innerHTML = '<div class="mh">ספק</div>' + SUPS.map(e => '<button class="supopt'+(e.id === SUP ? ' on' : '')+'" role="menuitem" data-sup="'+esc(e.id)+'"'+(e.id === SUP ? ' aria-current="page"' : '')+'><span class="ck">'+(e.id === SUP ? '✓' : '')+'</span><span dir="auto">'+esc(e.he)+'</span></button>').join('');
+  $('supMenu').classList.remove('hide'); $('supBtn').setAttribute('aria-expanded', 'true');
+}
+function closeSupMenu(){ $('supMenu').classList.add('hide'); $('supBtn').setAttribute('aria-expanded', 'false'); }
+let leaving = false;
+/** another supplier: a value still in its debounce settles into this supplier's queue first and the queue gets up to 4 s to reach the server
+ *  (what is left stays on this phone, under this supplier, and goes out at its next open); then the other page, by its address alone */
+async function goSup(e){
+  closeSupMenu();
+  if (!e || e.id === SUP || leaving) return;
+  leaving = true;
+  settleAll();
+  if (queue.length && keyed() && navigator.onLine){
+    toast('שומר לפני המעבר…', '', 4500); sync();
+    for (const t0 = Date.now(); queue.length && Date.now() - t0 < 4000; ) await new Promise(r => setTimeout(r, 100));
+  }
+  try{ localStorage.setItem(LS_LAST, e.id); }catch(x){}
+  location.href = supHref(e);
+}
+/** order.html without ?s=: the only supplier this device opens, a picker when it opens several (the last used first), else "חסר ספק" */
+async function pickSupplier(){
+  if (!adminKey() && !hasStoredKey()){ $('nosup').classList.remove('hide'); return; }   // nothing to open: as before, the list is not even read
+  const mine = (await supList()).filter(canOpen);
+  if (!mine.length){ $('nosup').classList.remove('hide'); return; }
+  if (mine.length === 1){ location.replace(supHref(mine[0])); return; }
+  const last = rawLS(LS_LAST), order = [...mine.filter(e => e.id === last), ...mine.filter(e => e.id !== last)];
+  $('pickList').innerHTML = order.map(e => '<button class="sbtn" data-pick="'+esc(e.id)+'"><span dir="auto">'+esc(e.he)+'</span>'+(e.id === last ? '<span class="last">האחרון שפתחת</span>' : '')+'</button>').join('');
+  $('pickList').querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { const e = order.find(x => x.id === b.dataset.pick); if (!e) return; try{ localStorage.setItem(LS_LAST, e.id); }catch(x){} location.href = supHref(e); });
+  $('pick').classList.remove('hide');
+}
+/** a buyer key of any supplier on this device (jo_key_<id>, or the joint page's jo_key) */
+function hasStoredKey(){
+  try{ for (let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i) || ''; if (/^jo_key(_[a-z0-9_]{1,20})?$/.test(k) && KEY_RE.test(rawLS(k))) return true; } }catch(e){}
+  return false;
+}
+$('supBtn').onclick = ev => { ev.stopPropagation(); if ($('supMenu').classList.contains('hide')) openSupMenu(); else closeSupMenu(); };
+$('supMenu').addEventListener('click', ev => { ev.stopPropagation(); const b = ev.target.closest('[data-sup]'); if (b) goSup(SUPS.find(e => e.id === b.dataset.sup)); });
+document.addEventListener('click', () => { if (!$('supMenu').classList.contains('hide')) closeSupMenu(); });
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeSupMenu(); });
 
 /* ================= SETTINGS (from the backend, with the catalog) ================= */
 const txt = (v, d, n=200) => typeof v === 'string' && v.trim() ? v.trim().slice(0, n) : d;
@@ -455,7 +575,7 @@ function setSettings(raw){
   const o = { v: 1, sup: SUP, name_he: txt(s.name_he, ''), title_he: txt(s.title_he, s.name_he ? 'הזמנה מ-' + txt(s.name_he, '') : D.title_he),
     currency: { code: txt(s.currency && s.currency.code, '', 8), symbol: txt(s.currency && s.currency.symbol, '', 4), after: !!(s.currency && s.currency.after) },
     price: { dealer_he: txt(s.price && s.price.dealer_he, D.price.dealer_he), dealer_short_he: txt(s.price && s.price.dealer_short_he, D.price.dealer_short_he, 30), list_he: txt(s.price && s.price.list_he, D.price.list_he), dealer_note_he: txt(s.price && s.price.dealer_note_he, '') },
-    date_he: txt(s.date_he, D.date_he), groups: [], facets: [],
+    date_he: txt(s.date_he, D.date_he), code_he: txt(s.code_he, D.code_he, 20), groups: [], facets: [],
     flags: { new_he: txt(s.flags && s.flags.new_he, D.flags.new_he), new_note_he: txt(s.flags && s.flags.new_note_he, ''), ours_he: txt(s.flags && s.flags.ours_he, D.flags.ours_he) },
     minimum: { kind: txt(s.minimum && s.minimum.kind, 'none', 20), he: txt(s.minimum && s.minimum.he, D.minimum.he) }, case_he: txt(s.case_he, D.case_he),
     availability: { out_he: txt(s.availability && s.availability.out_he, D.availability.out_he), remove: !!(s.availability && s.availability.remove === true) },
@@ -662,7 +782,7 @@ function dropJob(job, err){
 }
 window.addEventListener('online', ()=>{ $('dot').classList.add('on'); sync(); load(false); });
 window.addEventListener('offline', ()=> $('dot').classList.remove('on'));
-setInterval(()=>{ if (queue.length && KEY) sync(); }, 5000);   // safety net: a retry timer that fired while a send was in flight is not lost
+setInterval(()=>{ if (queue.length && keyed()) sync(); }, 5000);   // safety net: a retry timer that fired while a send was in flight is not lost
 
 /* ================= LOAD (poll) ================= */
 async function load(full){
@@ -709,9 +829,9 @@ async function load(full){
 }
 /** people, state and the ledger as this phone has them, for the next open (drawn at once, before the first jo_load) */
 function saveMeta(){ saveLS(LS.meta, { people, state, nLines, lines: [...lines].map(([k, l]) => [k, { qty: l.qty, ord: l.ord, shop: l.shop, sku: l.sku || '' }]) }); }
-setInterval(()=>{ if (!document.hidden && KEY) load(false); }, POLL_MS);
-document.addEventListener('visibilitychange', ()=>{ if (!document.hidden && KEY){ load(false); sync(); } });
-window.addEventListener('focus', ()=>{ if (KEY && Date.now() - lastOk > 5000) load(false); });
+setInterval(()=>{ if (!document.hidden && keyed()) load(false); }, POLL_MS);
+document.addEventListener('visibilitychange', ()=>{ if (!document.hidden && keyed()){ load(false); sync(); } });
+window.addEventListener('focus', ()=>{ if (keyed() && Date.now() - lastOk > 5000) load(false); });
 
 /* ================= RENDER ================= */
 function renderTop(){
@@ -841,6 +961,9 @@ function paceRow(){
   if (ids.length < 2 && !F.pace.length) return '';
   return '<div class="frow" data-frow="pace"><div class="fhead"><span class="flbl">קצב אצלנו</span></div>' + ids.map(id => '<span class="chip pace-chip'+(F.pace.includes(id)?' on':'')+'" data-pace="'+esc(id)+'">'+esc(paceHe(id))+'<span class="n">'+num(counts[id]||0)+'</span></span>').join('') + '</div>';
 }
+/** or1.3: the search box's hint with the supplier's name for its code (settings.code_he): 'חיפוש: כמה מילים, מק״ט, ברקוד או קוד' by default
+ *  (the or1.2 words), a name already in the list is not said twice ('ברקוד' → 'חיפוש: כמה מילים, ברקוד או קוד') */
+function searchHint(){ const ws = [...new Set(['כמה מילים', S.code_he, 'ברקוד', 'קוד'])]; return 'חיפוש: ' + ws.slice(0, -1).join(', ') + ' או ' + ws[ws.length - 1]; }
 function renderCatalog(){
   const counts = {}; let newN = 0, ordN = 0, oursN = 0;
   if (cat) for (const r of cat.rows){ const g = groupOf(r); counts[g] = (counts[g]||0) + 1; if (r.is_new) newN++; if (totalOf(r.id) > 0) ordN++; if (isOurs(r)) oursN++; }
@@ -856,7 +979,7 @@ function renderCatalog(){
   const total = cat ? cat.rows.length : 0, act = activeChips(), list = isList(), desk = DESK.matches;
   const plbl = S.price.dealer_he + (S.currency.symbol ? ' ' + S.currency.symbol : '');
   const range = '<div class="range"><span class="flbl">'+esc(plbl)+'</span><input id="pmin" type="text" inputmode="decimal" placeholder="מ-" value="'+esc(F.pmin)+'" aria-label="'+esc(plbl)+' מ-"><span class="flbl">–</span><input id="pmax" type="text" inputmode="decimal" placeholder="עד" value="'+esc(F.pmax)+'" aria-label="'+esc(plbl)+' עד"></div>';
-  const tools = '<div class="tools"><input id="q" type="search" placeholder="חיפוש: כמה מילים, מק״ט, ברקוד או קוד" value="'+esc(query)+'" autocomplete="off">' +
+  const tools = '<div class="tools"><input id="q" type="search" placeholder="'+esc(searchHint())+'" value="'+esc(query)+'" autocomplete="off">' +
     '<select id="sort" aria-label="סידור">' + SORTS.map(([id, t]) => '<option value="'+id+'"'+(F.sort===id?' selected':'')+'>'+esc(t)+'</option>').join('') + '</select></div>';
   const chipHtml = ([id, t, n, note], x) => '<span class="chip'+(x ? ' ' + x : '')+(chip===id?' on':'')+'" data-chip="'+esc(id)+'"'+(note ? ' title="'+esc(note)+'"' : '')+'><bdi>'+esc(t)+'</bdi><span class="n">'+num(n)+'</span></span>';
   const actHtml = act.map(([kind, a, b, he]) => '<span class="chip act" '+(kind === 'fac' ? 'data-fac="'+esc(a)+'" data-val="'+esc(b)+'"' : kind === 'pace' ? 'data-pace="'+esc(a)+'"' : 'data-price="1"')+'><bdi>'+bidiNums(he)+'</bdi><span class="x">×</span></span>').join('');
@@ -1136,7 +1259,7 @@ function supplierText(){
   // only the lines the supplier can deliver (in the catalog and available) make the total; a sold-out line or one that left the catalog is listed
   // apart, under its own heading, outside the total (Chris sends this text as the order itself)
   const S0 = summary(true), can = x => !x.r.orphan && x.r.available, go = S0.items.filter(can), off = S0.items.filter(x => !can(x));
-  const skuHe = s => !s || s === NO_SKU_HE ? NO_SKU_HE : 'מק״ט ' + s;
+  const noCode = 'אין ' + S.code_he, skuHe = s => !s || s === NO_SKU_HE || s === noCode ? noCode : S.code_he + ' ' + s;   // or1.3: the code's name from settings.code_he (default 'מק״ט')
   const line = x => (x.r.orphan ? '(לא בקטלוג)' : x.r.title) + ' · ' + skuHe(x.r.sku) + ' · כמות ' + x.total + ' · ' + (x.lineSum != null ? money(x.lineSum) : 'אין מחיר');   // never the item id: on a site that id can be another product's code
   const sum = round2(go.reduce((s, x) => s + (x.lineSum || 0), 0)), units = go.reduce((s, x) => s + x.total, 0), noPrice = go.filter(x => x.lineSum == null).length;
   const out = [(S.name_he || S.title_he) + ' — הזמנה ' + ddmmyyyy(new Date()), ''];
@@ -1261,7 +1384,8 @@ $('refreshBtn').onclick = () => { sortSnap = null; load(true); };
 $('meBtn').onclick = () => showNames();
 
 /* ================= START ================= */
-function showGate(msg){ KEY = ''; $('app').classList.add('hide'); $('names').classList.add('hide'); $('gate').classList.remove('hide'); $('gateTitle').textContent = S.title_he; $('gateMsg').textContent = msg || ''; }
+// or1.3: AK is cleared too, so the polls stop until a key is pasted (start() reads fs_key again)
+function showGate(msg){ KEY = ''; AK = ''; closeSupMenu(); $('app').classList.add('hide'); $('names').classList.add('hide'); $('gate').classList.remove('hide'); $('gateTitle').textContent = S.title_he; $('gateMsg').textContent = msg || ''; }
 function showNames(){
   settleAll();   // a value still debounced belongs to the name that typed it
   $('app').classList.add('hide'); $('gate').classList.add('hide'); $('names').classList.remove('hide');
@@ -1280,11 +1404,12 @@ $('keyBtn').onclick = async ()=>{
   else { KEY = ''; $('gateMsg').textContent = js && js.error === 'BAD_KEY' ? 'המפתח לא מתאים.' : js && js.error === 'bad sup' ? 'הקישור לא מתאים לספק הזה.' : 'אין חיבור לשרת. נסה שוב.'; }
 };
 async function start(){
-  if (!SUP){ $('nosup').classList.remove('hide'); return; }   // no supplier in the link: nothing is read, nothing is sent
+  if (!SUP){ pickSupplier(); return; }   // or1.3: no supplier in the link: the only one this device opens, a picker, or "חסר ספק"; nothing is sent
   takeKeyFromHash();
-  KEY = rawLS(LS.key); AK = rawLS('fs_key').replace(/^"|"$/g, ''); if (!/^[\w\-]{8,100}$/.test(AK)) AK = '';
+  KEY = rawLS(LS.key); AK = adminKey();
   const c = loadLS(LS.cat, null); if (c && c.rows) setCatalog(c);     // draws at once, with its settings; the poll brings a newer catalog only when the stamp changed
-  if (!KEY){ showGate(''); return; }
+  if (!keyed()){ showGate(''); return; }   // or1.3: the admin key alone opens the page (as admin); a buyer key of another supplier is never read here
+  initSwitch();                            // the "ספק" switch, when this device opens 2+ suppliers (the list is read in the background)
   DEVICE = rawLS(LS.device); if (!/^[\w\-]{6,40}$/.test(DEVICE)){ DEVICE = 'p-' + uuid().replace(/-/g, '').slice(0, 12); try{ localStorage.setItem(LS.device, DEVICE); }catch(e){} }
   person = rawLS(LS.person); view = loadLS(LS.view, 'catalog'); if (!VIEWS.some(v => v[0] === view)) view = 'catalog';
   loadF(); validateF();
@@ -1300,6 +1425,7 @@ async function start(){
   const p = await ping();
   if (p && p.error === 'BAD_KEY'){ showGate('המפתח לא מתאים. פתח שוב את הקישור שקיבלת.'); return; }
   if (p && p.error === 'bad sup'){ showGate('הקישור לא מתאים לספק הזה. פתח שוב את הקישור שקיבלת.'); return; }
+  try{ localStorage.setItem(LS_LAST, SUP); }catch(e){}   // or1.3: the supplier this device opened last heads the picker
   if (p && p.ok && p.sheet === false) sheetMissing = true;
   if (person && people.length) showApp(); else { showNames(); }
   await load(true);

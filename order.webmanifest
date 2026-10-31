@@ -1,7 +1,7 @@
 {
   "name": "הזמנה מספק",
   "short_name": "הזמנה מספק",
-  "start_url": "./order.html?s=psi",
+  "start_url": "./order.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
