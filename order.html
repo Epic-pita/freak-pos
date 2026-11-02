@@ -106,6 +106,7 @@
   .pline{font-size:12px; color:var(--dim); margin-top:2px}
   /* or1.4 (B-BRN-8): the in-stock line under the pace block of a card — the brain's 'שורה לכרטיס', text only, wraps at 390 px */
   .rline{font-size:12px; color:var(--dim); margin-top:3px; line-height:1.35; overflow-wrap:anywhere}
+  .rline .rsep{white-space:nowrap}   /* review 02/11: " ·" stays on the line of the part before it (never a line that starts with ·) */
   .fct{font-size:12px; color:#9fd8ea; margin-top:2px}
   /* one "סינון" toggle holds the facet rows and the price range; the bar shows only the active chips; a list view; a picture zoom */
   #fpanel{border:1px solid var(--line); border-radius:12px; padding:2px 10px 6px; margin:6px 0; background:var(--surface)}
@@ -359,8 +360,10 @@ const BUILD = 'or1.4';
 // `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
 // no or1.3 function changes (cardHtml, rowHtml, drowHtml, paceHtml, badgeText, paceRow, renderMine, renderSummary are byte for byte):
 // paintRates() adds the line to the drawn cards after renderCatalog(). Collapsed list rows, my order and the summary get none. A backend
-// without rates (or the mock) draws exactly or1.3; the rates are cached on the phone with their stamp and dropped when the backend
-// answers without a rates block.
+// without rates (or the mock) draws exactly or1.3. Review 02/11: a line is drawn only when its rates row names the card's own our code
+// (a link changed after the rates push draws nothing, never another item's line); the rates live in memory only (never on the phone,
+// whose storage holds the catalogs and the unsent quantities: the first jo_load of a visit brings them from the backend's cache); each
+// " ·" separator is kept with the part before it when the line wraps.
 // or1.3 (B-CAT-10, Chris 31/10 "יש לי דף אחד לכל הספקים"): one page for every supplier on this device. order-suppliers.json (beside this
 // file; ids and Hebrew names only, never a key) lists the order pages in Chris's order; a device opens an entry when it holds the admin key
 // (fs_key, every order.html supplier) or that supplier's own buyer key (jo_key_<id>); Glassstaff's joint page only with its own, jo_key. With 2+ such
@@ -449,8 +452,8 @@ let loading = false, loadAgain = false, syncing = false, lastOk = 0, syncTimer =
 let firstLoadDone = false, netDown = false, cachedLines = false;   // this session's first jo_load; the ledger drawn from the phone's cache
 let sortSnap = null;             // Set of the item ids drawn "ordered first" at the last explicit draw of the catalog: a poll never re-sorts under the thumb
 let drawn = false, loadMarked = false;   // performance marks for the page test: the first jo_load sent, the first draw with rows
-let RATES = null;                // or1.4: { stamp, as_of, byId: Map(item_id → the in-stock line) } from jo_load `rates`; null = none (nothing drawn)
-const LS_RATES = 'jo_rates_' + SUP + '_' + MODE;
+let RATES = null;                // or1.4: { stamp, as_of, byId: Map(item_id → the in-stock line), codeOf: Map(item_id → its our code) } from jo_load `rates`, in memory only; null = none (nothing drawn)
+const LS_RATES = 'jo_rates_' + SUP + '_' + MODE;   // only to remove a copy an or1.4 test build left on the phone (review 02/11: rates are never stored)
 
 /* ================= UTIL ================= */
 const $ = id => document.getElementById(id);
@@ -757,23 +760,27 @@ function setCatalog(c){
 }
 const isOurs = r => !!r.our_code && r.pace !== 'none';
 /* ================= RATES (or1.4, B-BRN-8: the in-stock line of a card, display only) ================= */
-/** a jo_load `rates` block → RATES (rows read by the names in `head`; an item id once; a blank line is no line); a block without a stamp → none */
+/** a jo_load `rates` block → RATES (rows read by the names in `head`; an item id once; a blank line or a blank code is no line); a block
+ *  without a stamp, or without the item_id / code / line columns → none */
 function setRates(b){
   if (!b || !Array.isArray(b.head) || !Array.isArray(b.rows) || !b.stamp){ RATES = null; return false; }
-  const head = b.head.map(String), ii = head.indexOf('item_id'), li = head.indexOf('line');
-  if (ii < 0 || li < 0){ RATES = null; return false; }
-  const byId = new Map();
-  for (const r of b.rows){ if (!Array.isArray(r)) continue; const id = String(r[ii] == null ? '' : r[ii]), line = String(r[li] == null ? '' : r[li]).replace(/\s+/g, ' ').trim(); if (id && line && !byId.has(id)) byId.set(id, line.slice(0, 300)); }
-  RATES = { stamp: String(b.stamp), as_of: String(b.as_of || ''), byId };
+  const head = b.head.map(String), ii = head.indexOf('item_id'), ci = head.indexOf('code'), li = head.indexOf('line');
+  if (ii < 0 || ci < 0 || li < 0){ RATES = null; return false; }
+  const byId = new Map(), codeOf = new Map();
+  for (const r of b.rows){ if (!Array.isArray(r)) continue; const id = String(r[ii] == null ? '' : r[ii]), code = String(r[ci] == null ? '' : r[ci]).trim(), line = String(r[li] == null ? '' : r[li]).replace(/\s+/g, ' ').trim(); if (id && code && line && !byId.has(id)){ byId.set(id, line.slice(0, 300)); codeOf.set(id, code); } }
+  RATES = { stamp: String(b.stamp), as_of: String(b.as_of || ''), byId, codeOf };
   return true;
 }
+/** the line as nodes: the text verbatim (textContent = the line), each " ·" in a no-wrap span with the part before it */
+function rateNodes(d, line){ line.split(' · ').forEach((seg, i) => { if (i){ const s = document.createElement('span'); s.className = 'rsep'; s.textContent = ' ·'; d.append(s, ' '); } d.append(seg); }); }
 /** the line under the pace block of every drawn card (catalog cards and an opened list row) whose item has one; text only, never HTML */
 function paintRates(root){
   if (!RATES || !RATES.byId.size || !root) return;
   for (const el of root.querySelectorAll('.card[data-v]')){
     if (el.querySelector('.rline')) continue;
-    const line = RATES.byId.get(el.dataset.v), body = el.querySelector('.body'); if (!line || !body) continue;
-    const d = document.createElement('div'); d.className = 'rline'; d.dir = 'rtl'; d.textContent = line;
+    const id = el.dataset.v, line = RATES.byId.get(id), r = cat && cat.byId.get(id), body = el.querySelector('.body'); if (!line || !body || !r) continue;
+    if (String(r.our_code || '').trim() !== RATES.codeOf.get(id)) continue;   // review 02/11: the rates row of another code (the link changed after the push) draws nothing
+    const d = document.createElement('div'); d.className = 'rline'; d.dir = 'rtl'; rateNodes(d, line);
     const pace = body.querySelector(':scope > div > .pace'), anchor = pace ? pace.parentElement.nextSibling : body.querySelector(':scope > .outlbl');
     body.insertBefore(d, anchor || null);
   }
@@ -913,8 +920,8 @@ async function load(full){
         if (setCatalog(c)) saveLS(LS.cat, c); structural = true;
       }
       // or1.4: undefined = a backend without rates (drop any cached); null = ours is current; a block = new rates (an empty one: none)
-      if (js.rates === undefined){ if (RATES){ RATES = null; ratesChanged = true; try{ localStorage.removeItem(LS_RATES); }catch(e){} } }
-      else if (js.rates){ setRates(js.rates); ratesChanged = true; if (RATES) saveLS(LS_RATES, js.rates); else { try{ localStorage.removeItem(LS_RATES); }catch(e){} } }
+      if (js.rates === undefined){ if (RATES){ RATES = null; ratesChanged = true; } }
+      else if (js.rates){ setRates(js.rates); ratesChanged = true; }   // in memory only (review 02/11): never saveLS
       const pl = (js.people || []).map(p => ({ name: String(p.name||''), shop: String(p.shop||'') })).filter(p => p.name);
       if (JSON.stringify(pl) !== JSON.stringify(people)){ people = pl; structural = true; }
       const s = js.state || {}; const ns = { open: s.open !== false, closed_at: String(s.closed_at||''), closed_by: String(s.closed_by||'') };
@@ -1530,7 +1537,7 @@ async function start(){
   takeKeyFromHash();
   KEY = rawLS(LS.key); AK = adminKey();
   const c = loadLS(LS.cat, null); if (c && c.rows) setCatalog(c);     // draws at once, with its settings; the poll brings a newer catalog only when the stamp changed
-  setRates(loadLS(LS_RATES, null));                                   // or1.4: the rates this phone last had (its stamp goes with the first jo_load)
+  try{ localStorage.removeItem(LS_RATES); }catch(e){}                 // or1.4: rates are never stored (review 02/11); a test build's copy goes; the first jo_load sends no rates stamp
   if (!keyed()){ showGate(''); return; }   // or1.3: the admin key alone opens the page (as admin); a buyer key of another supplier is never read here
   initSwitch();                            // the "ספק" switch, when this device opens 2+ suppliers (the list is read in the background)
   DEVICE = rawLS(LS.device); if (!/^[\w\-]{6,40}$/.test(DEVICE)){ DEVICE = 'p-' + uuid().replace(/-/g, '').slice(0, 12); try{ localStorage.setItem(LS.device, DEVICE); }catch(e){} }
