@@ -45,6 +45,12 @@
   .banner{border-radius:12px; padding:10px 12px; font-size:14px; margin:10px 0}
   .banner.red{background:var(--red-soft); color:#f0b4ac; border:1px solid var(--red)}
   .banner.amber{background:#3a2c10; color:#ffd479; border:1px solid #5a4418}
+  .banner.gs{background:#12301f; color:#bfe8cc; border:1px solid #2f7a4a}
+  .banner.gs ol{margin:8px 0 4px; padding-inline-start:22px}
+  .banner.gs li{margin:6px 0}
+  .banner.gs a{color:#8fe0ff}
+  .banner.gs .s{margin-top:6px; font-size:13px}
+  .banner.gs button{min-height:44px; background:var(--green); color:#fff; border:0; padding:0 18px; font-weight:600}
   .banner.info{background:#10303a; color:#9fd8ea; border:1px solid #1f5a6a}
   .banner b{color:var(--ink)}
 
@@ -248,7 +254,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'jo1.5';
+const BUILD = 'jo1.6';
 // the two backends (JOINT deployments of the catalog's script); ?api=test is the TEST one (it writes only the TEST sheet),
 // ?api=local only on this PC (the mock server of the page test). Never a URL from the address bar. The page holds no key and no sheet id.
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbyNg6AVes7vWeIfTqCnkpoFIayLxdx4EoI7cVvIN2c_LgFEIfedMyhnFc00Z3-s-sPQUA/exec';
@@ -894,6 +900,7 @@ function renderSummary(){
   const S = summary(false), admin = who === 'admin', busy = queue.length > 0;
   let h = '<div class="acts"><button data-act="copy">העתק כטקסט</button><button data-act="csv">הורד CSV</button>' +
     (admin ? (state.open ? '<button class="danger" data-act="close" id="closeBtn"'+(busy ? ' disabled' : '')+'>סגור הזמנה</button>' : '<button class="ok" data-act="open" id="openBtn">פתח מחדש</button>') : '') + '</div>';
+  if (admin && !state.open && gsOrder().lines.length) h += gsBannerHtml();   // jo1.6 (B-CAT-16): the file for Glassstaff and what to do with it
   if (S.pending || busy) h += '<div class="banner amber">יש כמויות שעוד לא נשמרו: הן מופיעות כאן, אבל הטקסט וה-CSV כוללים רק מה שכבר נשמר' + (admin && busy && state.open ? '; אפשר לסגור כשהכול נשמר' : '') + '.</div>';
   if (!S.items.length){ $('view').innerHTML = h + '<div class="empty">' + (ready() ? 'עוד אין כמויות בהזמנה.' : firstLoadDone ? 'אין חיבור — הסיכום יופיע כשהחיבור יחזור.' : 'טוען…') + '</div>'; return; }
   if (mgrOk()) h += '<div class="banner info">לשנות כמות שמישהו אחר רשם: לחץ על השם שלו בפריט (✎). השינוי נשמר כשורה חדשה, והוא יראה אותו אצלו.</div>';
@@ -916,6 +923,39 @@ function csvText(){
   const S = summary(true), head = ['SKU', 'Barcode', 'Product', 'Total', ...S.names, 'Dealer €', 'Line €'];   // the ledger only: a value still saving is not exported
   const rows = S.items.map(x => [x.r.sku, x.r.barcode, x.r.title, x.total, ...S.names.map(n => { const q = x.qs.find(y => y.name === n); return q ? q.qty : ''; }), x.r.dealer_eur != null ? x.r.dealer_eur.toFixed(2) : '', x.lineEur != null ? x.lineEur.toFixed(2) : '']);
   return '﻿' + [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
+}
+/* ---------- jo1.6 (B-CAT-16): the file for Glassstaff's Fast Order page ----------
+   Their page (glassstaff.com/pages/fast-order, read 02/11/2026) takes a CSV or XLSX with at least a product-code column and a
+   quantity column, found by name: SKU / Part Number / Article Number, UPC / Barcode / EAN / GTIN, Quantity / Qty; whole numbers.
+   One line per item = the total of everyone (the ledger as the server has it). Items no longer in their catalog are left out
+   (they cannot be matched) and named in the banner. No BOM: the first header must read exactly "SKU". */
+const GS_FAST_ORDER = 'https://www.glassstaff.com/pages/fast-order';
+function gsOrder(){
+  const S = summary(true), out = [], left = [];   // not 'lines': that name is the ledger map
+  for (const x of S.items){ if (!(x.total > 0)) continue; if (x.r.orphan || !(x.r.sku || x.r.barcode)) left.push(x); else out.push(x); }
+  return { lines: out, left, units: out.reduce((a, x) => a + x.total, 0), eur: round2(out.reduce((a, x) => a + (x.lineEur || 0), 0)), soldOut: out.filter(x => !x.r.available).length };
+}
+function gsText(){
+  const rows = gsOrder().lines.map(x => [x.r.sku, x.r.barcode, Math.round(x.total), x.r.title]);
+  const code = v => { const s = String(v == null ? '' : v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };   // codes: quoting only, never the formula apostrophe (it would stop their match)
+  return [['SKU', 'EAN', 'Quantity', 'Product'], ...rows].map(r => [code(r[0]), code(r[1]), csvCell(r[2]), csvCell(r[3])].join(',')).join('\r\n') + '\r\n';
+}
+function gsBannerHtml(){
+  const G = gsOrder();
+  return '<div class="banner gs" id="gsBox"><b>ההזמנה סגורה. מה עכשיו:</b><ol>' +
+    '<li><button class="ok" data-act="gs" id="gsBtn">הורד קובץ ל-Glassstaff</button></li>' +
+    '<li>באתר של Glassstaff, מחובר לחשבון הסוחר שלך, פתח את <a href="'+GS_FAST_ORDER+'" target="_blank" rel="noopener">עמוד ההזמנה המהירה (Fast Order)</a> והעלה את הקובץ כמו שהוא, בלי לפתוח ולשמור אותו קודם.</li>' +
+    '<li>בדוק שבעגלה יש <b>'+G.lines.length+'</b> שורות ו-<b>'+num(G.units)+'</b> יחידות, ואז המשך לתשלום.</li></ol>' +
+    (G.soldOut ? '<div class="s">'+G.soldOut+' מהפריטים מסומנים אצלם כאזלו. בעגלה בדוק אם הם נכנסים כהזמנה מוקדמת או נופלים.</div>' : '') +
+    (G.left.length ? '<div class="s">לא בקובץ, כי הם כבר לא בקטלוג שלהם: ' + G.left.map(x => '<bdi>'+esc(x.r.title || x.r.sku || x.r.id)+'</bdi> ×'+num(x.total)).join(', ') + '</div>' : '') +
+    '</div>';
+}
+function downloadGs(){
+  if (state.open || who !== 'admin'){ toast('הקובץ ל-Glassstaff נוצר אחרי שסוגרים את ההזמנה', 'warn'); return; }
+  const blob = new Blob([gsText()], { type: 'text/csv;charset=utf-8' }), a = document.createElement('a'), d = new Date();
+  a.href = URL.createObjectURL(blob); a.download = 'glassstaff-fast-order-' + d.toISOString().slice(0, 10) + '.csv'; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  toast('הקובץ ירד. עכשיו מעלים אותו בעמוד Fast Order שלהם.', '', 4000);
 }
 function plainText(){
   const S = summary(true), now = new Date();
@@ -978,6 +1018,7 @@ document.addEventListener('click', ev => {
   if (t.dataset.step){ const host = t.closest('[data-v]'); if (!host) return; const v = host.dataset.v, inp = host.querySelector('input[data-qin]'); const cur = deb[v] ? deb[v].qty : (parseInt(inp && inp.value, 10) || 0); change(v, Math.max(0, cur + Number(t.dataset.step)), false); return; }   // jo1.3: a card, a line of my order or a summary row
   if (t.dataset.act === 'copy') return copyText();
   if (t.dataset.act === 'csv') return downloadCsv();
+  if (t.dataset.act === 'gs') return downloadGs();
   if (t.dataset.act === 'close') return setOpen(false);
   if (t.dataset.act === 'open') return setOpen(true);
   if (t.dataset.rm) return removeOrphan(t.dataset.rm);
