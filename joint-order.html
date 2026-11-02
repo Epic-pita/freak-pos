@@ -96,6 +96,7 @@
   .row .rs .d{font-family:var(--mono); color:var(--ink); font-weight:600}
   .row .pace{margin-top:0; padding:0 6px; font-size:11px}
   .row .stepper{margin-top:0; flex:none}
+  .row{flex-wrap:wrap}   /* jo1.5: the person's manager note takes its own line under the row */
   .row .stepper button{width:36px}
   .row .stepper input{width:52px}
   .row .stepper .st{display:none}
@@ -161,6 +162,22 @@
   .srow .h .e{font-family:var(--mono); color:var(--dim); font-size:13px; white-space:nowrap}
   .srow .s{font-size:12px; color:var(--dim); font-family:var(--mono)}
   .srow .chips{margin-top:4px}
+  /* jo1.5 (B-CAT-15): the manager's control on another person's chip in the summary, and what the person sees afterwards */
+  .qchip.mg{cursor:pointer; border-style:dashed; border-color:#8a6a2a; min-height:40px; display:inline-flex; align-items:center}
+  .qchip.mg.open{border-style:solid; border-color:#ffd479; background:#2a2010}
+  .qchip .pen{margin-inline-start:6px; color:#ffd479}
+  .qchip.chg{border-color:#c77f14}
+  .qchip .chgm{margin-inline-start:5px; color:#ffd479; font-size:11px}
+  .mgrbox{display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:6px; padding:6px 8px; border:1px solid #5a4418; border-radius:10px; background:#2a2010; flex-basis:100%}
+  .mgrbox .who{font-size:12.5px; color:#ffd479; flex-basis:100%}
+  .mgrbox button{min-width:44px; min-height:40px; font-size:20px; padding:0}
+  .mgrbox .n{font-family:var(--mono); font-size:17px; min-width:40px; text-align:center}
+  .mgrbox .rm0{font-size:13px; padding:0 12px; background:var(--red-soft); color:#f0b4ac; border:1px solid var(--red)}
+  .mgrbox .done{font-size:13px; padding:0 12px}
+  .mgrbox .st{font-size:12px; color:var(--dim)}
+  .mgrnote{flex-basis:100%; color:#ffd479; font-size:12.5px; margin-top:2px}
+  .mgline{padding:8px 0 2px; cursor:pointer; min-height:40px}
+  .ack{background:none; border:1px solid #8a6a2a; color:#ffd479; font-size:12.5px; padding:0 12px; min-height:40px; margin-inline-start:6px}
   .acts{display:flex; gap:8px; margin:12px 0; flex-wrap:wrap}
   .acts button{flex:1; min-width:120px; padding:11px 8px}
   .acts .go{background:var(--teal)}
@@ -231,7 +248,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'jo1.4';
+const BUILD = 'jo1.5';
 // the two backends (JOINT deployments of the catalog's script); ?api=test is the TEST one (it writes only the TEST sheet),
 // ?api=local only on this PC (the mock server of the page test). Never a URL from the address bar. The page holds no key and no sheet id.
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbyNg6AVes7vWeIfTqCnkpoFIayLxdx4EoI7cVvIN2c_LgFEIfedMyhnFc00Z3-s-sPQUA/exec';
@@ -280,12 +297,15 @@ let KEY = '', AK = '', who = '', DEVICE = '';
 let people = [];                 // [{name, shop}] active, sheet order
 let state = { open: true, closed_at: '', closed_by: '' };
 let cat = null;                  // { stamp, data_date, rows:[{...}], byId: Map }
-let lines = new Map();           // person\u0001variant_id → { qty, ord, shop, sku, fresh? } (the LAST ledger row of the pair wins; fresh = written by me after the last snapshot)
+let lines = new Map();           // person\u0001variant_id → { qty, ord, shop, sku, note, dev, at, fresh? } (the LAST ledger row of the pair wins; fresh = written by me after the last snapshot)
 let nLines = 0;                  // ledger data rows this page already has (= `since` of the next poll)
 let person = '';                 // my name (LS jo_person)
 let view = 'catalog', query = '', chip = 'all', shown = PAGE;
 let F = { sub:[], mat:[], opt:[], design:'', pace:[], pmin:'', pmax:'', sort:'ordered', open:false, list:false };   // jo1.2 filters beyond the group chip; kept on this device (LS.filters) with the chip; jo1.4: open = the סינון panel, list = the list view
 let showShort = false;           // jo1.4: the summary's "under the supplier's minimum" list is folded until tapped
+let mgrOpen = '';                // jo1.5: kOf(person, variant) whose manager control is open in the summary (admin only)
+const mdeb = {};                 // jo1.5: kOf(person, variant) → { t, qty, fire } the debounce of a manager change
+const MGR_RE = /^MGR\|(\d{1,5})\|(\d{1,5})$/;   // the note of a manager change: MGR|what the person had typed|the new quantity
 const expanded = new Set();      // variant ids with the description opened
 let mine = {};                   // variant_id → { qty, uuid } my value not yet confirmed by the server (optimistic layer)
 let st = {};                     // variant_id → '' | 'saving' | 'saved' | 'retry'
@@ -306,6 +326,7 @@ const ddmm = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso||''))
 const round2 = n => Math.round(Number(n) * 100) / 100;
 const truthy = v => v === true || /^true$/i.test(String(v));
 const kOf = (p, v) => p + '\u0001' + String(v);
+const sleepMs = ms => new Promise(r => setTimeout(r, ms));
 function toast(msg, cls='', ms=2600){
   const t=$('toast'); $('toastMsg').textContent=msg; t.className=cls; t.style.display='flex';
   clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', ms);
@@ -379,8 +400,12 @@ function qtysOf(v, confirmedOnly){
   const by = new Map();
   for (const [k, l] of lines){ const [p, id] = k.split('\u0001'); if (id === String(v) && l.qty > 0) by.set(p, l.qty); }
   if (person && !confirmedOnly && mine[v]){ if (mine[v].qty > 0) by.set(person, mine[v].qty); else by.delete(person); }
+  if (!confirmedOnly){   // jo1.5: the manager's changes still saving (queued, then debounced) show at once on this phone
+    for (const j of queue) if (j.mgr && j.variant_id === String(v) && j.person !== person){ if (j.qty > 0) by.set(j.person, j.qty); else by.delete(j.person); }
+    for (const k of Object.keys(mdeb)){ const [p, id] = k.split('\u0001'); if (id === String(v) && p !== person){ if (mdeb[k].qty > 0) by.set(p, mdeb[k].qty); else by.delete(p); } }
+  }
   const order = people.map(p => p.name); const names = [...by.keys()].sort((a, b) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
-  return names.map(n => ({ name: n, qty: by.get(n), me: n === person }));
+  return names.map(n => ({ name: n, qty: by.get(n), me: n === person, chg: MGR_RE.test((lines.get(kOf(n, v)) || {}).note || '') }));
 }
 function totalOf(v){ return qtysOf(v).reduce((s, x) => s + x.qty, 0); }
 function myQty(v){ if (mine[v]) return mine[v].qty; const l = lines.get(kOf(person, v)); return l ? l.qty : 0; }
@@ -399,9 +424,9 @@ function mergeLines(from, rows){
     const o = rowObj(LINE_HEADER, raw); const p = String(o.person||''), v = String(o.variant_id||''); if (!p || !v) return;
     const qty = Math.max(0, Math.floor(Number(o.qty) || 0)), ord = from + i + 2;   // sheet row number (header = 1)
     const cur = lines.get(kOf(p, v));
-    if (!cur || ord >= cur.ord){ if (!cur || cur.qty !== qty) changed.add(v); lines.set(kOf(p, v), { qty, ord, shop: String(o.shop||''), sku: String(o.sku||'') }); }
-    // my own write seen in the ledger: its uuid confirms the queued job (a reply that was lost on the way)
-    if (p === person && o.uuid){ const j = queue.find(x => x.uuid === o.uuid); if (j){ queue = queue.filter(x => x !== j); saveQ(); if (mine[v] && mine[v].uuid === j.uuid) delete mine[v]; markSaved(v); changed.add(v); } }
+    if (!cur || ord >= cur.ord){ const note = String(o.note||''); if (!cur || cur.qty !== qty || (cur.note||'') !== note) changed.add(v); lines.set(kOf(p, v), { qty, ord, shop: String(o.shop||''), sku: String(o.sku||''), note, dev: String(o.device||''), at: String(o.at||'') }); }
+    // a write of this phone seen in the ledger (mine, or a manager change for someone else): its uuid confirms the queued job (a reply lost on the way)
+    if (o.uuid){ const j = queue.find(x => x.uuid === o.uuid); if (j){ queue = queue.filter(x => x !== j); saveQ(); if (j.person === person){ if (mine[v] && mine[v].uuid === j.uuid) delete mine[v]; markSaved(v); } changed.add(v); } }
   });
   if (keep) for (const [k, l] of keep){ const cur = lines.get(k); if (!cur || l.ord >= cur.ord){ lines.set(k, l); changed.add(k.split('\u0001')[1]); } }
   nLines = from + rows.length; return changed;
@@ -417,6 +442,7 @@ function enqueue(v, qty){
   queue.push(job); mine[v] = { qty, uuid: job.uuid }; st[v] = 'saving'; saveQ(); paintCard(v); sync();
 }
 const HARD = /^(BAD_PERSON|BAD_ITEM|NOT_AVAILABLE|BAD_QTY|CLOSED|NO_SHEET|missing uuid|unknown action|bad )/;
+const MGR_MSG = { NO_SHEET:'הגיליון לא זמין', BAD_PERSON:'השם כבר לא ברשימה', NOT_AVAILABLE:'הפריט אזל אצל הספק — אפשר רק להסיר', CLOSED:'ההזמנה כבר נסגרה', BAD_ITEM:'הפריט כבר לא בקטלוג', BAD_QTY:'כמות לא תקינה' };
 const HARD_MSG = { BAD_PERSON:'השם שלך לא ברשימה — בחר שם מחדש', BAD_ITEM:'הפריט כבר לא בקטלוג — הכמות לא נשמרה', NOT_AVAILABLE:'הפריט אזל אצל הספק — הכמות לא נשמרה',
   BAD_QTY:'כמות לא תקינה — לא נשמרה', CLOSED:'ההזמנה כבר נסגרה — הכמות לא נשמרה', NO_SHEET:'הגיליון עוד לא הוכן — הכמות לא נשמרה' };
 function scheduleSync(ms){ clearTimeout(syncTimer); syncTimer = setTimeout(sync, Math.max(50, ms)); }
@@ -428,10 +454,22 @@ async function sync(){
       const job = queue[0], v = job.variant_id, my = job.person === person;
       if (job.notBefore > Date.now()){ scheduleSync(job.notBefore - Date.now()); break; }
       if (Date.now() - job.ts > DAY){ queue.shift(); saveQ(); dropJob(job, 'עבר יום בלי חיבור'); continue; }
+      if (job.mgr && !job.checked){   // jo1.5: read the ledger fresh first; the person may have changed the line since this screen last saw it
+        const t0 = lastOk; while (loading) await sleepMs(150); await load(false); while (loading) await sleepMs(150);
+        if (!queue.includes(job)) continue;
+        if (lastOk <= t0){ job.att = (job.att || 0) + 1; job.notBefore = Date.now() + (RETRY_MS[job.att - 1] != null ? RETRY_MS[job.att - 1] : RETRY_LATER_MS); saveQ(); paintCard(v); scheduleSync(job.notBefore - Date.now()); break; }
+        const l = lines.get(kOf(job.person, v));
+        if (l && l.ord > (job.base || 0) && !(l.dev === DEVICE && MGR_RE.test(l.note || ''))){
+          queue = queue.filter(j => j !== job); saveQ();
+          toast(job.person + ' שינה בינתיים את הכמות ל-' + num(l.qty) + ' — השינוי שלך לא נשלח. בדוק ונסה שוב.', 'warn', 7000);
+          paintCard(v); if (view === 'summary') render(); continue;
+        }
+        job.checked = true; job.note = 'MGR|' + typedQty(job.person, v) + '|' + job.qty; saveQ();
+      }
       job.att = (job.att || 0) + 1; saveQ();
       if (my){ st[v] = 'saving'; paintCard(v); }
       let js = null;
-      try{ js = await post({ action:'jo_set', uuid: job.uuid, person: job.person, variant_id: v, qty: job.qty, device: DEVICE }, 40000); }catch(e){ js = null; }
+      try{ js = await post(Object.assign({ action:'jo_set', uuid: job.uuid, person: job.person, variant_id: v, qty: job.qty, device: DEVICE }, job.note ? { note: job.note } : {}), 40000); }catch(e){ js = null; }
       if (!queue.includes(job)){   // a poll confirmed this job by its uuid while the request was out: the reply, late or lost, changes nothing
         if (js && js.ok) written(job, js); else if (my){ if (mine[v] && mine[v].uuid === job.uuid) delete mine[v]; markSaved(v); }
         continue;
@@ -441,7 +479,7 @@ async function sync(){
       if (js && HARD.test(String(js.error||''))){ queue = queue.filter(j => j !== job); saveQ(); dropJob(job, js.error); continue; }
       // no connection, Google slow, the sheet busy (BUSY_LOCK), the catalog being re-pushed (BUSY_CATALOG): again in 1, 2, 5, 15 s, then every 30 s, for a day
       job.notBefore = Date.now() + (RETRY_MS[job.att - 1] != null ? RETRY_MS[job.att - 1] : RETRY_LATER_MS); saveQ();
-      if (my){ st[v] = 'retry'; paintCard(v); }
+      if (my){ st[v] = 'retry'; paintCard(v); } else if (job.mgr) paintCard(v);
       scheduleSync(job.notBefore - Date.now()); break;
     }
   } finally { syncing = false; badge(); }
@@ -455,17 +493,19 @@ function markSaved(v){
 function written(job, js){
   const v = job.variant_id, qty = Number.isFinite(Number(js.qty)) ? Number(js.qty) : job.qty, ord = Number(js.row) || (nLines + 2);
   const k = kOf(job.person, v), cur = lines.get(k), r = cat && cat.byId.get(String(v));
-  if (!cur || ord >= cur.ord) lines.set(k, { qty, ord, shop: shopOf(job.person), sku: r ? r.sku : (cur ? cur.sku : ''), fresh: true });
+  if (!cur || ord >= cur.ord) lines.set(k, { qty, ord, shop: shopOf(job.person), sku: r ? r.sku : (cur ? cur.sku : ''), fresh: true, note: job.note || '', dev: DEVICE, at: new Date().toISOString() });
   saveMeta();   // the cached ledger carries the confirmed write, so a reopen before the first jo_load draws this value, not the last poll's
   if (mine[v] && mine[v].uuid === job.uuid) delete mine[v];
   if (job.person === person) markSaved(v); else paintCard(v);
-  renderTabs(); if (view === 'mine') render();
+  if (job.mgr) toast('השינוי ל' + job.person + ' נשמר: ' + num(qty), '', 1800);
+  renderTabs(); if (view === 'mine' || (job.mgr && view === 'summary' && !Object.keys(mdeb).length)) render();   // the per-person totals follow each saved manager change
 }
 function dropJob(job, err){
   const v = job.variant_id; if (mine[v] && mine[v].uuid === job.uuid) delete mine[v]; if (job.person === person) st[v] = '';
-  toast(HARD_MSG[err] || ('לא נשמר: ' + err), 'err', 5000);
+  toast(job.mgr ? 'השינוי ל' + job.person + ' לא נשמר: ' + (MGR_MSG[err] || err) : (HARD_MSG[err] || ('לא נשמר: ' + err)), 'err', 5000);
   if (err === 'CLOSED'){ state = { ...state, open:false }; render(); }
-  else if (err === 'BAD_PERSON'){ if (job.person === person){ person = ''; try{ localStorage.removeItem(LS.person); }catch(e){} showNames(); } }
+  else if (err === 'BAD_PERSON' && job.mgr){ paintCard(v); }
+  else if (err === 'BAD_PERSON'){ if (job.person === person && !job.mgr){ person = ''; try{ localStorage.removeItem(LS.person); }catch(e){} showNames(); } }
   else { paintCard(v); if (err === 'NOT_AVAILABLE' || err === 'BAD_ITEM') load(true); }
 }
 window.addEventListener('online', ()=>{ $('dot').classList.add('on'); sync(); load(false); });
@@ -512,7 +552,7 @@ async function load(full){
   }
 }
 /** people, state and the ledger as this phone has them, for the next open (drawn at once, before the first jo_load) */
-function saveMeta(){ saveLS(LS.meta, { people, state, nLines, lines: [...lines].map(([k, l]) => [k, { qty: l.qty, ord: l.ord, shop: l.shop, sku: l.sku || '' }]) }); }
+function saveMeta(){ saveLS(LS.meta, { people, state, nLines, lines: [...lines].map(([k, l]) => [k, { qty: l.qty, ord: l.ord, shop: l.shop, sku: l.sku || '', note: l.note || '', dev: l.dev || '', at: l.at || '' }]) }); }
 setInterval(()=>{ if (!document.hidden && KEY) load(false); }, POLL_MS);
 document.addEventListener('visibilitychange', ()=>{ if (!document.hidden && KEY){ load(false); sync(); } });
 window.addEventListener('focus', ()=>{ if (KEY && Date.now() - lastOk > 5000) load(false); });
@@ -661,7 +701,7 @@ function rowHtml(r){
   h += '<div class="rb" data-open="'+esc(r.id)+'"><div class="rt" dir="auto">'+esc(r.title)+'</div><div class="rs"><span class="d">'+esc(eur(r.dealer_eur))+'</span>' +
     (r.pace ? '<span class="pace '+esc(r.pace)+'">'+esc(PACE_HE[r.pace] || r.pace)+'</span>' : '') +
     '<span class="qchip tot" data-tot'+(total>0?'':' style="display:none"')+'>סה״כ <b>'+num(total)+'</b></span>' + (r.available ? '' : '<span class="outlbl" style="margin-top:0">אזל</span>') + '</div></div>';
-  h += stepperHtml(r) + '</div>';
+  h += stepperHtml(r) + mgrNoteHtml(r) + '</div>';
   return h;
 }
 /** the picture, large, over the page; a tap anywhere closes it */
@@ -688,12 +728,56 @@ function paceHtml(r){
 }
 /** the "הוזמן" chip's count after a poll (the list itself is not redrawn) */
 function paintCounts(){ const n = document.querySelector('.chip[data-chip="ordered"] .n'); if (n && cat) n.textContent = cat.rows.filter(r => totalOf(r.id) > 0).length; }
-function chipsHtml(r){
-  const qs = qtysOf(r.id), total = qs.reduce((s, x) => s + x.qty, 0);
-  let h = qs.map(x => '<span class="qchip'+(x.me?' me':'')+'">'+esc(x.name)+' · <b>'+num(x.qty)+'</b></span>').join('');
+function chipsHtml(r, host){
+  const qs = qtysOf(r.id), total = qs.reduce((s, x) => s + x.qty, 0), canMgr = host === 'srow' && mgrOk() && !r.orphan;
+  let h = qs.map(x => { const m = canMgr && !x.me && people.some(p => p.name === x.name), k = kOf(x.name, r.id);
+    return '<span class="qchip'+(x.me?' me':'')+(x.chg?' chg':'')+(m?' mg':'')+(m && mgrOpen === k?' open':'')+'"'+(m?' data-mgr="'+esc(x.name)+'" role="button" tabindex="0" aria-label="'+esc('לשנות את הכמות של ' + x.name)+'"':'')+(x.chg?' title="המנהל שינה את השורה הזאת"':'')+'>' +
+      esc(x.name)+' · <b>'+num(x.qty)+'</b>'+(x.chg?'<span class="chgm">מנהל</span>':'')+(m?'<span class="pen">✎</span>':'')+'</span>'; }).join('');
   if (total > 0) h += '<span class="qchip tot">סה״כ <b>'+num(total)+'</b></span>';
+  if (canMgr && mgrOpen && mgrOpen.split('\u0001')[1] === String(r.id)) h += mgrBoxHtml(r, mgrOpen.split('\u0001')[0]);
+  h += mgrNoteHtml(r);
   // jo1.3 (Chris 30/10): no amber "חסר N למינימום" on every card and line; the minimum stays in the card's grey meta line and in the summary's one list
   return h;
+}
+/** jo1.5: the manager may change other people's lines: this phone holds the admin key, the order is open, the ledger is known */
+function mgrOk(){ return who === 'admin' && state.open && ready(); }
+/** what the person themselves last typed on the pair (a manager row carries it as its 'from') */
+function typedQty(p, v){ const l = lines.get(kOf(p, v)); if (!l) return 0; const m = MGR_RE.exec(l.note || ''); return m ? Number(m[1]) : l.qty; }
+/** the pair's quantity as this phone shows it: a manager change being typed, then one queued, then the ledger */
+function mgrQty(p, v){ const k = kOf(p, v); if (mdeb[k]) return mdeb[k].qty; let q = null; for (const j of queue) if (j.mgr && j.person === p && j.variant_id === String(v)) q = j.qty; if (q !== null) return q; const l = lines.get(k); return l ? l.qty : 0; }
+function mgrBoxHtml(r, p){
+  const k = kOf(p, r.id), q = mgrQty(p, r.id), pend = !!mdeb[k] || queue.some(j => j.mgr && j.person === p && j.variant_id === String(r.id));
+  const retry = queue.some(j => j.mgr && j.person === p && j.variant_id === String(r.id) && j.att > 0 && j.notBefore > Date.now());
+  return '<div class="mgrbox" data-mbox="'+esc(r.id)+'" data-mp="'+esc(p)+'"><span class="who">'+esc('הכמות של ' + p)+' · הוקלד '+num(typedQty(p, r.id))+(r.available ? '' : ' · אזל אצל הספק: אפשר רק להסיר')+'</span>' +
+    (r.available ? '<button data-mstep="-1" aria-label="פחות">−</button><span class="n">'+num(q)+'</span><button data-mstep="1" aria-label="יותר">+</button>' : '<span class="n">'+num(q)+'</span>') +
+    '<button class="rm0" data-mset="0">הסר</button><button class="done" data-mclose="1">סגור</button><span class="st">'+(retry ? 'עוד לא נשמר, מנסה שוב' : pend ? 'שומר…' : '')+'</span></div>';
+}
+/** the line of mine the manager changed last (until I change it myself): from what I typed to what it is now */
+function mgrNote(v){ if (!person || mine[v]) return null; const l = lines.get(kOf(person, v)), m = l && MGR_RE.exec(l.note || ''); return m ? { from: Number(m[1]), to: l.qty, at: l.at } : null; }
+function mgrWords(n){ return 'מ-' + num(n.from) + ' ל-' + num(n.to) + (n.to === 0 ? ' (הוסר)' : ''); }   // words, not an arrow: a right-to-left line never shows it backwards
+function mgrNoteHtml(r){ const n = mgrNote(r.id); return n ? '<span class="mgrnote">המנהל שינה את הכמות שלך '+mgrWords(n)+(n.at ? ' · '+esc(ddmm(n.at))+' '+esc(hhmm(n.at)) : '')+(state.open && ready() ? ' <button class="ack" data-ack="'+esc(r.id)+'">ראיתי</button>' : '')+'</span>' : ''; }
+/** the person confirms they saw the manager's change: their own row with the same quantity (the note and the "מנהל" mark go) */
+function ackMgr(v){ const n = mgrNote(v); if (!n || !person || !state.open || !ready()) return; enqueue(String(v), n.to); render(); }
+/** the admin changes another person's quantity: shown at once, ONE jo_set 700 ms after the last tap (a NEW ledger row for that person, noted MGR|typed|new) */
+function changeFor(p, v, qty){
+  const r = cat && cat.byId.get(String(v));
+  if (!r || !mgrOk() || !p || p === person || !people.some(x => x.name === p)) return;
+  if (!(Number.isInteger(qty) && qty >= 0 && qty <= MAX_QTY)) return;
+  if (qty > 0 && !r.available){ toast('הפריט אזל אצל הספק — אפשר רק להסיר', 'err'); return; }
+  const k = kOf(p, v); if (mdeb[k]) clearTimeout(mdeb[k].t);
+  const fire = ()=>{ delete mdeb[k]; const l = lines.get(k);
+    if (l && l.qty === qty){   // back to what the ledger holds: drop a manager job not yet sent; only one already on its way needs this value written after it
+      queue = queue.filter(j => !(j.mgr && j.person === p && j.variant_id === String(v) && !(j.att > 0))); saveQ();
+      if (!queue.some(j => j.mgr && j.person === p && j.variant_id === String(v))){ paintCard(v); return; }
+    }
+    enqueueFor(p, v, qty); };
+  mdeb[k] = { qty, fire, t: setTimeout(fire, DEBOUNCE_MS) };
+  paintCard(v); renderTabs();
+}
+function enqueueFor(p, v, qty){
+  queue = queue.filter(j => !(j.mgr && j.variant_id === String(v) && j.person === p && !(j.att > 0)));   // a manager job not yet tried is replaced by the newer value
+  const job = { uuid: uuid(), ts: Date.now(), person: p, variant_id: String(v), qty, att: 0, notBefore: 0, mgr: true, note: 'MGR|' + typedQty(p, v) + '|' + qty, base: (lines.get(kOf(p, v)) || {}).ord || 0 };
+  queue.push(job); saveQ(); paintCard(v); sync();
 }
 /** the steppers open only once this session knows the ledger: the first jo_load answered, or the first load failed (offline) and the phone's cached ledger is drawn */
 function ready(){ return lastOk > 0 || (firstLoadDone && cachedLines); }
@@ -731,7 +815,7 @@ function paintCard(v){
   // jo1.3: the same item may be drawn as a catalog card, a line of my order and a summary row, each with its chips and my stepper
   for (const el of document.querySelectorAll('[data-v="' + CSS.escape(String(v)) + '"]')){
     if (el.classList.contains('card')) el.classList.toggle('has', total > 0);
-    const c = el.querySelector('.chips'); if (c) c.innerHTML = chipsHtml(r);
+    const c = el.querySelector('.chips'); if (c) c.innerHTML = chipsHtml(r, el.classList.contains('srow') ? 'srow' : '');
     const stp = el.querySelector('.stepper'), inp = el.querySelector('input[data-qin]');
     if (stp){ const s = st[r.id] || '', lab = stp.querySelector('.st'); lab.className = 'st ' + s; lab.textContent = stLabel(r.id); }
     if (inp && document.activeElement !== inp && !deb[r.id]) inp.value = my;
@@ -747,12 +831,12 @@ function change(v, qty, atOnce){
   if (deb[v]) clearTimeout(deb[v].t);
   mine[v] = { qty, uuid: '' };   // optimistic at once (chips, totals); the uuid comes with the job, so an older job's reply never clears a newer value
   const inp = document.querySelector('input[data-qin="' + CSS.escape(String(v)) + '"]'); if (inp && document.activeElement !== inp) inp.value = qty;
-  const fire = ()=>{ delete deb[v]; const l = lines.get(kOf(person, v)); if (!queue.some(j => j.variant_id === v) && l && l.qty === qty){ delete mine[v]; st[v] = ''; paintCard(v); return; } if (!queue.some(j => j.variant_id === v) && !l && qty === 0){ delete mine[v]; st[v] = ''; paintCard(v); return; } enqueue(v, qty); };
+  const fire = ()=>{ delete deb[v]; const l = lines.get(kOf(person, v)); if (!queue.some(j => j.variant_id === v) && l && l.qty === qty && !MGR_RE.test(l.note || '')){ delete mine[v]; st[v] = ''; paintCard(v); return; } if (!queue.some(j => j.variant_id === v) && !l && qty === 0){ delete mine[v]; st[v] = ''; paintCard(v); return; } enqueue(v, qty); };
   deb[v] = { qty, fire, t: setTimeout(fire, atOnce ? 0 : DEBOUNCE_MS) };
   st[v] = 'saving'; paintCard(v);
 }
 /** every pending debounce settles now, into the localStorage queue: the page is hidden, left or reloaded, or the name changes */
-function settleAll(){ for (const v of Object.keys(deb)){ const d = deb[v]; clearTimeout(d.t); d.fire(); } }
+function settleAll(){ for (const v of Object.keys(deb)){ const d = deb[v]; clearTimeout(d.t); d.fire(); } for (const k of Object.keys(mdeb)){ const d = mdeb[k]; clearTimeout(d.t); d.fire(); } }
 document.addEventListener('visibilitychange', ()=>{ if (document.hidden) settleAll(); });
 window.addEventListener('pagehide', settleAll);
 window.addEventListener('beforeunload', settleAll);
@@ -771,7 +855,10 @@ function myLines(){
 function removeOrphan(v){ if (!person || !state.open || !ready()) return; mine[v] = { qty: 0, uuid: '' }; enqueue(v, 0); render(); }
 function renderMine(){
   const ls = myLines(), units = ls.reduce((s, x) => s + x.qty, 0), total = round2(ls.reduce((s, x) => s + (x.eur || 0), 0));
-  $('view').innerHTML = (ls.length ? '<div class="tot-box"><b>'+ls.length+'</b> שורות · <b>'+num(units)+'</b> יחידות · <b>'+esc(eur(total))+'</b> במחיר סוחר</div>' +
+  const chg = person ? [...lines.keys()].filter(k => k.split('\u0001')[0] === person).map(k => ({ v: k.split('\u0001')[1], n: mgrNote(k.split('\u0001')[1]) })).filter(x => x.n) : [];
+  const mg = chg.length ? '<div class="banner amber"><b>המנהל שינה '+(chg.length === 1 ? 'שורה אחת' : chg.length + ' שורות')+' שלך:</b>' + chg.map(x => { const r = cat && cat.byId.get(x.v);
+    return '<div class="mgline" data-go="'+esc(x.v)+'"><bdi>'+esc(r ? r.title : x.v)+'</bdi>: '+mgrWords(x.n)+'</div>'; }).join('') + (state.open && ready() ? '<button class="ack" data-ack="*">ראיתי את כל השינויים</button>' : '') + '</div>' : '';
+  $('view').innerHTML = mg + (ls.length ? '<div class="tot-box"><b>'+ls.length+'</b> שורות · <b>'+num(units)+'</b> יחידות · <b>'+esc(eur(total))+'</b> במחיר סוחר</div>' +
     ls.map(x => x.r.orphan
       ? '<div class="line"><div class="t"><div dir="auto">'+esc(x.r.title)+'</div><div class="s">הפריט ירד מהקטלוג — הכמות עדיין רשומה</div></div><div class="q">×'+num(x.qty)+'</div>' + (state.open && ready() ? '<button class="rm" data-rm="'+esc(x.r.id)+'">הסר</button>' : '') + '</div>'
       : '<div class="line" data-v="'+esc(x.r.id)+'" data-go="'+esc(x.r.id)+'"><div class="t"><div dir="auto">'+esc(x.r.title)+'</div><div class="s">'+esc(x.r.sku)+'</div>'+paceHtml(x.r)+'</div><div class="q">×'+num(x.qty)+'</div><div class="e">'+esc(eur(x.eur))+'</div>'+stepperHtml(x.r)+'</div>').join('')   // jo1.3: the pace and my stepper on every line
@@ -788,7 +875,7 @@ function summary(confirmedOnly){
   let pending = false;
   const add = r => {
     const qs = qtysOf(r.id, confirmedOnly); if (!qs.length) return;
-    if (!confirmedOnly && mine[r.id]) pending = true;
+    if (!confirmedOnly && (mine[r.id] || queue.some(j => j.mgr && j.variant_id === String(r.id)) || Object.keys(mdeb).some(k => k.split('\u0001')[1] === String(r.id)))) pending = true;
     const total = qs.reduce((s, x) => s + x.qty, 0), lineEur = r.dealer_eur != null ? round2(total * r.dealer_eur) : null;
     items.push({ r, qs, total, lineEur });
     if (r.moq && total < r.moq) short.push({ r, total });
@@ -807,11 +894,12 @@ function renderSummary(){
   const S = summary(false), admin = who === 'admin', busy = queue.length > 0;
   let h = '<div class="acts"><button data-act="copy">העתק כטקסט</button><button data-act="csv">הורד CSV</button>' +
     (admin ? (state.open ? '<button class="danger" data-act="close" id="closeBtn"'+(busy ? ' disabled' : '')+'>סגור הזמנה</button>' : '<button class="ok" data-act="open" id="openBtn">פתח מחדש</button>') : '') + '</div>';
-  if (S.pending || busy) h += '<div class="banner amber">יש כמויות שלך שעוד לא נשמרו: הן מופיעות כאן, אבל הטקסט וה-CSV כוללים רק מה שכבר נשמר' + (admin && busy && state.open ? '; אפשר לסגור כשהכול נשמר' : '') + '.</div>';
+  if (S.pending || busy) h += '<div class="banner amber">יש כמויות שעוד לא נשמרו: הן מופיעות כאן, אבל הטקסט וה-CSV כוללים רק מה שכבר נשמר' + (admin && busy && state.open ? '; אפשר לסגור כשהכול נשמר' : '') + '.</div>';
   if (!S.items.length){ $('view').innerHTML = h + '<div class="empty">' + (ready() ? 'עוד אין כמויות בהזמנה.' : firstLoadDone ? 'אין חיבור — הסיכום יופיע כשהחיבור יחזור.' : 'טוען…') + '</div>'; return; }
+  if (mgrOk()) h += '<div class="banner info">לשנות כמות שמישהו אחר רשם: לחץ על השם שלו בפריט (✎). השינוי נשמר כשורה חדשה, והוא יראה אותו אצלו.</div>';
   h += '<div class="tot-box">סה״כ להזמנה: <b>'+S.grand.lines+'</b> פריטים · <b>'+num(S.grand.units)+'</b> יחידות · <b>'+esc(eur(S.grand.eur))+'</b> במחיר סוחר</div>';
   h += '<h2>לפי פריט</h2>' + S.items.map(x => '<div class="srow" data-v="'+esc(x.r.id)+'"'+(x.r.orphan ? '' : ' data-go="'+esc(x.r.id)+'"')+'><div class="h"><div class="t" dir="auto">'+esc(x.r.title)+'</div><div class="q">×'+num(x.total)+'</div><div class="e">'+esc(eur(x.lineEur))+'</div></div>' +
-    '<div class="s">'+esc(x.r.sku)+(x.r.moq ? ' · מינימום '+num(x.r.moq) : '')+(x.r.orphan || x.r.available ? '' : ' · אזל אצל הספק')+'</div>'+paceHtml(x.r)+'<div class="chips">'+chipsHtml(x.r)+'</div>'+(x.r.orphan ? '' : stepperHtml(x.r))+'</div>').join('');   // jo1.3: the pace and my stepper per item
+    '<div class="s">'+esc(x.r.sku)+(x.r.moq ? ' · מינימום '+num(x.r.moq) : '')+(x.r.orphan || x.r.available ? '' : ' · אזל אצל הספק')+'</div>'+paceHtml(x.r)+'<div class="chips">'+chipsHtml(x.r, 'srow')+'</div>'+(x.r.orphan ? '' : stepperHtml(x.r))+'</div>').join('');   // jo1.3: the pace and my stepper per item
   h += '<h2>לפי אדם</h2>' + S.perPerson.map(p => '<div class="srow"><div class="h"><div class="t">'+esc(p.name)+(p.shop ? ' <span class="s">'+esc(p.shop)+'</span>' : '')+'</div><div class="q">'+p.lines+' שורות · '+num(p.units)+' יח׳</div><div class="e">'+esc(eur(p.eur))+'</div></div></div>').join('');
   h += '<h2>לפי חנות</h2>' + S.perShop.map(s => '<div class="srow"><div class="h"><div class="t">'+esc(s.shop)+'</div><div class="q">'+s.lines+' שורות · '+num(s.units)+' יח׳</div><div class="e">'+esc(eur(s.eur))+'</div></div></div>').join('');
   // jo1.4 (Chris: fewer minimum reminders): one folded line with the count; the list opens on a tap
@@ -850,6 +938,7 @@ function downloadCsv(){
   setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
 }
 async function setOpen(open){
+  if (!open){ settleAll(); if (queue.length || Object.keys(mdeb).length){ toast('יש כמויות שעוד נשמרות — אפשר לסגור כשהן נשמרו (בעוד רגע)', 'warn', 4000); sync(); return; } }
   const msg = open ? 'לפתוח מחדש את ההזמנה? כולם יוכלו שוב לשנות כמויות.' : 'לסגור את ההזמנה? אחרי הסגירה אי אפשר לשנות כמויות (אפשר לפתוח מחדש).';
   if (!confirm(msg)) return;
   const btn = $(open ? 'openBtn' : 'closeBtn'); if (btn) btn.disabled = true;
@@ -869,7 +958,11 @@ function goCard(v){
 document.addEventListener('click', ev => {
   const img = ev.target.closest('img.pic, img.thumb');   // jo1.4: a tap on a picture shows it large
   if (img){ const host = img.closest('[data-v]'); zoom(host && cat ? cat.byId.get(host.dataset.v) : null); return; }
-  const t = ev.target.closest('button, .chip, .tab, [data-go], [data-open], [data-tog]'); if (!t) return;
+  const t = ev.target.closest('button, .chip, .tab, [data-mgr], [data-go], [data-open], [data-tog]'); if (!t) return;
+  if (t.dataset.mgr !== undefined){ const host = t.closest('[data-v]'); if (!host || !mgrOk()) return; const v = host.dataset.v, k = kOf(t.dataset.mgr, v), old = mgrOpen; mgrOpen = old === k ? '' : k; if (old && old !== k) paintCard(old.split('\u0001')[1]); paintCard(v); return; }
+  if (t.dataset.mstep || t.dataset.mset !== undefined || t.dataset.mclose){ const box = t.closest('.mgrbox'); if (!box) return; const v = box.dataset.mbox, p = box.dataset.mp;
+    if (t.dataset.mclose){ mgrOpen = ''; paintCard(v); return; }
+    changeFor(p, v, t.dataset.mset !== undefined ? Number(t.dataset.mset) : Math.max(0, mgrQty(p, v) + Number(t.dataset.mstep))); return; }
   if (t.dataset.tog === 'filters'){ F.open = !F.open; saveF(); renderCatalog(); return; }
   if (t.dataset.tog === 'list'){ F.list = !F.list; saveF(); renderCatalog(); return; }
   if (t.dataset.tog === 'short'){ showShort = !showShort; renderSummary(); return; }
@@ -888,7 +981,8 @@ document.addEventListener('click', ev => {
   if (t.dataset.act === 'close') return setOpen(false);
   if (t.dataset.act === 'open') return setOpen(true);
   if (t.dataset.rm) return removeOrphan(t.dataset.rm);
-  if (t.dataset.go){ if (ev.target.closest('.stepper')) return; return goCard(t.dataset.go); }   // a tap in a line's stepper edits there, it never jumps to the card
+  if (t.dataset.ack){ if (t.dataset.ack === '*'){ for (const k of [...lines.keys()]) if (k.split('\u0001')[0] === person && mgrNote(k.split('\u0001')[1])) ackMgr(k.split('\u0001')[1]); } else ackMgr(t.dataset.ack); return; }
+  if (t.dataset.go){ if (ev.target.closest('.stepper, .mgrbox')) return; return goCard(t.dataset.go); }   // a tap in a line's stepper edits there, it never jumps to the card
 });
 document.addEventListener('input', ev => {
   const inp = ev.target; if (!inp.dataset || !inp.dataset.qin) return;
@@ -910,6 +1004,7 @@ $('meBtn').onclick = () => showNames();
 /* ================= START ================= */
 function showGate(msg){ KEY = ''; $('app').classList.add('hide'); $('names').classList.add('hide'); $('gate').classList.remove('hide'); $('gateMsg').textContent = msg || ''; }
 function showNames(){
+  mgrOpen = '';
   settleAll();   // a value still debounced belongs to the name that typed it
   $('app').classList.add('hide'); $('gate').classList.add('hide'); $('names').classList.remove('hide');
   $('nameList').innerHTML = people.length ? people.map(p => '<button class="pbtn" data-name="'+esc(p.name)+'">אני '+esc(p.name)+(p.shop ? '<span class="shop">'+esc(p.shop)+'</span>' : '')+'</button>').join('') : '';
@@ -939,7 +1034,7 @@ async function start(){
   if (m && m.people){
     people = m.people; state = m.state || state;
     if (Array.isArray(m.lines)){   // the ledger as this phone last saw it: drawn at once (steppers closed until the first jo_load answers), then replaced
-      lines = new Map(m.lines.filter(x => Array.isArray(x) && x[0] && x[1]).map(([k, l]) => [k, { qty: Math.max(0, Number(l.qty) || 0), ord: Number(l.ord) || 0, shop: String(l.shop||''), sku: String(l.sku||'') }]));
+      lines = new Map(m.lines.filter(x => Array.isArray(x) && x[0] && x[1]).map(([k, l]) => [k, { qty: Math.max(0, Number(l.qty) || 0), ord: Number(l.ord) || 0, shop: String(l.shop||''), sku: String(l.sku||''), note: String(l.note||''), dev: String(l.dev||''), at: String(l.at||'') }]));
       nLines = Math.max(0, Number(m.nLines) || 0); cachedLines = true;
     }
   }
