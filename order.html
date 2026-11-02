@@ -104,6 +104,8 @@
   .pace.early{border-color:var(--teal); color:#c9e6f2}
   .pace.unreceived,.pace.unclear{color:#ffd479}
   .pline{font-size:12px; color:var(--dim); margin-top:2px}
+  /* or1.4 (B-BRN-8): the in-stock line under the pace block of a card — the brain's 'שורה לכרטיס', text only, wraps at 390 px */
+  .rline{font-size:12px; color:var(--dim); margin-top:3px; line-height:1.35; overflow-wrap:anywhere}
   .fct{font-size:12px; color:#9fd8ea; margin-top:2px}
   /* one "סינון" toggle holds the facet rows and the price range; the bar shows only the active chips; a list view; a picture zoom */
   #fpanel{border:1px solid var(--line); border-radius:12px; padding:2px 10px 6px; margin:6px 0; background:var(--surface)}
@@ -351,7 +353,14 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.3';
+const BUILD = 'or1.4';
+// or1.4 (B-BRN-8, part 2): every card of an item we carry gets ONE more grey line under its pace block — the brain's in-stock line
+// ("נמכר ~N בחודש כשיש במלאי · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …"), copied verbatim from the rates table (jo_load
+// `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
+// no or1.3 function changes (cardHtml, rowHtml, drowHtml, paceHtml, badgeText, paceRow, renderMine, renderSummary are byte for byte):
+// paintRates() adds the line to the drawn cards after renderCatalog(). Collapsed list rows, my order and the summary get none. A backend
+// without rates (or the mock) draws exactly or1.3; the rates are cached on the phone with their stamp and dropped when the backend
+// answers without a rates block.
 // or1.3 (B-CAT-10, Chris 31/10 "יש לי דף אחד לכל הספקים"): one page for every supplier on this device. order-suppliers.json (beside this
 // file; ids and Hebrew names only, never a key) lists the order pages in Chris's order; a device opens an entry when it holds the admin key
 // (fs_key, every order.html supplier) or that supplier's own buyer key (jo_key_<id>); Glassstaff's joint page only with its own, jo_key. With 2+ such
@@ -440,6 +449,8 @@ let loading = false, loadAgain = false, syncing = false, lastOk = 0, syncTimer =
 let firstLoadDone = false, netDown = false, cachedLines = false;   // this session's first jo_load; the ledger drawn from the phone's cache
 let sortSnap = null;             // Set of the item ids drawn "ordered first" at the last explicit draw of the catalog: a poll never re-sorts under the thumb
 let drawn = false, loadMarked = false;   // performance marks for the page test: the first jo_load sent, the first draw with rows
+let RATES = null;                // or1.4: { stamp, as_of, byId: Map(item_id → the in-stock line) } from jo_load `rates`; null = none (nothing drawn)
+const LS_RATES = 'jo_rates_' + SUP + '_' + MODE;
 
 /* ================= UTIL ================= */
 const $ = id => document.getElementById(id);
@@ -745,6 +756,28 @@ function setCatalog(c){
   return true;
 }
 const isOurs = r => !!r.our_code && r.pace !== 'none';
+/* ================= RATES (or1.4, B-BRN-8: the in-stock line of a card, display only) ================= */
+/** a jo_load `rates` block → RATES (rows read by the names in `head`; an item id once; a blank line is no line); a block without a stamp → none */
+function setRates(b){
+  if (!b || !Array.isArray(b.head) || !Array.isArray(b.rows) || !b.stamp){ RATES = null; return false; }
+  const head = b.head.map(String), ii = head.indexOf('item_id'), li = head.indexOf('line');
+  if (ii < 0 || li < 0){ RATES = null; return false; }
+  const byId = new Map();
+  for (const r of b.rows){ if (!Array.isArray(r)) continue; const id = String(r[ii] == null ? '' : r[ii]), line = String(r[li] == null ? '' : r[li]).replace(/\s+/g, ' ').trim(); if (id && line && !byId.has(id)) byId.set(id, line.slice(0, 300)); }
+  RATES = { stamp: String(b.stamp), as_of: String(b.as_of || ''), byId };
+  return true;
+}
+/** the line under the pace block of every drawn card (catalog cards and an opened list row) whose item has one; text only, never HTML */
+function paintRates(root){
+  if (!RATES || !RATES.byId.size || !root) return;
+  for (const el of root.querySelectorAll('.card[data-v]')){
+    if (el.querySelector('.rline')) continue;
+    const line = RATES.byId.get(el.dataset.v), body = el.querySelector('.body'); if (!line || !body) continue;
+    const d = document.createElement('div'); d.className = 'rline'; d.dir = 'rtl'; d.textContent = line;
+    const pace = body.querySelector(':scope > div > .pace'), anchor = pace ? pace.parentElement.nextSibling : body.querySelector(':scope > .outlbl');
+    body.insertBefore(d, anchor || null);
+  }
+}
 /** the group chip of a row: a listed group id, else "other" */
 function groupOf(r){ return GH[r.group] ? r.group : 'other'; }
 /** the list view is the device's choice; before one was made, a long catalog (> 1,000 rows) opens as a list */
@@ -868,16 +901,20 @@ async function load(full){
   if (loading){ loadAgain = true; return; }
   loading = true; $('refreshBtn').disabled = true;
   let structural = !firstLoadDone, changedV = null;   // structural = the whole view is redrawn; otherwise only the cards whose quantities changed are repainted
+  let ratesChanged = false;   // or1.4: new rates (or none any more): the lines are redrawn on the cards as they are, no re-render
   try{
     if (full) nLines = 0;
     if (!loadMarked){ loadMarked = true; mark('jo-load-start'); }
-    const js = await post({ action:'jo_load', since: nLines, catStamp: cat ? cat.stamp : '' }, 60000);
+    const js = await post({ action:'jo_load', since: nLines, catStamp: cat ? cat.stamp : '', rates: 1, ratesStamp: RATES ? RATES.stamp : '' }, 60000);
     if (js && js.ok){
       sheetMissing = false; netDown = false;
       if (js.catalog && js.catalog.rows){   // the settings come with the catalog (same stamp semantics); both are cached together
         const c = { stamp: js.catalog.stamp, data_date: js.catalog.data_date, head: js.catalog.head, rows: js.catalog.rows, settings: js.settings !== undefined ? js.settings : (js.catalog.settings || null) };
         if (setCatalog(c)) saveLS(LS.cat, c); structural = true;
       }
+      // or1.4: undefined = a backend without rates (drop any cached); null = ours is current; a block = new rates (an empty one: none)
+      if (js.rates === undefined){ if (RATES){ RATES = null; ratesChanged = true; try{ localStorage.removeItem(LS_RATES); }catch(e){} } }
+      else if (js.rates){ setRates(js.rates); ratesChanged = true; if (RATES) saveLS(LS_RATES, js.rates); else { try{ localStorage.removeItem(LS_RATES); }catch(e){} } }
       const pl = (js.people || []).map(p => ({ name: String(p.name||''), shop: String(p.shop||'') })).filter(p => p.name);
       if (JSON.stringify(pl) !== JSON.stringify(people)){ people = pl; structural = true; }
       const s = js.state || {}; const ns = { open: s.open !== false, closed_at: String(s.closed_at||''), closed_by: String(s.closed_by||'') };
@@ -902,6 +939,7 @@ async function load(full){
       else render();
     }
     else { renderTop(); renderBanners(); }
+    if (ratesChanged && !structural){ for (const e of document.querySelectorAll('#view .rline')) e.remove(); if (view === 'catalog') paintRates($('view')); renderTop(); }
     if (structural && !$('names').classList.contains('hide')) showNames();
     if (loadAgain){ loadAgain = false; setTimeout(()=>load(false), 300); }
   }
@@ -917,7 +955,7 @@ function renderTop(){
   document.title = S.title_he; $('title').textContent = S.title_he; $('gateTitle').textContent = S.title_he; swLabel();
   $('ver').textContent = BUILD + (MODE !== 'live' ? ' · ' + MODE : '');
   $('meName').textContent = person || '';
-  $('upd').innerHTML = (lastOk ? 'עודכן ' + esc(hhmm(lastOk)) : 'לא עודכן') + (cat && cat.data_date ? '<br>' + esc(S.date_he) + esc(ddmm(cat.data_date)) : '');
+  $('upd').innerHTML = (lastOk ? 'עודכן ' + esc(hhmm(lastOk)) : 'לא עודכן') + (cat && cat.data_date ? '<br>' + esc(S.date_he) + esc(ddmm(cat.data_date)) : '') + (RATES && RATES.byId.size && RATES.as_of ? '<br>קצב מכירה ' + esc(ddmm(RATES.as_of)) : '');
   $('upd').classList.toggle('stale', !!lastOk && Date.now() - lastOk > 3 * POLL_MS);
   $('pnote').textContent = S.price.dealer_note_he ? S.price.dealer_he + ': ' + S.price.dealer_note_he : '';
   $('foot').textContent = 'גרסה ' + BUILD + (MODE !== 'live' ? ' · ' + (MODE === 'local' ? 'בדיקה מקומית' : 'שרת ניסיון') : '') + (who ? ' · ' + (ROLE_HE[who] || who) : '');
@@ -1095,6 +1133,7 @@ function renderCatalog(){
     const gmore = fold.size ? '<button class="gmore" data-gall="1">עוד '+num(folded.length)+' קבוצות ▾</button>' : gAll && chips.length - 4 > G_TOP + 1 ? '<button class="gmore" data-gall="1">פחות קבוצות ▴</button>' : '';
     $('view').innerHTML = tools + '<div class="chipline">' + chips.map(c => chipHtml(c, fold.has(c[0]) ? 'gx' : '')).join('') + gmore + '</div>' + bar + panel + listHtml;
   }
+  paintRates($('list'));   // or1.4: the in-stock line on the cards just drawn
   if (rows.length && !drawn){ drawn = true; mark('first-draw'); }
   const refocus = id => { const el = $(id); if (el){ el.focus({ preventScroll:true }); try{ el.setSelectionRange(el.value.length, el.value.length); }catch(e){} } };
   const q = $('q'); let qT = null;
@@ -1491,6 +1530,7 @@ async function start(){
   takeKeyFromHash();
   KEY = rawLS(LS.key); AK = adminKey();
   const c = loadLS(LS.cat, null); if (c && c.rows) setCatalog(c);     // draws at once, with its settings; the poll brings a newer catalog only when the stamp changed
+  setRates(loadLS(LS_RATES, null));                                   // or1.4: the rates this phone last had (its stamp goes with the first jo_load)
   if (!keyed()){ showGate(''); return; }   // or1.3: the admin key alone opens the page (as admin); a buyer key of another supplier is never read here
   initSwitch();                            // the "ספק" switch, when this device opens 2+ suppliers (the list is read in the background)
   DEVICE = rawLS(LS.device); if (!/^[\w\-]{6,40}$/.test(DEVICE)){ DEVICE = 'p-' + uuid().replace(/-/g, '').slice(0, 12); try{ localStorage.setItem(LS.device, DEVICE); }catch(e){} }
