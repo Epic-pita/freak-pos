@@ -356,7 +356,7 @@
 /* ================= CONFIG ================= */
 const BUILD = 'or1.4';
 // or1.4 (B-BRN-8, part 2): every card of an item we carry gets ONE more grey line under its pace block — the brain's in-stock line
-// ("נמכר ~N בחודש כשיש במלאי · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …"), copied verbatim from the rates table (jo_load
+// ("נמכר ~N בחודש כשיש במלאי (קצב להזמנה ~N) · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …", the brain's wording of 03/11), copied verbatim from the rates table (jo_load
 // `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
 // no or1.3 function changes (cardHtml, rowHtml, drowHtml, paceHtml, badgeText, paceRow, renderMine, renderSummary are byte for byte):
 // paintRates() adds the line to the drawn cards after renderCatalog(). Collapsed list rows, my order and the summary get none. A backend
