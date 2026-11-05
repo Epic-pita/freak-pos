@@ -401,7 +401,7 @@
 
 <script>
 /* ================= CONFIG ================= */
-const BUILD = 'v3.5.2';
+const BUILD = 'v3.5.3';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live"
 // ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the
 // address bar, so no link can send the page (and what it shows) to a backend of someone else's
@@ -1332,6 +1332,14 @@ function openTasks(){
 // v3.3: the list is checked every minute whichever screen is open (the stamp makes an unchanged list cost ~1 KB), and when the app comes back
 setInterval(()=>{ if(!document.hidden && navigator.onLine) loadTasks(false); }, TASKS_POLL_MS);
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) loadTasks(false); });
+// v3.5.3: on the task screen the ledger's latest counts are read again (the catalog read carries them) so counts from other phones show up
+let latestBusy = false;
+function refreshLatestForTasks(){
+  if(latestBusy || !$('screen-tasks').classList.contains('active')) return;
+  if(Date.now() - Number(localStorage.getItem(LS.catTime)||0) < 3*60000) return;
+  latestBusy = true;
+  fetchCatalog(false).then(ok=>{ if(ok) renderTasks(); }).catch(()=>{}).finally(()=>{ latestBusy = false; });
+}
 /** the open rows of לצוות from the backend (cached there 60 s); with the stamp of the list we hold, an unchanged list costs nothing */
 async function loadTasks(manual){
   if(tasksLoading) return;
@@ -1356,6 +1364,7 @@ async function loadTasks(manual){
     if(forgot) saveTaskAnswers();
     if(!OFF_LIVE) try{ localStorage.setItem(LS.taskMeta, JSON.stringify(tasksMeta)); }catch(e){}
     if(manual) toast(js.same ? 'הרשימה עדכנית' : 'רשימת המשימות עודכנה');
+    refreshLatestForTasks();
     if(js.same && !forgot) renderTasksMeta(); else renderTasks();   // an unchanged list does not rebuild the cards under a person's fingers
   }catch(e){
     tasksMeta.error = 'fail';
@@ -1411,8 +1420,20 @@ function showTasksOfFailedCount(countUuid){
 // v3.3 (Chris: "רק להציג את מה שלא נגענו בו"): a row somebody wrote on (a name, a note, the brain's refusal) is touched — out of the
 // working list, under the 'נגעו בהם' chip; a row answered from this phone is hidden at once (until the list confirms)
 const isTouched = r => !!(r[T.who] || r[T.note]);
-const openTaskRows = () => taskRows.filter(r => { const a = taskAnswers[taskKey(r)]; return !(a && (a.hide || a.note)) && !isTouched(r); });
-const touchedTaskRows = () => taskRows.filter(r => { const a = taskAnswers[taskKey(r)]; return !(a && a.hide) && (isTouched(r) || (a && a.note)); });
+// v3.5.3 (Chris 05/11: "אלון ספר ועוד רואים"): the answer lives on the phone that gave it, so a count taken on ANOTHER phone must hide the card too.
+// The shared fact is the ledger's latest count per item (`latest`, from the catalog read): a count newer than the last rebuild whose
+// :45 publish the list has not yet seen answers the item's count rows for everyone, until the first rebuild after that publish.
+// A count that is old (taken before the last rebuild's publish) and still listed was not taken (a card gap): the card stays.
+function failedCountCodes(){ try{ return new Set(JSON.parse(localStorage.getItem(LS.failed)||'[]').filter(f=>f.action==='saveItem').map(f=>String(f.code))); }catch(e){ return new Set(); } }
+let _failedCodes = null;
+function countedSinceRebuild(r){
+  if(!(r[T.kind]==='ghost' || isCountTask(r))) return false;
+  const lt = latest[r[T.code]], rebuilt = tasksMeta.sheetAtIso ? Date.parse(tasksMeta.sheetAtIso) : 0, at = lt ? Date.parse(lt.at) : 0;
+  if(!rebuilt || !at || Date.now()-at > 10*3600000 || countPublishedAt(at) < rebuilt) return false;
+  return !(_failedCodes || (_failedCodes = failedCountCodes())).has(String(r[T.code]));
+}
+const openTaskRows = () => { _failedCodes = null; return taskRows.filter(r => { const a = taskAnswers[taskKey(r)]; return !(a && (a.hide || a.note)) && !isTouched(r) && !countedSinceRebuild(r); }); };
+const touchedTaskRows = () => { _failedCodes = null; return taskRows.filter(r => { const a = taskAnswers[taskKey(r)]; return !(a && a.hide) && !countedSinceRebuild(r) && (isTouched(r) || (a && a.note)); }); };
 function renderTasksMeta(){
   const open = openTaskRows().length;
   $('tasksBadge').textContent = open ? String(open) : '';
