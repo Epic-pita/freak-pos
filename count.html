@@ -401,7 +401,7 @@
 
 <script>
 /* ================= CONFIG ================= */
-const BUILD = 'v3.5.1';
+const BUILD = 'v3.5.2';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live"
 // ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the
 // address bar, so no link can send the page (and what it shows) to a backend of someone else's
@@ -568,6 +568,11 @@ async function sync(){
           if(lt && (lt.photo==='pending' || !lt.photo)){ lt.photo = js.url; saveLatestLS(); }
           if(currentItem && currentItem.code===job.itemCode) renderPhotoState();
         }
+        if(job.action==='saveItem'){   // v3.5.2: the backend took the count — its task cards are consumed by the next :45 publish
+          let acked = false;
+          for(const k in taskAnswers){ const a = taskAnswers[k]; if(a.viaCount && a.uuid===job.uuid){ a.ackAt = Date.now(); acked = true; } }
+          if(acked) saveTaskAnswers();
+        }
         if(job.action==='answerTask'){
           const key = job.kind+'|'+job.code;
           if(js.gone && $('screen-tasks').classList.contains('active')) toast('המשימה כבר לא ברשימה: '+(job.code||''), 'warn', 3000);
@@ -596,6 +601,7 @@ async function sync(){
         }
         if(listed){
           if(job.action==='answerTask'){ delete taskAnswers[job.kind+'|'+job.code]; saveTaskAnswers(); renderTasks(); }   // the row is open again on this phone, with the failure shown
+          if(job.action==='saveItem') showTasksOfFailedCount(job.uuid);   // v3.5.2: the count never reached the sheet — its task cards are back on the list
           await qDel(job.uuid); heldCounts.delete(job.uuid); renderFailed();
         } else if(!cancelledJobs.has(job.uuid)) await qAdd(job);
       }
@@ -1301,6 +1307,7 @@ async function saveItem(){
   $('saveBtn').disabled=true;
 
   await enqueue({action:'saveItem', itemCode: it.code, barcode: scannedBc || it.barcodes[0] || '', fields, build: BUILD}, countUuid);
+  hideTasksOfCount(it.code, countUuid);   // v3.5.2: the count answers the item's count tasks — off the list now, like a tick
   if(currentPhotoB64)
     await enqueue({action:'uploadPhoto', itemCode: it.code, countUuid: countUuid, imageBase64: currentPhotoB64, mime:'image/jpeg'});
 
@@ -1340,23 +1347,16 @@ async function loadTasks(manual){
     if(!js.same){
       taskRows = Array.isArray(js.rows) ? js.rows : [];
       tasksMeta.stamp = js.stamp||'';
-      // a row this phone answered is no longer on the list → the answer was consumed (or the row left): forget it.
-      // A row still listed after the sheet's rebuild that followed the answer was NOT consumed (refused, or a fresh task
-      // under the same key): show it again, with whatever the sheet now says on it
-      const live = new Set(taskRows.map(taskKey));
-      const rebuilt = tasksMeta.sheetAtIso ? Date.parse(tasksMeta.sheetAtIso) : 0;
-      for(const k in taskAnswers){
-        const a = taskAnswers[k];
-        if(!live.has(k) || (rebuilt && a.at < rebuilt) || Date.now()-a.at > 6*3600000) delete taskAnswers[k];
-      }
       teamTasks = {};
       for(const row of taskRows) if(!teamTasks[row[T.code]]) teamTasks[row[T.code]] = { block:row[T.block], todo:row[T.todo], caspit:row[T.caspit], kind:row[T.kind] };
-      if(!OFF_LIVE) try{ localStorage.setItem(LS.taskRows, JSON.stringify(taskRows)); localStorage.setItem(LS.tasks, JSON.stringify(teamTasks)); saveTaskAnswers(); }catch(e){}
+      if(!OFF_LIVE) try{ localStorage.setItem(LS.taskRows, JSON.stringify(taskRows)); localStorage.setItem(LS.tasks, JSON.stringify(teamTasks)); }catch(e){}
       if(currentItem && $('screen-item').classList.contains('active')) renderTeamTask(teamTasks[currentItem.code]||null);
     }
+    const forgot = forgetConsumedAnswers();   // v3.5.2: also on an unchanged list — a rebuild that did not consume an answer shows the row again
+    if(forgot) saveTaskAnswers();
     if(!OFF_LIVE) try{ localStorage.setItem(LS.taskMeta, JSON.stringify(tasksMeta)); }catch(e){}
     if(manual) toast(js.same ? 'הרשימה עדכנית' : 'רשימת המשימות עודכנה');
-    if(js.same) renderTasksMeta(); else renderTasks();   // an unchanged list does not rebuild the cards under a person's fingers
+    if(js.same && !forgot) renderTasksMeta(); else renderTasks();   // an unchanged list does not rebuild the cards under a person's fingers
   }catch(e){
     tasksMeta.error = 'fail';
     if(manual) toast('הרשימה לא נטענה (גוגל איטי). מציג את העותק שבטלפון.', 'warn', 3500);
@@ -1364,6 +1364,49 @@ async function loadTasks(manual){
   }finally{
     tasksLoading=false; $('tasksReload').textContent='⟳';
   }
+}
+// v3.5.2 (Chris 05/11: "כל דבר שנעשה פשוט ירד מהרשימה"): a row this phone answered stays hidden until the list shows it was taken.
+// A row that left the list: the answer was consumed (or the row went) → forget it. A row still listed after the sheet's rebuild
+// that followed the answer was NOT consumed (refused, or a fresh task under the same key): show it again, with whatever the
+// sheet now says on it. A tick or a flag is written into the sheet at once, so the next rebuild reads it; a COUNT travels
+// ledger → the :45 publish → the :00 refresh, so a rebuild before the :45 publish cannot have consumed it.
+function countPublishedAt(at){ const d=new Date(at); d.setUTCMinutes(45,0,0); if(d.getTime()<=at) d.setUTCHours(d.getUTCHours()+1); return d.getTime(); }   // the next hh:45 (Israel's offset is whole hours, so UTC minutes are right on any phone)
+function forgetConsumedAnswers(){
+  const live = new Set(taskRows.map(taskKey));
+  const rebuilt = tasksMeta.sheetAtIso ? Date.parse(tasksMeta.sheetAtIso) : 0;
+  let forgot = false;
+  for(const k in taskAnswers){
+    const a = taskAnswers[k];
+    // a count still in the queue (no ackAt) has not reached the ledger: no rebuild can have read it; it counts from the moment the backend took it
+    const takenBy = a.viaCount ? (a.ackAt ? countPublishedAt(a.ackAt) : Infinity) : a.at;
+    if(!live.has(k) || (rebuilt && takenBy < rebuilt) || Date.now()-a.at > (a.viaCount ? 10 : 6)*3600000){ delete taskAnswers[k]; forgot = true; }
+  }
+  return forgot;
+}
+/** a count saved for an item answers the item's open count rows (the brain reads the count as the answer): hide them now */
+function hideTasksOfCount(code, countUuid){
+  let n = 0;
+  for(const r of taskRows){
+    if(String(r[T.code])!==String(code) || !(r[T.kind]==='ghost' || isCountTask(r))) continue;   // the rows the 🔢 ספור button is on
+    const key = taskKey(r), prev = taskAnswers[key];
+    if(prev && prev.hide) continue;   // a tick or a flag already hides it
+    taskAnswers[key] = { ...(prev||{}), hide:true, viaCount:true, prev:prev||null, at:Date.now(), uuid:countUuid };
+    n++;
+  }
+  if(n){ saveTaskAnswers(); renderTasks(); }
+  return n;
+}
+/** the count went to the failed list: its task cards are open again (the write failed — nothing was answered) */
+function showTasksOfFailedCount(countUuid){
+  let n = 0;
+  for(const k in taskAnswers){
+    const a = taskAnswers[k];
+    if(!a.viaCount || a.uuid!==countUuid) continue;
+    if(a.prev) taskAnswers[k] = a.prev; else delete taskAnswers[k];
+    n++;
+  }
+  if(n){ saveTaskAnswers(); renderTasks(); }
+  return n;
 }
 // v3.3 (Chris: "רק להציג את מה שלא נגענו בו"): a row somebody wrote on (a name, a note, the brain's refusal) is touched — out of the
 // working list, under the 'נגעו בהם' chip; a row answered from this phone is hidden at once (until the list confirms)
