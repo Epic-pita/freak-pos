@@ -291,7 +291,7 @@
       <button class="iconbtn" id="tasksReload" onclick="loadTasks(true)" title="רענון משימות">⟳</button>
     </div>
     <div id="tasksMeta"></div>
-    <input id="taskSearch" placeholder="חיפוש: שם / ברקוד / קוד / מיקום" oninput="closeTaskConfirms();taskShown=60;renderTasks()" style="margin-top:8px">
+    <input id="taskSearch" placeholder="חיפוש: שם / ברקוד / קוד / מיקום · מלאי = 0" oninput="closeTaskConfirms();taskShown=60;renderTasks()" style="margin-top:8px">
     <div id="taskBlocks" class="chips"></div>
   </div>
   <div id="taskList"></div>
@@ -364,7 +364,7 @@
     <li><b>דוח הספירה</b> — <a href="./count-report.html" style="color:var(--teal)">התקדמות, פערים, מה נשאר לתקן בכספית, רפאים</a>.</li>
     <li><b>מדריך</b> — <a href="./count-guide.html" style="color:var(--teal)">המדריך המלא עם צילומי מסך</a> · <a href="./count-quickstart.html" style="color:var(--teal)">דף מהיר</a>.</li>
     <li><b>משימה מ"לצוות"</b> — אם לפריט יש שורה ברשימת הצוות, ההוראה מופיעה במסך הפריט (כתום). עושים מה שכתוב וסופרים כרגיל.</li>
-    <li><b>📋 משימות לצוות</b> — כל רשימת "לצוות" בטלפון: לפי סוג משימה, עם חיפוש. על כל משימה: <b>ספור</b> (פותח את הפריט לספירה), <b>בוצע</b>, <b>הערה</b>, או סימון "לא צריך". מה שמסמנים נכתב לגיליון; הרשימה מתעדכנת לבד כל דקה. סימנתם בטעות? "בטל" בהודעה הירוקה, תוך 5 שניות. הרשימה מראה רק משימות שאף אחד לא נגע בהן; מה שסומן, נספר או קיבל הערה יורד ממנה (הצ'יפ "נגעו בהם" מראה אותן). 🖨 פותח <a href="./count-tasks-print.html" style="color:var(--teal)">דף להדפסה</a> עם אותן משימות והברקודים, לסורק הקופה.</li>
+    <li><b>📋 משימות לצוות</b> — כל רשימת "לצוות" בטלפון: לפי סוג משימה, עם חיפוש. על כל משימה: <b>ספור</b> (פותח את הפריט לספירה), <b>בוצע</b>, <b>הערה</b>, או סימון "לא צריך". מה שמסמנים נכתב לגיליון; הרשימה מתעדכנת לבד כל דקה. בחיפוש אפשר לכתוב <b>מלאי = 0</b> (או מספר אחר, למשל מלאי = 3) כדי לראות רק משימות שהמספר "בכספית" שעל הכרטיס שלהן הוא בדיוק זה. זה רק סינון בטלפון שלך: שום דבר לא נסגר ולא נכתב. סימנתם בטעות? "בטל" בהודעה הירוקה, תוך 5 שניות. הרשימה מראה רק משימות שאף אחד לא נגע בהן; מה שסומן, נספר או קיבל הערה יורד ממנה (הצ'יפ "נגעו בהם" מראה אותן). 🖨 פותח <a href="./count-tasks-print.html" style="color:var(--teal)">דף להדפסה</a> עם אותן משימות והברקודים, לסורק הקופה.</li>
   </ol>
 </div>
 
@@ -401,7 +401,7 @@
 
 <script>
 /* ================= CONFIG ================= */
-const BUILD = 'v3.5.3';
+const BUILD = 'v3.5.4';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live"
 // ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the
 // address bar, so no link can send the page (and what it shows) to a backend of someone else's
@@ -1434,6 +1434,10 @@ function countedSinceRebuild(r){
 }
 const openTaskRows = () => { _failedCodes = null; return taskRows.filter(r => { const a = taskAnswers[taskKey(r)]; return !(a && (a.hide || a.note)) && !isTouched(r) && !countedSinceRebuild(r); }); };
 const touchedTaskRows = () => { _failedCodes = null; return taskRows.filter(r => { const a = taskAnswers[taskKey(r)]; return !(a && a.hide) && !countedSinceRebuild(r) && (isTouched(r) || (a && a.note)); }); };
+function stockQuery(q){   // 'מלאי = 3' → 3 · null when the text is not that syntax (direction marks and a typographic minus are tolerated)
+  const m = /^מלאי\s*[=:]\s*([-\u2212]?\d{1,6})$/.exec(String(q||'').replace(/[\u200e\u200f\u202a-\u202e]/g,'').trim());
+  return m ? Number(m[1].replace('\u2212','-')) : null;
+}
 function renderTasksMeta(){
   const open = openTaskRows().length;
   $('tasksBadge').textContent = open ? String(open) : '';
@@ -1469,7 +1473,11 @@ function renderTasks(){
   }
   const q=$('taskSearch').value.trim().toLowerCase();
   let list = taskBlock===TOUCHED ? touched : open.filter(r => !taskBlock || (r[T.block]||'אחר')===taskBlock);
-  if(q) list = list.filter(r => [r[T.name], r[T.barcode], r[T.code], r[T.location]].some(v => String(v||'').toLowerCase().includes(q)));
+  // v3.5.4 (B-CNT-7, the team 10/11): "מלאי = 0" (also מלאי=0, מלאי: 0, מלאי = -2) shows only the cards whose Caspit number (the 'בכספית N' on the card) is exactly that.
+  // A view only: nothing is closed or written. A row with no Caspit number (a manual task) never matches. Anything else searches as before.
+  const stockQ = stockQuery(q);
+  if(stockQ !== null) list = list.filter(r => r[T.caspit] !== null && r[T.caspit] !== undefined && r[T.caspit] !== '' && Number(r[T.caspit]) === stockQ);
+  else if(q) list = list.filter(r => [r[T.name], r[T.barcode], r[T.code], r[T.location]].some(v => String(v||'').toLowerCase().includes(q)));
   // v3.4: the printed sheet's order — the rows with a barcode to scan first, then the rows to find by name; each part keeps the
   // sheet's block order (a stable partition), so the phone and the paper walk the same way
   const scannable = r => !!(r[T.barcode] && window.FreakBarcode && FreakBarcode.bits(r[T.barcode]));
