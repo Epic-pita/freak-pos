@@ -481,6 +481,7 @@ let loading = false, loadAgain = false, syncing = false, lastOk = 0, syncTimer =
 let firstLoadDone = false, netDown = false, cachedLines = false;   // this session's first jo_load; the ledger drawn from the phone's cache
 let sortSnap = null;             // Set of the item ids drawn "ordered first" at the last explicit draw of the catalog: a poll never re-sorts under the thumb
 let drawn = false, loadMarked = false;   // performance marks for the page test: the first jo_load sent, the first draw with rows
+let ME = '';                     // or1.5 (B-CAT-25): the person this key belongs to, as the backend reports it ('' = a key that names none)
 let MIN = null;                  // or1.5 (B-CAT-25): { has, value, currency, worth, src, as_of } from jo_load `min`, in memory only; null = not asked yet
 const MIN_TAB_HE = 'מינימום';    // the name of the tab Chris types it on (the backend's JO_MIN)
 let RATES = null;                // or1.4: { stamp, as_of, byId: Map(item_id → the in-stock line), codeOf: Map(item_id → its our code) } from jo_load `rates`, in memory only; null = none (nothing drawn)
@@ -905,8 +906,9 @@ function mergeLines(from, rows){
     const cur = lines.get(kOf(p, v));
     // or1.5: note, device and time come along, so a manager change is readable on the page (never written over: a new row only)
     if (!cur || ord >= cur.ord){ const note = String(o.note||''); if (!cur || cur.qty !== qty || (cur.note||'') !== note) changed.add(v); lines.set(kOf(p, v), { qty, ord, shop: String(o.shop||''), sku: String(o.sku||''), note, dev: String(o.device||''), at: String(o.at||'') }); }
-    // my own write seen in the ledger: its uuid confirms the queued job (a reply that was lost on the way)
-    if (p === person && o.uuid){ const j = queue.find(x => x.uuid === o.uuid); if (j){ queue = queue.filter(x => x !== j); saveQ(); if (mine[v] && mine[v].uuid === j.uuid) delete mine[v]; markSaved(v); changed.add(v); } }
+    // a write of this phone seen in the ledger (mine, or or1.5: a manager change for someone else): its uuid confirms the
+    // queued job, so a reply lost on the way never leaves the job overlaying the ledger with a stale value
+    if (o.uuid){ const j = queue.find(x => x.uuid === o.uuid); if (j){ queue = queue.filter(x => x !== j); saveQ(); if (j.person === person){ if (mine[v] && mine[v].uuid === j.uuid) delete mine[v]; markSaved(v); } changed.add(v); } }
   });
   if (keep) for (const [k, l] of keep){ const cur = lines.get(k); if (!cur || l.ord >= cur.ord){ lines.set(k, l); changed.add(k.split('\u0001')[1]); } }
   nLines = from + rows.length; return changed;
@@ -928,6 +930,8 @@ const HARD = /^(BAD_PERSON|BAD_ITEM|NOT_AVAILABLE|BAD_QTY|BAD_NOTE|NOT_YOUR_LINE
 const HARD_MSG = { BAD_PERSON:'השם שלך לא ברשימה — בחר שם מחדש', BAD_ITEM:'הפריט כבר לא בקטלוג — הכמות לא נשמרה', NOT_AVAILABLE:'הפריט אזל אצל הספק — הכמות לא נשמרה',
   NOT_YOUR_LINE:'הקישור הזה שומר רק את הכמויות שלך — הכמות לא נשמרה', BAD_NOTE:'ההערה לא נשמרה — הכמות לא נשמרה',
   BAD_QTY:'כמות לא תקינה — לא נשמרה', CLOSED:'ההזמנה כבר נסגרה — הכמות לא נשמרה', NO_SHEET:'הגיליון עוד לא הוכן — הכמות לא נשמרה', 'bad sup':'הקישור לא מתאים לספק הזה — הכמות לא נשמרה' };
+// or1.5: the same refusals in the words of a manager change, which is about someone else's line, not mine
+const MGR_MSG = { NO_SHEET:'הגיליון לא זמין', BAD_PERSON:'השם כבר לא ברשימה', NOT_AVAILABLE:'הפריט אזל אצל הספק — אפשר רק להסיר', CLOSED:'ההזמנה כבר נסגרה', BAD_ITEM:'הפריט כבר לא בקטלוג', BAD_QTY:'כמות לא תקינה', BAD_NOTE:'ההערה לא התקבלה', NOT_YOUR_LINE:'הקישור הזה לא יכול לשנות שורה של אדם אחר' };
 function scheduleSync(ms){ clearTimeout(syncTimer); syncTimer = setTimeout(sync, Math.max(50, ms)); }
 async function sync(){
   if (parked || syncing || !navigator.onLine) return;
@@ -961,7 +965,12 @@ async function sync(){
       if (js && js.error === 'BAD_KEY'){ showGate('המפתח לא מתאים יותר. פתח שוב את הקישור שקיבלת.'); break; }
       if (js && HARD.test(String(js.error||''))){ queue = queue.filter(j => j !== job); saveQ(); dropJob(job, js.error); continue; }
       // no connection, Google slow, the sheet busy (BUSY_LOCK), the catalog being re-pushed (BUSY_CATALOG): again in 1, 2, 5, 15 s, then every 30 s, for a day
-      job.notBefore = Date.now() + (RETRY_MS[job.att - 1] != null ? RETRY_MS[job.att - 1] : RETRY_LATER_MS); saveQ();
+      job.notBefore = Date.now() + (RETRY_MS[job.att - 1] != null ? RETRY_MS[job.att - 1] : RETRY_LATER_MS);
+      // or1.5 (review 14/11, beyond jo1.5): a manager job that has to wait reads the ledger AGAIN before its next try.
+      // A retry can run minutes or hours later, and in that time the person may have changed the line themselves —
+      // without this, the stale value and its stale "from" figure would land on top of what they typed (root rule 3).
+      if (job.mgr) job.checked = false;
+      saveQ();
       if (my){ st[v] = 'retry'; paintCard(v); } else if (job.mgr) paintCard(v);
       scheduleSync(job.notBefore - Date.now()); break;
     }
@@ -980,14 +989,18 @@ function written(job, js){
   saveMeta();   // the cached ledger carries the confirmed write, so a reopen before the first jo_load draws this value, not the last poll's
   if (mine[v] && mine[v].uuid === job.uuid) delete mine[v];
   if (job.person === person) markSaved(v); else paintCard(v);
-  renderTabs(); if (view === 'mine') render();
+  if (job.mgr) toast('השינוי ל' + job.person + ' נשמר: ' + num(qty), '', 1800);
+  // or1.5: the summary's per-person rows, per-shop shares and minimum box follow every saved manager change
+  renderTabs(); if (view === 'mine' || (job.mgr && view === 'summary' && !Object.keys(mdeb).length)) render();
 }
 let drops = 0;   // refused values so far (goSup stays on the page when one is refused during its wait)
 function dropJob(job, err){
   drops++;
   const v = job.variant_id; if (mine[v] && mine[v].uuid === job.uuid) delete mine[v]; if (job.person === person) st[v] = '';
-  toast(HARD_MSG[err] || ('לא נשמר: ' + err), 'err', 5000);
+  // or1.5: a refused MANAGER change is about someone else's line, so it gets its own words and never touches my own name
+  toast(job.mgr ? 'השינוי ל' + job.person + ' לא נשמר: ' + (MGR_MSG[err] || err) : (HARD_MSG[err] || ('לא נשמר: ' + err)), 'err', 5000);
   if (err === 'CLOSED'){ state = { ...state, open:false }; render(); }
+  else if (err === 'BAD_PERSON' && job.mgr){ paintCard(v); }
   else if (err === 'BAD_PERSON'){ if (job.person === person){ person = ''; try{ localStorage.removeItem(LS.person); }catch(e){} showNames(); } }
   else { paintCard(v); if (err === 'NOT_AVAILABLE' || err === 'BAD_ITEM') load(true); }
 }
@@ -1019,6 +1032,7 @@ async function load(full){
       else if (js.rates){ setRates(js.rates); ratesChanged = true; }   // in memory only (review 02/11): never saveLS
       // or1.5: the minimum block (undefined = a backend that does not know it: the summary then says nothing about a minimum)
       if (askMin){ const m = setMin(js.min); if (m) structural = true; }
+      if (typeof js.me === 'string' && js.me !== ME){ ME = js.me; if (ME && person && person !== ME) structural = true; }   // or1.5: the person this key is bound to
       const pl = (js.people || []).map(p => ({ name: String(p.name||''), shop: String(p.shop||'') })).filter(p => p.name);
       if (JSON.stringify(pl) !== JSON.stringify(people)){ people = pl; structural = true; }
       const s = js.state || {}; const ns = { open: s.open !== false, closed_at: String(s.closed_at||''), closed_by: String(s.closed_by||'') };
@@ -1029,6 +1043,8 @@ async function load(full){
       if (res === null) loadAgain = true; else if (from === 0) structural = true; else changedV = res;
       saveMeta();
       lastOk = Date.now(); $('dot').classList.add('on');
+      // or1.5: a key bound to one person always acts as that person, whatever name this phone had stored before
+      if (ME && people.some(p => p.name === ME) && person !== ME){ settleAll(); person = ME; try{ localStorage.setItem(LS.person, person); }catch(e){} seedMine(); structural = true; }
       if (person && people.length && !people.some(p => p.name === person)){ person = ''; try{ localStorage.removeItem(LS.person); }catch(e){} showNames(); }
     } else if (js && js.error === 'BAD_KEY') showGate('המפתח לא מתאים. פתח שוב את הקישור שקיבלת.');
     else if (js && js.error === 'NO_SHEET'){ sheetMissing = true; structural = true; }
@@ -1672,6 +1688,9 @@ $('meBtn').onclick = () => showNames();
 function showGate(msg){ KEY = ''; AK = ''; closeSupMenu(); $('app').classList.add('hide'); $('names').classList.add('hide'); $('gate').classList.remove('hide'); $('gateTitle').textContent = S.title_he; $('gateMsg').textContent = msg || ''; }
 function showNames(){
   settleAll();   // a value still debounced belongs to the name that typed it
+  // or1.5 (B-CAT-25): a key the backend says belongs to one person picks that name by itself — every other name on such a
+  // link would be refused (NOT_YOUR_LINE), so the list is never offered. ME is '' for every key that names no person.
+  if (ME && people.some(p => p.name === ME)){ person = ME; try{ localStorage.setItem(LS.person, person); }catch(e){} seedMine(); showApp(); return; }
   $('app').classList.add('hide'); $('gate').classList.add('hide'); $('names').classList.remove('hide');
   $('nameList').innerHTML = people.length ? people.map(p => '<button class="pbtn" data-name="'+esc(p.name)+'">אני '+esc(p.name)+(p.shop ? '<span class="shop">'+esc(p.shop)+'</span>' : '')+'</button>').join('') : '';
   $('namesMsg').textContent = people.length ? '' : (sheetMissing ? 'הגיליון של ההזמנה עוד לא הוכן. נסה שוב מאוחר יותר.' : lastOk ? 'עוד לא הוגדרו שמות. נסה שוב מאוחר יותר.' : 'טוען…');
