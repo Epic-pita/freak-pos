@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f1a20">
+<title>FREAK — קבלת משלוח בדקה</title>
+<link rel="icon" href="./icon-192.png">
+<!-- B-CAT-27: one screen, how to count a shipment on the order page's "קבלה" tab. Phone width, printable.
+     Public page: it names no person, no supplier key and no link — the personal link comes from Chris. -->
+<style>
+  :root{ --bg:#0f1a20; --surface:#16262e; --line:#2a4450; --teal:#3d7a94; --amber-hi:#ffd479; --ink:#e8eef1; --dim:#8fa6b0 }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,'Segoe UI',Roboto,'Heebo',Arial,sans-serif; font-size:18px; line-height:1.5}
+  main{max-width:640px; margin:0 auto; padding:18px 16px 50px}
+  h1{color:var(--teal); font-size:24px; margin:0 0 4px}
+  .sub{color:var(--dim); font-size:14px; margin-bottom:14px}
+  ol{padding-inline-start:26px; margin:0}
+  li{margin:10px 0}
+  .ghost{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px 16px; margin-top:16px}
+  .ghost h2{font-size:18px; color:var(--amber-hi); margin:0 0 6px}
+  .ghost ul{padding-inline-start:22px; margin:0}
+  .foot{color:var(--dim); font-size:14px; margin-top:16px}
+  a{color:var(--teal)}
+  @media print{ body{background:#fff; color:#000} .ghost{background:#f3f3f3; border-color:#ccc} h1,a{color:#1a4f66} .ghost h2{color:#7a4f00} }
+</style>
+</head>
+<body>
+<main>
+  <h1>קבלת משלוח בדקה</h1>
+  <div class="sub">פותחים את הקישור האישי שקיבלתם, ולוחצים על הלשונית <b>"קבלה"</b> למעלה.</div>
+  <ol>
+    <li><b>כל פריט בשורה</b> — תמונה, שם, מק״ט, וכמה <b>הוזמן</b>.</li>
+    <li><b>מקלידים כמה הגיע</b> במשבצת "הגיע", ועוברים לשורה הבאה. זה נשמר לבד.</li>
+    <li><b>לא הגיע כלום מהפריט?</b> מקלידים <b>0</b>. זו תשובה, ולא משאירים ריק.</li>
+    <li><b>הגיע משהו שלא ברשימה?</b> "+ פריט שלא ברשימה" — כותבים מה זה וכמה.</li>
+    <li><b>טעיתם?</b> מקלידים שוב. המספר האחרון קובע, ושום דבר לא נמחק.</li>
+    <li>למעלה רואים כמה נספרו מתוך כמה, כמה <b>הגיעו חסרות</b>, וכמה <b>בקופסה ולא בהזמנה</b>.</li>
+    <li>כשסיימתם — כותבים לכריס. הוא רואה הכול מהטלפון שלו.</li>
+  </ol>
+  <div class="ghost">
+    <h2>טוב לדעת</h2>
+    <ul>
+      <li><b>אין קליטה במחסן?</b> ממשיכים להקליד. זה נשמר בטלפון ונשלח לבד כשהקליטה חוזרת.</li>
+      <li><b>צבעים:</b> ירוק = כמו שהוזמן · כתום = הגיע פחות · כחול = הגיע יותר.</li>
+      <li>אפשר לעצור באמצע ולחזור אחר כך — מה שהוקלד נשאר.</li>
+      <li>אין צורך בחשבון ובסיסמה: הקישור האישי הוא הכניסה, ולא משתפים אותו.</li>
+    </ul>
+  </div>
+  <div class="foot">המסך מראה מה הוזמן ומה הגיע בלבד. הוא לא משנה מחירים, לא מזמין ולא שולח הודעות.</div>
+</main>
+</body>
+</html>
