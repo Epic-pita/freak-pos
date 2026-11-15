@@ -675,7 +675,7 @@ function leaveMsg(e){
 // again on a restore (not on another tab's change: two tabs of one supplier would then both send the same jobs and fight over their retry
 // counters; two such tabs still overwrite each other's queue, as in or1.0-or1.2, noted for the next pass); a resend is harmless (repeated uuid)
 function reloadQ(){ queue = loadLS(LS.queue, []).filter(j => j && j.uuid && j.variant_id); seedMine(); badge(); if (!$('app').classList.contains('hide')){ render(); sync(); } }
-window.addEventListener('pageshow', ev => { if (!ev.persisted) return; parked = false; leaving = false; closeSupMenu(); reloadQ(); scanOtherQ(); if (!$('app').classList.contains('hide')){ renderBanners(); load(false); } });
+window.addEventListener('pageshow', ev => { if (!ev.persisted) return; parked = false; leaving = false; closeSupMenu(); reloadQ(); rq = loadRQ(); applyRQ(); rsync(); scanOtherQ(); if (!$('app').classList.contains('hide')){ renderBanners(); load(false); } });
 window.addEventListener('storage', ev => { if (/^jo_queue_/.test(ev.key || '')){ scanOtherQ(); if (!$('app').classList.contains('hide')) renderBanners(); } });   // another tab sent or added values
 /** order.html without ?s=: the only supplier this device opens, a picker when it opens several (the last used first), else "חסר ספק" */
 async function pickSupplier(){
@@ -787,106 +787,150 @@ function rowMeta(r){
  * a separate queue and a separate sheet tab, so nothing here can touch an order quantity.
  * Three cases, all measured on the Glassstaff shipment of 15/11/2026: a line that arrived whole, a line that
  * arrived short, and a line in the box that nobody ordered (12 of them that day). The third is why a row may
- * carry its own name instead of an item id. */
-let recv = new Map();            // item_id (or 'x:' + title for a line not in the order) → { qty, at, person, title, sku, ord }
+ * carry its own name instead of an item id.
+ * Fresh review 15/11, all fixed here: the queue is flushed from the same five places as the order queue (it was
+ * sent only right after a count was typed, so counts typed offline sat on the phone until one more was typed);
+ * a poll no longer wipes a half-typed field; a confirmed row takes the server's own ord, so a second phone's
+ * count is seen; a refusal rolls the number back off the screen instead of leaving it looking saved. */
+let recv = new Map();            // item_id (or 'x:' + title for a line not in the order) → { qty, at, person, title, sku, ord, pending }
 let nRecv = 0;                   // how many receive rows this page already has
 let rq = [];                     // the receiving queue: its own, so a receipt never rides on the order queue
 const LS_RQ = LS.queue + ':recv';
-try { rq = JSON.parse(localStorage.getItem(LS_RQ) || '[]') || []; } catch (e) { rq = []; }
-const rKey = (id, title) => id ? id : 'x:' + String(title || '').trim();
-function saveRQ(){ try { localStorage.setItem(LS_RQ, JSON.stringify(rq)); } catch (e) {} const b = $('recvBadge'); if (b){ b.textContent = rq.length; b.classList.toggle('hide', !rq.length); } }
+const TITLE_MAX = 120;
+const normT = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+const rKey = (id, title) => id ? id : (normT(title) ? 'x:' + normT(title) : '');
+const settled = new Set();   // uuids this tab has finished: without them the merge below would put a sent job back from storage
+function loadRQ(){ let v = []; try { v = JSON.parse(localStorage.getItem(LS_RQ) || '[]') || []; } catch (e) { v = []; } return v.filter(j => j && j.uuid && (j.item_id || j.title)); }
+rq = loadRQ();
+/** the stored queue is shared with another tab of the same supplier: merge by uuid instead of overwriting it */
+function saveRQ(){
+  if (parked) return;   // the 31/10 lesson of the order queue: never write the old queue between pagehide and pageshow
+  let keep = [];
+  try { keep = loadRQ().filter(o => !rq.some(j => j.uuid === o.uuid) && !settled.has(o.uuid) && o.ts > Date.now() - DAY); } catch (e) { keep = []; }
+  try { localStorage.setItem(LS_RQ, JSON.stringify(rq.concat(keep))); } catch (e) {}
+  const b = $('recvBadge'); if (b){ b.textContent = rq.length; b.classList.toggle('hide', !rq.length); }
+}
+/** what is still on this phone, shown as pending so a count never disappears from the screen before it is sent */
+function applyRQ(){ for (const j of rq){ const k = rKey(j.item_id, j.title); if (!k) continue; const cur = recv.get(k);
+  if (!cur || cur.pending || !cur.ord || cur.ord < 1e9) recv.set(k, { qty: j.qty, ord: 1e9, at: new Date(j.ts).toISOString(), person: j.person, title: j.title, sku: j.sku, note: '', pending: true }); } }
 /** merge a recv block of a jo_load: the LAST row of an item wins, exactly as the ledger merges (a correction is a new row) */
 function setRecv(b){
   if (!b || !Array.isArray(b.rows)) return false;
   const from = Number(b.from) || 0;
   if (from === 0){ recv = new Map(); nRecv = 0; }
   else if (from !== nRecv) return 'again';
+  else if (!b.rows.length) return false;          // nothing new: the view is left alone (a poll must not redraw a field being typed in)
   b.rows.forEach((raw, i) => {
     const o = rowObj(['at','person','item_id','sku','title','qty','uuid','device','build','note'], raw);
     const id = String(o.item_id || ''), title = String(o.title || ''), k = rKey(id, title);
-    if (!k || k === 'x:') return;
+    if (!k) return;
     const ord = from + i + 2, qty = Math.max(0, Math.floor(Number(o.qty) || 0));
     const cur = recv.get(k);
-    if (!cur || ord >= cur.ord) recv.set(k, { qty, ord, at: String(o.at || ''), person: String(o.person || ''), title, sku: String(o.sku || ''), note: String(o.note || '') });
+    if (!cur || !cur.pending && ord >= cur.ord) recv.set(k, { qty, ord, at: String(o.at || ''), person: String(o.person || ''), title, sku: String(o.sku || ''), note: String(o.note || '') });
   });
   nRecv = from + b.rows.length;
+  if (from === 0) applyRQ();                      // a full read wipes the map: put back what this phone has not sent yet
   return true;
 }
 /** one count: queued, stored on the phone, sent when there is a connection. qty 0 is a real answer. */
 function countIt(id, qty, title, sku){
+  title = normT(title).slice(0, TITLE_MAX);
   const k = rKey(id, title);
-  if (!k || k === 'x:') return;
+  if (!k){ toast('צריך שם לפריט שלא ברשימה', 'err', 4000); return; }
+  if (!id && !SAFE_T.test(title)){ toast('שם הפריט לא תקין — בלי < > או = בהתחלה', 'err', 5000); return; }
   rq = rq.filter(j => rKey(j.item_id, j.title) !== k || j.att > 0);
-  const job = { uuid: uuid(), ts: Date.now(), person: person || 'אני', item_id: id || '', title: title || '', sku: sku || '', qty, att: 0, notBefore: 0 };
+  const job = { uuid: uuid(), ts: Date.now(), person: person || ME || 'אני', item_id: id || '', title: title || '', sku: normT(sku).slice(0, 60), qty, att: 0, notBefore: 0 };
   rq.push(job);
   recv.set(k, { qty, ord: 1e9, at: new Date().toISOString(), person: job.person, title: job.title, sku: job.sku, note: '', pending: true });
   saveRQ(); renderRecv(); rsync();
 }
+const SAFE_T = /^[^<>]*$/;       // the backend's own rule, so a title is refused here and not after a day of retries
 let rsyncing = false, rTimer = null;
 function scheduleR(ms){ clearTimeout(rTimer); rTimer = setTimeout(rsync, Math.max(50, ms)); }
+function dropCount(job, why){
+  settled.add(job.uuid); rq = rq.filter(j => j !== job); saveRQ();
+  const k = rKey(job.item_id, job.title), e = recv.get(k);
+  if (e && e.pending) recv.delete(k);              // the number goes back off the screen: it was NOT saved
+  toast('הספירה של ' + (job.title || job.sku || job.item_id) + ' לא נשמרה: ' + why, 'err', 7000);
+  renderRecv();
+}
 async function rsync(){
-  if (parked || rsyncing || !navigator.onLine) return;
+  if (parked || rsyncing || !navigator.onLine || !keyed()) return;
   rsyncing = true;
   try{
     while (rq.length){
       const job = rq[0];
       if (job.notBefore > Date.now()){ scheduleR(job.notBefore - Date.now()); break; }
-      if (Date.now() - job.ts > DAY){ rq.shift(); saveRQ(); toast('ספירה של ' + (job.title || job.item_id) + ' לא נשמרה — עבר יום בלי חיבור', 'err', 7000); continue; }
+      if (Date.now() - job.ts > DAY){ dropCount(job, 'עבר יום בלי חיבור'); continue; }
       job.att = (job.att || 0) + 1; saveRQ();
       let js = null;
       try{ js = await post({ action:'jo_recv_set', uuid: job.uuid, person: job.person, item_id: job.item_id, title: job.title, sku: job.sku, qty: job.qty, device: DEVICE }, 40000); }catch(e){ js = null; }
-      if (js && js.ok){ rq = rq.filter(j => j !== job); saveRQ(); const e = recv.get(rKey(job.item_id, job.title)); if (e && e.pending) delete e.pending; renderRecv(); continue; }
+      if (js && js.ok){
+        settled.add(job.uuid); rq = rq.filter(j => j !== job); saveRQ();
+        const e = recv.get(rKey(job.item_id, job.title));
+        if (e && e.pending){ delete e.pending; e.ord = Number(js.row) || e.ord; }   // from now on another phone's later row wins
+        renderRecv(); continue;
+      }
       if (js && js.error === 'BAD_KEY'){ showGate('המפתח לא מתאים יותר. פתח שוב את הקישור שקיבלת.'); break; }
-      if (js && HARD.test(String(js.error||''))){ rq = rq.filter(j => j !== job); saveRQ(); toast('הספירה של ' + (job.title || job.item_id) + ' לא נשמרה: ' + (HARD_MSG[js.error] || js.error), 'err', 7000); renderRecv(); continue; }
+      if (js && HARD.test(String(js.error||''))){ dropCount(job, HARD_MSG[js.error] || js.error); continue; }
       job.notBefore = Date.now() + (RETRY_MS[job.att - 1] != null ? RETRY_MS[job.att - 1] : RETRY_LATER_MS);
       saveRQ(); scheduleR(job.notBefore - Date.now()); break;
     }
   } finally { rsyncing = false; }
 }
-/** the rows of the receiving view: everything ordered, plus every counted line that is not in the order */
+/** the rows of the receiving view: everything ordered (orphans included — an item may leave the catalog between
+ *  the order and the shipment), plus every counted line that is not in the order */
 function recvRows(){
-  const out = [];
-  if (cat) for (const r of cat.rows){ const t = totalOf(r.id); if (t > 0) out.push({ id: r.id, title: r.title, sku: r.sku, image: r.image, ordered: t, got: recv.get(r.id) }); }
+  const out = [], seen = new Set();
+  const add = r => { const t = totalOf(r.id); if (t > 0 && !seen.has(r.id)){ seen.add(r.id); out.push({ id: r.id, title: r.title, sku: r.sku, image: r.image, ordered: t, got: recv.get(r.id) }); } };
+  if (cat) for (const r of cat.rows) add(r);
+  for (const r of orphans()) add(r);
   for (const [k, e] of recv) if (k.slice(0, 2) === 'x:') out.push({ id: '', title: e.title, sku: e.sku, image: '', ordered: 0, got: e });
   return out;
 }
 function renderRecv(){
   if (view !== 'recv' || !$('app') || $('app').classList.contains('hide')) return;
-  const rows = recvRows(), done = rows.filter(r => r.got && r.got.qty !== undefined).length;
-  const short = rows.filter(r => r.got && r.ordered > 0 && r.got.qty < r.ordered).length;
-  const extra = rows.filter(r => !r.id).length;
-  let h = '<div class="minbox"><div class="mrow"><span>נספרו</span><b>' + done + ' מתוך ' + rows.filter(r => r.id).length + '</b></div>' +
+  // a poll or a save must never swallow what is being typed: the focused field is put back exactly as it was
+  const act = document.activeElement, keep = act && act.dataset && act.dataset.rin ? { k: act.dataset.rin, val: act.value, sel: act.selectionStart } : null;
+  const rows = recvRows(), ordered = rows.filter(r => r.id);
+  const done = ordered.filter(r => r.got && r.got.qty !== undefined).length;
+  const short = ordered.filter(r => r.got && r.got.qty < r.ordered).length;
+  const extra = rows.length - ordered.length;
+  let h = '<div class="minbox"><div class="mrow"><span>נספרו</span><b>' + done + ' מתוך ' + ordered.length + '</b></div>' +
     (short ? '<div class="mrow short"><span>שורות שהגיעו חסרות</span><b>' + short + '</b></div>' : '') +
     (extra ? '<div class="mrow short"><span>בקופסה ולא בהזמנה</span><b>' + extra + '</b></div>' : '') +
+    (rq.length ? '<div class="mnote">' + rq.length + ' ספירות עוד לא נשלחו — הן נשמרות בטלפון ונשלחות כשהחיבור חוזר.</div>' : '') +
     '<div class="mnote">מקלידים כמה באמת הגיע. אפשר לתקן — כל תיקון נשמר כשורה חדשה ושום דבר לא נמחק.</div></div>';
   h += '<div class="acts"><button class="ok" id="recvAdd">+ פריט שלא ברשימה</button></div>';
   h += rows.map(r => {
     const g = r.got, v = g && g.qty !== undefined ? g.qty : '';
-    const cls = !g ? '' : r.id && g.qty < r.ordered ? ' short' : r.id && g.qty > r.ordered ? ' over' : ' ok';
+    const cls = !g ? '' : !r.id ? ' ok' : g.qty < r.ordered ? ' short' : g.qty > r.ordered ? ' over' : ' ok';
     return '<div class="srow rcv' + cls + '">' +
       '<div class="h"><div class="t" dir="auto">' + esc(r.title) + '</div>' +
       '<div class="q">' + (r.id ? 'הוזמן ' + num(r.ordered) : 'לא בהזמנה') + '</div></div>' +
       '<div class="s"><bdi dir="ltr">' + esc(r.sku || '') + '</bdi>' + (g && g.pending ? ' · נשמר…' : g && g.person ? ' · נספר ' + esc(g.person) : '') + '</div>' +
       '<div class="rin">' + (r.image ? '<img class="rimg" src="' + esc(safeUrl(r.image)) + '" alt="" loading="lazy">' : '') +
-      '<label>הגיע</label><input class="got" inputmode="numeric" data-rin="' + esc(r.id || ('x:' + r.title)) + '" value="' + esc(String(v)) + '">' +
+      '<label>הגיע</label><input class="got" inputmode="numeric" data-rin="' + esc(r.id || ('x:' + normT(r.title))) + '" value="' + esc(String(v)) + '">' +
       '</div></div>';
   }).join('');
   $('view').innerHTML = h;
+  if (keep){ const inp = document.querySelector('input[data-rin="' + CSS.escape(keep.k) + '"]'); if (inp){ inp.value = keep.val; inp.focus({ preventScroll:true }); try{ inp.setSelectionRange(keep.sel, keep.sel); }catch(e){} } }
 }
 /* a number typed in the receiving view is saved when the field loses focus or Enter is pressed — never on every keystroke */
 document.addEventListener('change', ev => {
   const i = ev.target.closest && ev.target.closest('input[data-rin]');
   if (!i) return;
   const k = i.dataset.rin, raw = String(i.value || '').trim();
-  if (raw === '') return;
+  if (raw === ''){ toast('כדי לבטל ספירה הקלד 0', 'warn', 4000); renderRecv(); return; }
   const n = Math.floor(Number(raw));
-  if (!isFinite(n) || n < 0 || n > MAX_QTY){ toast('כמות לא תקינה', 'err', 3000); return; }
+  if (!isFinite(n) || n < 0 || n > MAX_QTY){ toast('כמות לא תקינה', 'err', 3000); renderRecv(); return; }
   if (k.slice(0, 2) === 'x:'){ const e = recv.get(k); countIt('', n, e ? e.title : k.slice(2), e ? e.sku : ''); }
   else { const r = cat && cat.byId.get(k); countIt(k, n, r ? r.title : '', r ? r.sku : ''); }
 });
+document.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target && ev.target.dataset && ev.target.dataset.rin) ev.target.blur(); });
 document.addEventListener('click', ev => {
   if (!ev.target.closest || !ev.target.closest('#recvAdd')) return;
-  const t = String(prompt('מה הגיע ולא היה בהזמנה? (שם הפריט)') || '').trim();
+  const t = normT(prompt('מה הגיע ולא היה בהזמנה? (שם הפריט)') || '').slice(0, TITLE_MAX);
   if (!t) return;
   const q = Math.floor(Number(prompt('כמה יחידות?') || 0));
   if (!isFinite(q) || q < 0 || q > MAX_QTY){ toast('כמות לא תקינה', 'err', 3000); return; }
@@ -1103,9 +1147,10 @@ function enqueue(v, qty){
   const job = { uuid: uuid(), ts: Date.now(), person, variant_id: v, qty, att: 0, notBefore: 0 };
   queue.push(job); mine[v] = { qty, uuid: job.uuid }; st[v] = 'saving'; saveQ(); paintCard(v); sync();
 }
-const HARD = /^(BAD_PERSON|BAD_ITEM|NOT_AVAILABLE|BAD_QTY|BAD_NOTE|NOT_YOUR_LINE|CLOSED|NO_SHEET|missing uuid|unknown action|bad )/;
+const HARD = /^(BAD_PERSON|BAD_ITEM|NOT_AVAILABLE|BAD_QTY|BAD_NOTE|BAD_TITLE|BAD_SKU|SAFE_TEXT|NOT_YOUR_LINE|CLOSED|NO_SHEET|missing uuid|unknown action|bad )/;   // or1.7: BAD_TITLE/BAD_SKU/SAFE_TEXT too, or one bad name would block the receiving queue for a day
 const HARD_MSG = { BAD_PERSON:'השם שלך לא ברשימה — בחר שם מחדש', BAD_ITEM:'הפריט כבר לא בקטלוג — הכמות לא נשמרה', NOT_AVAILABLE:'הפריט אזל אצל הספק — הכמות לא נשמרה',
   NOT_YOUR_LINE:'הקישור הזה שומר רק את הכמויות שלך — הכמות לא נשמרה', BAD_NOTE:'ההערה לא נשמרה — הכמות לא נשמרה',
+  BAD_TITLE:'שם הפריט לא תקין — הספירה לא נשמרה', BAD_SKU:'המק״ט לא תקין — הספירה לא נשמרה', SAFE_TEXT:'יש תו שאי אפשר לשמור — הספירה לא נשמרה',
   BAD_QTY:'כמות לא תקינה — לא נשמרה', CLOSED:'ההזמנה כבר נסגרה — הכמות לא נשמרה', NO_SHEET:'הגיליון עוד לא הוכן — הכמות לא נשמרה', 'bad sup':'הקישור לא מתאים לספק הזה — הכמות לא נשמרה' };
 // or1.5: the same refusals in the words of a manager change, which is about someone else's line, not mine
 const MGR_MSG = { NO_SHEET:'הגיליון לא זמין', BAD_PERSON:'השם כבר לא ברשימה', NOT_AVAILABLE:'הפריט אזל אצל הספק — אפשר רק להסיר', CLOSED:'ההזמנה כבר נסגרה', BAD_ITEM:'הפריט כבר לא בקטלוג', BAD_QTY:'כמות לא תקינה', BAD_NOTE:'ההערה לא התקבלה', NOT_YOUR_LINE:'הקישור הזה לא יכול לשנות שורה של אדם אחר' };
@@ -1181,9 +1226,9 @@ function dropJob(job, err){
   else if (err === 'BAD_PERSON'){ if (job.person === person){ person = ''; try{ localStorage.removeItem(LS.person); }catch(e){} showNames(); } }
   else { paintCard(v); if (err === 'NOT_AVAILABLE' || err === 'BAD_ITEM') load(true); }
 }
-window.addEventListener('online', ()=>{ $('dot').classList.add('on'); sync(); load(false); });
+window.addEventListener('online', ()=>{ $('dot').classList.add('on'); sync(); rsync(); load(false); });
 window.addEventListener('offline', ()=> $('dot').classList.remove('on'));
-setInterval(()=>{ if (queue.length && keyed()) sync(); }, 5000);   // safety net: a retry timer that fired while a send was in flight is not lost
+setInterval(()=>{ if (queue.length && keyed()) sync(); if (rq.length && keyed()) rsync(); }, 5000);   // or1.7: the receiving queue has the same safety net   // safety net: a retry timer that fired while a send was in flight is not lost
 
 /* ================= LOAD (poll) ================= */
 async function load(full){
@@ -1247,7 +1292,7 @@ async function load(full){
 /** people, state and the ledger as this phone has them, for the next open (drawn at once, before the first jo_load) */
 function saveMeta(){ saveLS(LS.meta, { people, state, nLines, lines: [...lines].map(([k, l]) => [k, { qty: l.qty, ord: l.ord, shop: l.shop, sku: l.sku || '' }]) }); }
 setInterval(()=>{ if (!document.hidden && keyed()) load(false); }, POLL_MS);
-document.addEventListener('visibilitychange', ()=>{ if (!document.hidden && keyed()){ load(false); sync(); } });
+document.addEventListener('visibilitychange', ()=>{ if (!document.hidden && keyed()){ load(false); sync(); rsync(); } });
 window.addEventListener('focus', ()=>{ if (keyed() && Date.now() - lastOk > 5000) load(false); });
 
 /* ================= RENDER ================= */
@@ -1282,7 +1327,7 @@ function render(){
   $('view').className = view === 'catalog' ? 'v-cat' : 'v-other';
   setTopH();
   // keep the focused input (a stepper's number, the search box, a price bound or a facet's search box) and what was typed in it across the re-render
-  const act = document.activeElement, keep = act && act.dataset && act.dataset.qin ? { v: act.dataset.qin, val: act.value, sel: act.selectionStart } : act && (['q', 'pmin', 'pmax'].includes(act.id) || /^fq_/.test(act.id || '')) ? { fid: act.id, val: act.value, sel: act.selectionStart } : null;
+  const act = document.activeElement, keep = act && act.dataset && act.dataset.rin ? null : act && act.dataset && act.dataset.qin ? { v: act.dataset.qin, val: act.value, sel: act.selectionStart } : act && (['q', 'pmin', 'pmax'].includes(act.id) || /^fq_/.test(act.id || '')) ? { fid: act.id, val: act.value, sel: act.selectionStart } : null;
   if (view === 'catalog') renderCatalog(); else if (view === 'mine') renderMine(); else if (view === 'recv') renderRecv(); else renderSummary();
   if (keep){ const inp = keep.fid ? $(keep.fid) : document.querySelector('input[data-qin="' + CSS.escape(keep.v) + '"]'); if (inp){ inp.value = keep.val; inp.focus({ preventScroll:true }); try{ inp.setSelectionRange(keep.sel, keep.sel); }catch(e){} } }
 }
