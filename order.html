@@ -220,6 +220,12 @@
   .minbox .unk{color:var(--dim); font-family:inherit}
   .minbox .mworth{margin-top:6px; color:#ffd479; font-size:13.5px}
   .minbox .mnote{margin-top:4px; color:var(--dim); font-size:12.5px}
+  /* or1.6 (B-CAT-24 must-have 7): the order-window box; its own class so the or1.1/or1.2 guards that strip .minbox see one box */
+  .winbox{background:var(--surface2); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin:10px 0}
+  .winbox .mrow{display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:14.5px; padding:2px 0}
+  .winbox .mrow b{font-family:var(--mono)}
+  .winbox .mrow.short{color:#ffd479}
+  .winbox .mnote{margin-top:4px; color:var(--dim); font-size:12.5px}
   .tot-box b{font-family:var(--mono)}
   h2{font-size:16px; margin:16px 0 6px; color:var(--teal-hi)}
   .srow{border-top:1px solid var(--line); padding:8px 0; font-size:14px}
@@ -380,7 +386,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.5';
+const BUILD = 'or1.6';
 // or1.4 (B-BRN-8, part 2): every card of an item we carry gets ONE more grey line under its pace block — the brain's in-stock line
 // ("נמכר ~N בחודש כשיש במלאי (קצב להזמנה ~N) · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …", the brain's wording of 03/11), copied verbatim from the rates table (jo_load
 // `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
@@ -445,6 +451,7 @@ const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns=
 const DEF_SETTINGS = { v:1, sup:SUP, name_he:'', title_he:'הזמנה מספק', currency:{ code:'', symbol:'', after:false }, price:{ dealer_he:'מחיר סוחר', dealer_short_he:'סוחר', list_he:'מחירון', dealer_note_he:'' }, date_he:'קטלוג מ-', code_he:'מק״ט',
   groups:[], facets:[], flags:{ new_he:'חדש', new_note_he:'', ours_he:'היה אצלנו' }, minimum:{ kind:'none', he:'מינימום' }, case_he:'קרטון', availability:{ out_he:'אזל אצל הספק', remove:false },
   export:{ kingdom_list:false, text:'', he:'רשימה', column_he:'עמודה לקובץ הממלכה', check_he:'רשימת בדיקה · הורדה', note_he:'להדביק בתא הראשון של העמודה "פריק" (שורה 3) בקובץ של הממלכה; זה מחליף את כל העמודה.' },
+  order_window:null,   // or1.6 (B-CAT-24 must-have 7): {cut_dow 0-6, cut_he, late_he, gap_days, lead_he, arrive_he, src_he} or null = the page says nothing
   site_link_he:'', pace_none_he:PACE_HE.none, search_fields:['title','sku','barcode','item_id','description'] };
 const NO_SKU_HE = 'אין מק״ט';   // the older no-code value in sku (the School market feed writes it as the sku itself); or1.3: 'אין ' + S.code_he is read the same way
 // or1.3: the supplier list (order-suppliers.json), this device's last supplier, the shape of a stored key (as takeKeyFromHash takes it)
@@ -685,6 +692,18 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeSupMe
 
 /* ================= SETTINGS (from the backend, with the catalog) ================= */
 const txt = (v, d, n=200) => typeof v === 'string' && v.trim() ? v.trim().slice(0, n) : d;
+/** or1.6 (B-CAT-24 must-have 7): the supplier's order window, checked field by field as every other settings block is.
+ *  A missing block, a cut_dow that is not a weekday, a time that is not HH:MM — all give null or '', and the page then
+ *  draws nothing rather than a guessed date. */
+function winOf(w){
+  if (!w || typeof w !== 'object') return null;
+  const dow = Number(w.cut_dow), gap = Number(w.gap_days);
+  if (!Number.isInteger(dow) || dow < 0 || dow > 6) return null;
+  const time = t => /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(String(t == null ? '' : t)) ? String(t) : '';
+  return { cut_dow: dow, gap_days: Number.isInteger(gap) && gap >= 0 && gap <= 60 ? gap : 0,
+    cut_he: time(w.cut_he), late_he: time(w.late_he),
+    lead_he: txt(w.lead_he, '', 60), arrive_he: txt(w.arrive_he, '', 60), src_he: txt(w.src_he, '', 120) };
+}
 /** the supplier's settings block, checked field by field (ids are short slugs, texts are cut); anything missing falls back to the generic words */
 function setSettings(raw){
   const s = raw && typeof raw === 'object' ? raw : {}, D = DEF_SETTINGS;
@@ -696,6 +715,7 @@ function setSettings(raw){
     minimum: { kind: txt(s.minimum && s.minimum.kind, 'none', 20), he: txt(s.minimum && s.minimum.he, D.minimum.he) }, case_he: txt(s.case_he, D.case_he),
     availability: { out_he: txt(s.availability && s.availability.out_he, D.availability.out_he), remove: !!(s.availability && s.availability.remove === true) },
     export: { kingdom_list: !!(s.export && s.export.kingdom_list), text: s.export && s.export.text === 'supplier' ? 'supplier' : '', he: txt(s.export && s.export.he, D.export.he), column_he: txt(s.export && s.export.column_he, D.export.column_he), check_he: txt(s.export && s.export.check_he, D.export.check_he), note_he: txt(s.export && s.export.note_he, D.export.note_he, 300) },
+    order_window: winOf(s.order_window),   // or1.6 (B-CAT-24 must-have 7)
     site_link_he: txt(s.site_link_he, '', 30), pace_none_he: txt(s.pace_none_he, D.pace_none_he, 30),
     card_facets: Array.isArray(s.card_facets) ? s.card_facets.filter(f => FACET_COLS.includes(String(f))).map(String) : null,
     search_fields: Array.isArray(s.search_fields) ? s.search_fields.filter(f => typeof f === 'string' && (CAT_HEADER.includes(f))).slice(0, 12) : D.search_fields.slice() };
@@ -811,6 +831,43 @@ function minMoney(n){
 }
 /** true when the minimum may be compared with the order's total: the minimum names no currency, or the same one as the catalog */
 function minComparable(){ const c = MIN && MIN.currency ? MIN.currency : ''; return !c || c === S.currency.code || c === S.currency.symbol; }
+/* ===== or1.6 (B-CAT-24 must-have 7): the supplier's real order window ===== */
+/** today in Israel as a Date at 12:00 UTC — noon keeps the day arithmetic clear of any DST hour */
+function israelDay(now){
+  const p = new Intl.DateTimeFormat('en-GB', { timeZone:TZ, year:'numeric', month:'2-digit', day:'2-digit' }).formatToParts(now || new Date());
+  const g = t => Number((p.find(x => x.type === t) || {}).value);
+  return new Date(Date.UTC(g('year'), g('month') - 1, g('day'), 12));
+}
+/** the minute of the day in Israel */
+function israelMin(now){
+  const m = /^(\d{1,2}):(\d{2})$/.exec(new Intl.DateTimeFormat('en-GB', { timeZone:TZ, hour:'2-digit', minute:'2-digit', hour12:false }).format(now || new Date()));
+  return m ? Number(m[1]) * 60 + Number(m[2]) : 0;
+}
+function hhmmMin(t){ const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '')); return m ? Number(m[1]) * 60 + Number(m[2]) : 0; }
+function dmOf(d){ return String(d.getUTCDate()).padStart(2, '0') + '/' + String(d.getUTCMonth() + 1).padStart(2, '0'); }
+/** The next cut-off and the delivery that follows it, from settings.order_window. Pure in (now, w), so order_test
+ *  calls it with fixed dates. On the cut-off day itself it still counts until the cut hour passes; after that the
+ *  next one is a week later. A supplier with no order_window gets null and the page draws nothing. */
+function orderWindow(now, w){
+  w = w || S.order_window;
+  if (!w || typeof w.cut_dow !== 'number' || w.cut_dow < 0 || w.cut_dow > 6) return null;
+  const today = israelDay(now);
+  let add = (w.cut_dow - today.getUTCDay() + 7) % 7;
+  if (add === 0 && israelMin(now) >= hhmmMin(w.cut_he)) add = 7;
+  const cut = new Date(today); cut.setUTCDate(today.getUTCDate() + add);
+  const del = new Date(cut); del.setUTCDate(cut.getUTCDate() + (Number(w.gap_days) || 0));
+  return { cut, del, cut_dm: dmOf(cut), del_dm: dmOf(del), today: add === 0 };
+}
+/** the order window as one box above the summary's numbers; nothing at a supplier whose window we do not know */
+function winBoxHtml(now){
+  const w = S.order_window, r = orderWindow(now || new Date(), w);
+  if (!r) return '';
+  return '<div class="winbox"><div class="mrow"><span>' + esc(String(w.lead_he || '')) + ' ' + esc(r.cut_dm) + (w.cut_he ? ' ' + esc(String(w.cut_he)) : '') +
+    '</span><b>' + esc(String(w.arrive_he || '')) + ' ' + esc(r.del_dm) + '</b></div>' +
+    (r.today ? '<div class="mrow short"><span>זה היום</span><b>' + (w.late_he ? 'תוספות עד ' + esc(String(w.late_he)) : '') + '</b></div>' : '') +
+    (w.src_he ? '<div class="mnote">' + esc(String(w.src_he)) + '</div>' : '') + '</div>';
+}
+
 /** the summary's one box: the combined value, every shop's share, and the supplier's order minimum (or that we do not know it).
  *  It is drawn when it has something to say — a minimum is known, or more than one shop is on this order. A one-shop order at a
  *  supplier whose minimum nobody typed draws nothing new, so the summary of such an order is exactly the or1.4 summary. */
@@ -1522,6 +1579,7 @@ function renderSummary(){
   if (S0.pending || busy) h += '<div class="banner amber">יש כמויות שלך שעוד לא נשמרו: הן מופיעות כאן, אבל הטקסט, ה-CSV והרשימות כוללים רק מה שכבר נשמר' + (admin && busy && state.open ? '; אפשר לסגור כשהכול נשמר' : '') + '.</div>';
   if (!S0.items.length){ $('view').innerHTML = h + '<div class="empty">' + (ready() ? 'עוד אין כמויות בהזמנה.' : firstLoadDone ? 'אין חיבור — הסיכום יופיע כשהחיבור יחזור.' : 'טוען…') + '</div>'; return; }
   h += '<div class="tot-box">סה״כ להזמנה: <b>'+S0.grand.lines+'</b> פריטים · <b>'+num(S0.grand.units)+'</b> יחידות · <b>'+esc(money(S0.grand.sum))+'</b> ב'+esc(S.price.dealer_he)+noPriceNote(S0.items.map(x => x.r))+'</div>';
+  h += winBoxHtml();     // or1.6 (B-CAT-24): when to send this order and when it arrives (only where the window is known)
   h += minBoxHtml(S0);   // or1.5 (B-CAT-25): the combined value, every shop's share and the supplier's order minimum
   h += '<h2>לפי פריט</h2>' + S0.items.map(x => '<div class="srow" data-v="'+esc(x.r.id)+'"'+(x.r.orphan ? '' : ' data-go="'+esc(x.r.id)+'"')+'><div class="h"><div class="t" dir="auto">'+esc(x.r.title)+'</div><div class="q">×'+num(x.total)+'</div><div class="e">'+(x.r.orphan || x.r.price_dealer != null ? esc(money(x.lineSum)) : '<span class="noprice">אין מחיר</span>')+'</div></div>' +
     '<div class="s"><bdi dir="ltr">'+esc(codeText(x.r.sku) || x.r.id)+'</bdi>'+(hasMin && x.r.moq ? ' · '+esc(S.minimum.he)+' '+num(x.r.moq) : '')+(x.r.orphan || x.r.available ? '' : ' · '+esc(S.availability.out_he))+'</div>'+paceHtml(x.r)+'<div class="chips">'+chipsHtml(x.r, 'srow')+'</div>'+(x.r.orphan ? '' : stepperHtml(x.r) + rmOutHtml(x.r))+'</div>').join('');   // the pace and my stepper per item; 'הסר' on a sold-out item of mine (or1.2)
