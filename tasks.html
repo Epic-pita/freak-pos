@@ -165,7 +165,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 't0.3';   // S-SUP step 2, first cut (16/11/2026): ONE tasks screen for all suppliers, reading and answering through the same backend as suppliers.html
+const BUILD = 't0.4';   // S-SUP step 2, first cut (16/11/2026): ONE tasks screen for all suppliers, reading and answering through the same backend as suppliers.html
 // the backend is the catalog's script, the same deployments as suppliers.html: LIVE reads the live list; ?api=test writes only the TEST copies;
 // ?preview=1 = REAL rows, but every answer is only TRIED (dryRun: the server says what it would write and writes nothing). Never a URL from the address bar.
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbyCy0D7QPJNjpVIPP7NkNC38rkACV0t-O1C_m-SDsBUTFysG-Q0QUjtDPjI3Go8iYUZfw/exec';
@@ -173,8 +173,9 @@ const TEST_API = 'https://script.google.com/macros/s/AKfycbyzPhJi5UxWBqaJ7hlorCI
 const QS = new URLSearchParams(location.search);
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const MODE = (()=>{ const a = QS.get('api'); return a==='test' ? 'test' : a==='local' && LOCAL ? 'local' : 'live'; })();
-// t0.x: ALWAYS preview. Real answers (the path that writes his typing, root rule 3) are switched on only after the fresh reviewer's pass; until then every tap is only tried.
-const PREVIEW = true;
+// t0.x: the LIVE page is ALWAYS preview. Real answers (the path that writes his typing, root rule 3) work only on the TEST deployment (?api=test&real=1, which writes only the
+// private TEST copies) until the reviewer's open items, the TEST run and a second look are done; then the live flip is one reviewed commit.
+const PREVIEW = !(MODE === 'test' && QS.get('real') === '1');
 const API = MODE==='test' ? TEST_API : MODE==='local' ? location.origin + '/api' : LIVE_API;
 const ENV = MODE==='live' ? '' : 'test';
 const TZ = 'Asia/Jerusalem';
@@ -276,7 +277,7 @@ const HARD = /^(bad |missing uuid|unknown action|nothing to write|BAD_KEY)/;
 const bodyOf = job => { const b = { ...job.body }; if (PREVIEW) b.dryRun = true; else delete b.dryRun; return b; };
 function notSaved(job, err){
   const f = loadLS('fst_failed_'+MODE, []);
-  f.push({ key: job.body.key, what: pend[job.body.key] ? pend[job.body.key].label : job.body.answer, err: err || '?', body: job.body, at: Date.now() });
+  f.push({ key: job.body.key, uuid: job.uuid, what: pend[job.body.key] ? pend[job.body.key].label : job.body.answer, err: err || '?', body: job.body, at: Date.now() });
   saveLS('fst_failed_'+MODE, f.slice(-40)); delete pend[job.body.key]; renderFailed(); render(); toast('תשובה לא נשמרה: ' + (err || '?'), 'err', 6000);
 }
 function afterOk(job, js){
@@ -321,7 +322,7 @@ function renderFailed(){
   b.innerHTML = f.length ? '<b>תשובות שלא נשמרו ('+f.length+'):</b>' + f.map((x,i)=>'<div>'+esc(x.what)+(x.body&&x.body.note?' · "'+esc(x.body.note)+'"':'')+(x.body&&x.body.value&&x.body.value.price?' · '+esc(x.body.value.price)+' '+esc(x.body.value.cur):'')+' · '+esc(x.err)+' <button data-retry="'+i+'">לשלוח שוב</button> <button data-drop="'+i+'">למחוק</button></div>').join('') : '';
   b.querySelectorAll('[data-retry]').forEach(el => el.onclick = async ()=>{ const f2 = loadLS('fst_failed_'+MODE, []), x = f2[Number(el.dataset.retry)]; if (!x || !x.body) return;
     f2.splice(Number(el.dataset.retry), 1); saveLS('fst_failed_'+MODE, f2); renderFailed();
-    const job = { uuid: uuid(), ts: Date.now(), mode: MODE, att: 0, soft: 0, notBefore: 0, body: x.body }; pend[x.key] = { ans: x.body.answer, at: Date.now(), uuid: job.uuid, label: x.what };
+    const job = { uuid: x.uuid || uuid(), ts: Date.now(), mode: MODE, att: 0, soft: 0, notBefore: 0, body: x.body };   // the same uuid: the server answers it once pend[x.key] = { ans: x.body.answer, at: Date.now(), uuid: job.uuid, label: x.what };
     if (db){ await qPut(job); badge(); sync(); } else sendNow(job, x.what); render(); });
   b.querySelectorAll('[data-drop]').forEach(el => el.onclick = ()=>{ const f2 = loadLS('fst_failed_'+MODE, []); f2.splice(Number(el.dataset.drop), 1); saveLS('fst_failed_'+MODE, f2); renderFailed(); });
 }
@@ -441,8 +442,11 @@ function offersTable(offers, best){
   if (!offers || !offers.length) return '';
   return '<table class="offers">' + offers.map(o => '<tr class="'+(o.out?'out':o.s===best?'best':'')+'"><td>'+esc(o.s)+'</td><td class="p">'+ils(o.ils)+'</td><td>'+(ni(o.lead)!==''?ni(o.lead)+' ימים':'')+'</td><td>'+esc(o.stock||'')+'</td></tr>').join('') + '</table>';
 }
+const knownSups = () => ((data && data.suppliers) || []);
+// only a supplier the server knows is offered: the server refuses any other ('bad supplier') after the phone has already said it was saved
+const offered = list => { const k = knownSups(); return k.length ? list.filter(s => k.includes(s)) : list; };
 function supSelect(id, current, extra){
-  const all = [...new Set([...(extra||[]), ...COMMON_SUPS, ...((data && data.suppliers) || [])])].filter(Boolean);
+  const all = [...new Set(offered([...(extra||[]), ...COMMON_SUPS, ...knownSups()]))].filter(Boolean);
   return '<select id="'+id+'">' + (all.includes(current) ? '' : '<option value="" selected>בחר ספק…</option>') + all.map(s => '<option'+(s===current?' selected':'')+'>'+esc(s)+'</option>').join('') + '</select>';
 }
 const linkFor = sup => { const h = orderLinkOf(sup); return h ? '<a class="cardlink" href="'+esc(h)+'">להזמנה</a>' : ''; };
@@ -457,7 +461,7 @@ function cardHtml(t){
 function cNosup(t){
   const r = t.r, d = r.d, ro = ((data.overlay && data.overlay.real) || {})[r.code] || {};
   const hint = [d.guess ? 'במערכת: '+d.guess+' (ניחוש)' : '', d.study && d.study !== 'לא ידוע' ? 'הבדיקה: '+d.study+(d.studyConf?' ('+d.studyConf+')':'') : ''].filter(Boolean).join(' · ');
-  const quick = [...new Set([d.guess, d.study, ...COMMON_SUPS.slice(0,6)].filter(s => s && s !== 'לא ידוע'))].slice(0, 6);
+  const quick = [...new Set(offered([d.guess, d.study, ...COMMON_SUPS.slice(0,6)]).filter(s => s && s !== 'לא ידוע'))].slice(0, 6);
   return '<div class="card'+(d.sug?' urgent':'')+'" data-key="'+esc(r.key)+'">' + head(t, r.name, r.code) + metaLine(d) +
     (d.sug ? '<div class="rec">המוח רוצה להזמין <b>'+num(d.sug)+'</b></div>' : '') + (hint ? '<div class="why">'+esc(hint)+'</div>' : '') + (ro.other ? '<div class="why">כבר כתוב: '+esc(ro.other)+'</div>' : '') +
     '<div class="chipline">' + quick.map(s => '<button class="chip" data-act="nsquick" data-sup="'+esc(s)+'">'+esc(s)+'</button>').join('') + '<button class="chip" data-act="nsother">אחר…</button></div>' +
