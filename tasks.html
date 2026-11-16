@@ -198,6 +198,8 @@ const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&3|8)).toString(16)}));
 const ils = n => n==null||n==='' ? '' : '₪' + Number(n).toLocaleString('he-IL', {maximumFractionDigits: Number(n) < 100 ? 2 : 0});
 const num = n => n==null||n==='' ? '—' : Number(n).toLocaleString('he-IL', {maximumFractionDigits:1});
+// a number from the backend that goes into HTML: forced to a finite number first ('' when it is not one), never raw text (security review 16/11)
+const ni = n => { const x = Number(n); return n == null || n === '' || !Number.isFinite(x) ? '' : String(Math.round(x * 10) / 10); };
 const hhmm = iso => { const d=new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString('he-IL',{timeZone:TZ,hour:'2-digit',minute:'2-digit'}); };
 const ddmm = iso => { const d=new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('he-IL',{timeZone:TZ,day:'2-digit',month:'2-digit'}); };
 function saveLS(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
@@ -427,7 +429,7 @@ function metaLine(d){
 function leadOf(s){ return data && data.lead ? data.lead[s] : null; }
 function offersTable(offers, best){
   if (!offers || !offers.length) return '';
-  return '<table class="offers">' + offers.map(o => '<tr class="'+(o.out?'out':o.s===best?'best':'')+'"><td>'+esc(o.s)+'</td><td class="p">'+ils(o.ils)+'</td><td>'+(o.lead!=null?esc(o.lead)+' ימים':'')+'</td><td>'+esc(o.stock||'')+'</td></tr>').join('') + '</table>';
+  return '<table class="offers">' + offers.map(o => '<tr class="'+(o.out?'out':o.s===best?'best':'')+'"><td>'+esc(o.s)+'</td><td class="p">'+ils(o.ils)+'</td><td>'+(ni(o.lead)!==''?ni(o.lead)+' ימים':'')+'</td><td>'+esc(o.stock||'')+'</td></tr>').join('') + '</table>';
 }
 function supSelect(id, current, extra){
   const all = [...new Set([...(extra||[]), ...COMMON_SUPS, ...((data && data.suppliers) || [])])].filter(Boolean);
@@ -466,15 +468,15 @@ function cOut(t){
   const r = t.r, d = r.d, alts = (d.offers||[]).filter(o => o.s !== d.out);
   return '<div class="card'+((d.stock||0)<=0?' urgent':'')+'" data-key="'+esc(r.key)+'">' + head(t, r.name, r.code) + metaLine(d) +
     '<div class="warn">⚠ '+esc(d.outLabel)+'</div>' + (d.sug ? '<div class="rec">המוח מציע להזמין <b>'+num(d.sug)+'</b></div>' : '') +
-    (alts.length ? '<div class="why">אפשר במקום:</div>' + alts.map(o => '<button class="opt" data-act="outswitch" data-sup="'+esc(o.s)+'">להזמין מ-<b>'+esc(o.s)+'</b> · '+ils(o.ils)+(o.lead!=null?' · '+o.lead+' ימים':'')+'<div class="s">'+esc(o.stock || 'מלאי לא ידוע')+'</div></button>').join('') : '<div class="why">אין ספק אחר עם מחיר בקטלוג.</div>') +
+    (alts.length ? '<div class="why">אפשר במקום:</div>' + alts.map(o => '<button class="opt" data-act="outswitch" data-sup="'+esc(o.s)+'">להזמין מ-<b>'+esc(o.s)+'</b> · '+ils(o.ils)+(ni(o.lead)!==''?' · '+ni(o.lead)+' ימים':'')+'<div class="s">'+esc(o.stock || 'מלאי לא ידוע')+'</div></button>').join('') : '<div class="why">אין ספק אחר עם מחיר בקטלוג.</div>') +
     '<div class="acts"><button class="alt" data-act="outother">ספק אחר…</button><button class="alt" data-act="outwait">לחכות שיחזור</button><button class="no" data-act="outdrop">'+(pend['drop?'+r.key] ? 'בטוח? ללא הבאה נוספת' : 'לא להביא יותר')+'</button></div>' +
     (openEditor === r.key && editorKind === 'out' ? '<div class="editor"><label>מאיזה ספק להזמין</label>'+supSelect('edSup', '', [])+'<div class="acts"><button class="go" data-act="outsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + '</div>';
 }
 function cTransit(t){
-  const o = t.o, exp = o.lead!=null && o.at ? new Date(new Date(o.at).getTime() + o.lead*86400000) : null;
+  const o = t.o, exp = ni(o.lead)!=='' && o.at ? new Date(new Date(o.at).getTime() + Number(o.lead)*86400000) : null;
   return '<div class="card'+(o.late?' urgent':'')+'" data-tkey="'+esc(o.key)+'"><span class="kind">בדרך</span>'+linkFor(o.sup)+'<div class="nm">'+esc(o.sup)+'<span class="cd">'+esc(o.no || 'לא מהקטלוג')+'</span></div>' +
-    '<div class="meta"><span>נשלח <b>'+esc(ddmm(o.at))+'</b></span>'+(o.days!=null?'<span>לפני <b>'+o.days+'</b> ימים</span>':'')+(exp?'<span>צפוי <b>'+esc(ddmm(exp.toISOString()))+'</b></span>':'')+(o.total?'<span><b>'+ils(o.total)+'</b></span>':'')+'</div>' +
-    (o.late ? '<div class="warn">⚠ מאחר: עברו '+o.days+' ימים, ובדרך כלל לוקח '+o.lead+'</div>' : '') +
+    '<div class="meta"><span>נשלח <b>'+esc(ddmm(o.at))+'</b></span>'+(ni(o.days)!==''?'<span>לפני <b>'+ni(o.days)+'</b> ימים</span>':'')+(exp?'<span>צפוי <b>'+esc(ddmm(exp.toISOString()))+'</b></span>':'')+(o.total?'<span><b>'+ils(o.total)+'</b></span>':'')+'</div>' +
+    (o.late ? '<div class="warn">⚠ מאחר: עברו '+ni(o.days)+' ימים, ובדרך כלל לוקח '+ni(o.lead)+'</div>' : '') +
     '<div class="why">'+(o.lines||[]).slice(0,3).map(l => esc(l.name)+' ×'+esc(l.qty)+(l.state?' · '+esc(l.state):'')).join('<br>')+((o.lines||[]).length>3?'<br>ועוד '+((o.lines||[]).length-3)+' שורות':'')+'</div>' +
     (safeUrl(o.doc) ? '<div class="why"><a href="'+esc(safeUrl(o.doc))+'" target="_blank" rel="noopener">מסמך ההזמנה</a></div>' : '') +
     '<div class="acts"><button class="go" data-tact="arrived">הגיע</button><button class="alt" data-tact="checked">בדקתי, עדיין בדרך</button><button class="no" data-tact="note">הערה</button></div>' +
