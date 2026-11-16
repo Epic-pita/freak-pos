@@ -165,7 +165,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 't0.2';   // S-SUP step 2, first cut (16/11/2026): ONE tasks screen for all suppliers, reading and answering through the same backend as suppliers.html
+const BUILD = 't0.3';   // S-SUP step 2, first cut (16/11/2026): ONE tasks screen for all suppliers, reading and answering through the same backend as suppliers.html
 // the backend is the catalog's script, the same deployments as suppliers.html: LIVE reads the live list; ?api=test writes only the TEST copies;
 // ?preview=1 = REAL rows, but every answer is only TRIED (dryRun: the server says what it would write and writes nothing). Never a URL from the address bar.
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbyCy0D7QPJNjpVIPP7NkNC38rkACV0t-O1C_m-SDsBUTFysG-Q0QUjtDPjI3Go8iYUZfw/exec';
@@ -252,37 +252,43 @@ function showGate(msg){ $('app').classList.add('hide'); $('gate').classList.remo
 
 /* ================= QUEUE (IndexedDB, survives a closed app; repeat-safe by uuid) ================= */
 function idb(){ return new Promise((res,rej)=>{ const r=indexedDB.open('freak-tasks-v1',1); r.onupgradeneeded=()=>r.result.createObjectStore('q',{keyPath:'uuid'}); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
-function qPut(j){ return new Promise((res,rej)=>{ const tx=db.transaction('q','readwrite'); tx.objectStore('q').put(j); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }
+function qPut(j){ return new Promise((res,rej)=>{ const tx=db.transaction('q','readwrite'); tx.objectStore('q').put(j); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); tx.onabort=()=>rej(tx.error || new Error('abort')); }); }
 function qAll(){ return new Promise((res,rej)=>{ const r=db.transaction('q').objectStore('q').getAll(); r.onsuccess=()=>res(r.result.sort((a,b)=>a.ts-b.ts)); r.onerror=()=>rej(r.error); }); }
 function qDel(id){ return new Promise((res,rej)=>{ const tx=db.transaction('q','readwrite'); tx.objectStore('q').delete(id); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }
 async function badge(){ const n = db ? (await qAll()).filter(j=>j.mode===MODE && !j.body.dryRun).length : 0; const b=$('queueBadge'); b.textContent=n; b.classList.toggle('hide', !n); }
 
 /* answers: shown at once on this phone, sent from the queue; a hiding answer waits 5 s so "בטל" can take it back */
 async function answer(r, ans, value, note, label, hides){
+  if (pend[r.key] && pend[r.key].uuid) return;   // a second tap while the first answer is on its way is ignored (it would be a second job with another uuid)
   const job = { uuid: uuid(), ts: Date.now(), mode: MODE, att: 0, soft: 0, notBefore: hides ? Date.now() + UNDO_MS : 0,
     body: { action:'answer', kind: r.kind, key: r.key, code: r.code || '', sup: r.sup || '', answer: ans, value: value || {}, note: note || '', ...(PREVIEW ? { dryRun: true } : {}) } };
   pend[r.key] = { ans, at: Date.now(), uuid: job.uuid, label }; openEditor = '';
   if (!db || PREVIEW){ render(); toast(label + (PREVIEW ? ' (תצוגה: לא נשמר)' : ''), '', UNDO_MS, hides ? ()=>{ cancelled.add(job.uuid); delete pend[r.key]; render(); } : null);
     setTimeout(()=>{ if (!cancelled.has(job.uuid)) sendNow(job, label); }, hides ? UNDO_MS + 100 : 0); return; }
-  await qPut(job); badge(); render();
+  try{ await qPut(job); }catch(e){ return sendNow(job, label); }   // the phone refused the queue write: send it directly, never lose it
+  badge(); render();
   if (hides) toast(label, '', UNDO_MS, async ()=>{ cancelled.add(job.uuid); await qDel(job.uuid); delete pend[r.key]; badge(); render(); });
   else toast(label);
   setTimeout(sync, hides ? UNDO_MS + 200 : 50);
 }
 const HARD = /^(bad |missing uuid|unknown action|nothing to write|BAD_KEY)/;
+// every outgoing answer follows PREVIEW, whatever a stored job says (a job stored in preview carries dryRun:true; a real one never does)
+const bodyOf = job => { const b = { ...job.body }; if (PREVIEW) b.dryRun = true; else delete b.dryRun; return b; };
 function notSaved(job, err){
   const f = loadLS('fst_failed_'+MODE, []);
   f.push({ key: job.body.key, what: pend[job.body.key] ? pend[job.body.key].label : job.body.answer, err: err || '?', body: job.body, at: Date.now() });
-  saveLS('fst_failed_'+MODE, f.slice(-40)); delete pend[job.body.key]; renderFailed(); render();
+  saveLS('fst_failed_'+MODE, f.slice(-40)); delete pend[job.body.key]; renderFailed(); render(); toast('תשובה לא נשמרה: ' + (err || '?'), 'err', 6000);
 }
 function afterOk(job, js){
   if (js.result === 'changed'){ const now = js.results && js.results[0] ? js.results[0].now : ''; toast('בגיליון כבר כתוב משהו אחר' + (now!=='' ? ' ('+now+')' : '') + ' — לא דרסתי. לבדוק שוב.', 'warn', 6000); delete pend[job.body.key]; }
   if (js.result === 'partial') toast('נשמר רק חלק: בגיליון כבר היה כתוב משהו אחר באחד התאים — לבדוק', 'warn', 6000);
   if (js.result === 'gone'){ toast('הפריט כבר לא בלשונית — לא נכתב', 'warn', 4000); delete pend[job.body.key]; }
+  if (!hidingAns(job.body.answer)) delete pend[job.body.key];   // a note hides nothing: the task stays and the pending mark goes
   if (!PREVIEW) setTimeout(()=>load(false), 600);
 }
 async function sendNow(job, label){
-  try{ const js = await post({ ...job.body, uuid: job.uuid }, 60000);
+  try{ const js = await post({ ...bodyOf(job), uuid: job.uuid }, 60000);
+    if (js && js.ok && !PREVIEW && js.result === 'dry'){ notSaved(job, 'השרת ענה בריצת ניסיון'); return; }
     if (js && js.ok){ if (PREVIEW){ console.log('preview answer tried:', job.body.kind, job.body.answer, js.result, js.plan); return; } return afterOk(job, js); }
     notSaved(job, js && js.error); }
   catch(e){ notSaved(job, 'אין חיבור'); }
@@ -296,8 +302,9 @@ async function sync(){
       if (cancelled.has(job.uuid)){ await qDel(job.uuid); continue; }
       if (job.notBefore && job.notBefore > Date.now()) continue;
       let js;
-      try{ js = await post({ ...job.body, uuid: job.uuid }, 60000); }catch(e){ break; }
-      if (js && js.ok){ await qDel(job.uuid); afterOk(job, js); }
+      try{ js = await post({ ...bodyOf(job), uuid: job.uuid }, 60000); }catch(e){ break; }
+      if (js && js.ok && !PREVIEW && js.result === 'dry'){ await qDel(job.uuid); notSaved(job, 'השרת ענה בריצת ניסיון'); }
+      else if (js && js.ok){ await qDel(job.uuid); afterOk(job, js); }
       else if (js && js.error === 'BAD_KEY'){ showGate('המפתח לא מתאים יותר. לפתוח שוב את הקישור האישי.'); break; }
       else if (js && HARD.test(String(js.error||''))){ await qDel(job.uuid); notSaved(job, js.error); }
       else {
@@ -311,7 +318,7 @@ async function sync(){
 function renderFailed(){
   const f = loadLS('fst_failed_'+MODE, []), b = $('failedBox');
   b.classList.toggle('hide', !f.length);
-  b.innerHTML = f.length ? '<b>תשובות שלא נשמרו ('+f.length+'):</b>' + f.map((x,i)=>'<div>'+esc(x.what)+' · '+esc(x.err)+' <button data-retry="'+i+'">לשלוח שוב</button> <button data-drop="'+i+'">למחוק</button></div>').join('') : '';
+  b.innerHTML = f.length ? '<b>תשובות שלא נשמרו ('+f.length+'):</b>' + f.map((x,i)=>'<div>'+esc(x.what)+(x.body&&x.body.note?' · "'+esc(x.body.note)+'"':'')+(x.body&&x.body.value&&x.body.value.price?' · '+esc(x.body.value.price)+' '+esc(x.body.value.cur):'')+' · '+esc(x.err)+' <button data-retry="'+i+'">לשלוח שוב</button> <button data-drop="'+i+'">למחוק</button></div>').join('') : '';
   b.querySelectorAll('[data-retry]').forEach(el => el.onclick = async ()=>{ const f2 = loadLS('fst_failed_'+MODE, []), x = f2[Number(el.dataset.retry)]; if (!x || !x.body) return;
     f2.splice(Number(el.dataset.retry), 1); saveLS('fst_failed_'+MODE, f2); renderFailed();
     const job = { uuid: uuid(), ts: Date.now(), mode: MODE, att: 0, soft: 0, notBefore: 0, body: x.body }; pend[x.key] = { ans: x.body.answer, at: Date.now(), uuid: job.uuid, label: x.what };
@@ -356,7 +363,7 @@ function baseTasks(){
   return out;
 }
 function isLive(t){
-  if (t.kind === 'transit') return !snoozed(t.key) && !pend[t.key];
+  if (t.kind === 'transit') return !snoozed(t.key) && !(pend[t.key] && hidingAns(pend[t.key].ans));
   return !snoozed(t.key) && !(pend[t.key] && hidingAns(pend[t.key].ans)) && !done(t.r);
 }
 function textOf(t){ return t.kind === 'transit' ? (t.o.sup + ' ' + (t.o.no||'') + ' ' + (t.o.lines||[]).map(l => l.name + ' ' + l.code).join(' ')) : (t.r.name + ' ' + t.r.code + ' ' + t.sup); }
@@ -404,13 +411,16 @@ function render(){
   renderBanners(); renderList();
   $('foot').textContent = 'גרסה ' + BUILD + (MODE !== 'live' ? ' · שרת ניסיון' : '') + (PREVIEW ? ' · תצוגה' : '') + ' · ' + (data.who || '');
 }
+const ED_IDS = ['edSup', 'edNote', 'edPrice', 'edCur', 'edSrc'];
 function renderList(){
+  const keep = ED_IDS.map(id => [id, $(id) ? $(id).value : null]).filter(x => x[1] !== null), focus = document.activeElement && document.activeElement.id;
   const all = filtered(false), n = shown;
   $('cnt').innerHTML = '<span><b>' + all.length + '</b> משימות' + (all.length > n ? ' · מוצגות ' + n : '') + '</span>' +
     ((F.sup || F.kind || !F.open || query) ? '<button data-fclear="1">נקה סינון</button>' : '');
-  const open = openEditor;
   $('list').innerHTML = all.slice(0, n).map(cardHtml).join('') + (all.length > n ? '<button class="more" data-more="1">עוד ' + Math.min(PAGE, all.length - n) + ' (נשארו ' + (all.length - n) + ')</button>' : '') ||
     '<div class="empty">אין משימות לפי הסינון הזה.' + (F.open ? ' <br><button data-fo="1" style="margin-top:10px">להראות גם משימות בלי שורת הזמנה</button>' : '') + '</div>';
+  for (const [id, v] of keep) if ($(id)) $(id).value = v;   // what he typed survives every redraw (poll, filter tap, a returning tab)
+  if (focus && ED_IDS.includes(focus) && $(focus)) $(focus).focus();
 }
 function renderBanners(){
   const b = [];
@@ -473,12 +483,13 @@ function cOut(t){
     (openEditor === r.key && editorKind === 'out' ? '<div class="editor"><label>מאיזה ספק להזמין</label>'+supSelect('edSup', '', [])+'<div class="acts"><button class="go" data-act="outsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + '</div>';
 }
 function cTransit(t){
-  const o = t.o, exp = ni(o.lead)!=='' && o.at ? new Date(new Date(o.at).getTime() + Number(o.lead)*86400000) : null;
+  const o = t.o, exp = ni(o.lead)!=='' && o.at && !isNaN(new Date(o.at)) ? new Date(new Date(o.at).getTime() + Number(o.lead)*86400000) : null;
   return '<div class="card'+(o.late?' urgent':'')+'" data-tkey="'+esc(o.key)+'"><span class="kind">בדרך</span>'+linkFor(o.sup)+'<div class="nm">'+esc(o.sup)+'<span class="cd">'+esc(o.no || 'לא מהקטלוג')+'</span></div>' +
-    '<div class="meta"><span>נשלח <b>'+esc(ddmm(o.at))+'</b></span>'+(ni(o.days)!==''?'<span>לפני <b>'+ni(o.days)+'</b> ימים</span>':'')+(exp?'<span>צפוי <b>'+esc(ddmm(exp.toISOString()))+'</b></span>':'')+(o.total?'<span><b>'+ils(o.total)+'</b></span>':'')+'</div>' +
+    '<div class="meta"><span>נשלח <b>'+esc(ddmm(o.at))+'</b></span>'+(ni(o.days)!==''?'<span>לפני <b>'+ni(o.days)+'</b> ימים</span>':'')+(exp?'<span>צפוי <b>'+esc(ddmm(exp))+'</b></span>':'')+(o.total?'<span><b>'+ils(o.total)+'</b></span>':'')+'</div>' +
     (o.late ? '<div class="warn">⚠ מאחר: עברו '+ni(o.days)+' ימים, ובדרך כלל לוקח '+ni(o.lead)+'</div>' : '') +
     '<div class="why">'+(o.lines||[]).slice(0,3).map(l => esc(l.name)+' ×'+esc(l.qty)+(l.state?' · '+esc(l.state):'')).join('<br>')+((o.lines||[]).length>3?'<br>ועוד '+((o.lines||[]).length-3)+' שורות':'')+'</div>' +
     (safeUrl(o.doc) ? '<div class="why"><a href="'+esc(safeUrl(o.doc))+'" target="_blank" rel="noopener">מסמך ההזמנה</a></div>' : '') +
+    ((latest(o.key)||{}).note ? '<div class="why">הערה: '+esc(latest(o.key).note)+'</div>' : '') +
     '<div class="acts"><button class="go" data-tact="arrived">הגיע</button><button class="alt" data-tact="checked">בדקתי, עדיין בדרך</button><button class="no" data-tact="note">הערה</button></div>' +
     (openEditor === o.key && editorKind === 'note' ? '<div class="editor"><label>הערה על ההזמנה</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-tact="notesave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + '</div>';
 }
@@ -523,6 +534,7 @@ document.addEventListener('click', ev => {
   if (act === 'outwait') return answer(r, 'wait', {}, '', 'מחכים שיחזור — שבועיים', true);
   if (act === 'outdrop'){   // no popup: the first tap asks, the second (within 4 s) does it
     const k = 'drop?' + r.key;
+    if (pend[k] && Date.now() - pend[k].at < 500) return;
     if (!pend[k]){ pend[k] = { ans: 'note', at: Date.now() }; renderList(); setTimeout(()=>{ if (pend[k]){ delete pend[k]; renderList(); } }, 4000); return; }
     delete pend[k]; return answer(r, 'drop', {}, '', 'לא מביאים יותר', true);
   }
@@ -552,6 +564,8 @@ async function start(){
   renderFailed(); render();
   loadOrderSups();
   try{ db = await idb(); }catch(e){ toast('אין אחסון בטלפון — התשובות יישלחו רק עם קליטה', 'warn', 5000); }
+  // answers still in the queue count as answered on this phone (a reopened app must not offer the same task again)
+  if (db && !PREVIEW){ try{ for (const j of await qAll()) if (j.mode === MODE && !j.body.dryRun) pend[j.body.key] = { ans: j.body.answer, at: j.ts, uuid: j.uuid, label: '' }; }catch(e){} }
   badge(); sync(); load(!data);
   setInterval(() => { if (!document.hidden) load(false); }, POLL_MS);
 }
