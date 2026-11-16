@@ -165,7 +165,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 't0.4';   // S-SUP step 2, first cut (16/11/2026): ONE tasks screen for all suppliers, reading and answering through the same backend as suppliers.html
+const BUILD = 't0.5';   // S-SUP step 2, first cut (16/11/2026): ONE tasks screen for all suppliers, reading and answering through the same backend as suppliers.html
 // the backend is the catalog's script, the same deployments as suppliers.html: LIVE reads the live list; ?api=test writes only the TEST copies;
 // ?preview=1 = REAL rows, but every answer is only TRIED (dryRun: the server says what it would write and writes nothing). Never a URL from the address bar.
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbyCy0D7QPJNjpVIPP7NkNC38rkACV0t-O1C_m-SDsBUTFysG-Q0QUjtDPjI3Go8iYUZfw/exec';
@@ -221,6 +221,7 @@ async function post(body, ms=45000){
 }
 function safeUrl(u){ const s = String(u == null ? '' : u); if (!/^https?:\/\/[^\s"'<>]+$/i.test(s)) return ''; try{ const p = new URL(s).protocol; return p === 'https:' || p === 'http:' ? s : ''; }catch(e){ return ''; } }
 const TEXT_RULE = 'הטקסט לא יכול להתחיל ב-= או להכיל < >, ועד 300 תווים';
+const typedNote = key => (openEditor === key && $('edNote')) ? ($('edNote').value || '').trim() : '';
 const textOk = t => t === '' || (t.length <= 300 && !/^=|[<>\u0000-\u001f]/.test(t));
 
 /* ================= ORDER PAGES (the link from a supplier's cards) ================= */
@@ -252,7 +253,7 @@ async function checkKey(k){ KEY = k; try{ return await post({ action:'ping' }, 3
 function showGate(msg){ $('app').classList.add('hide'); $('gate').classList.remove('hide'); $('gateMsg').textContent = msg || ''; }
 
 /* ================= QUEUE (IndexedDB, survives a closed app; repeat-safe by uuid) ================= */
-function idb(){ return new Promise((res,rej)=>{ const r=indexedDB.open('freak-tasks-v1',1); r.onupgradeneeded=()=>r.result.createObjectStore('q',{keyPath:'uuid'}); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+function idb(){ return new Promise((res,rej)=>{ const r=indexedDB.open('freak-tasks-v2',1); r.onupgradeneeded=()=>r.result.createObjectStore('q',{keyPath:'uuid'}); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
 function qPut(j){ return new Promise((res,rej)=>{ const tx=db.transaction('q','readwrite'); tx.objectStore('q').put(j); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); tx.onabort=()=>rej(tx.error || new Error('abort')); }); }
 function qAll(){ return new Promise((res,rej)=>{ const r=db.transaction('q').objectStore('q').getAll(); r.onsuccess=()=>res(r.result.sort((a,b)=>a.ts-b.ts)); r.onerror=()=>rej(r.error); }); }
 function qDel(id){ return new Promise((res,rej)=>{ const tx=db.transaction('q','readwrite'); tx.objectStore('q').delete(id); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }
@@ -275,15 +276,17 @@ async function answer(r, ans, value, note, label, hides){
 const HARD = /^(bad |missing uuid|unknown action|nothing to write|BAD_KEY)/;
 // every outgoing answer follows PREVIEW, whatever a stored job says (a job stored in preview carries dryRun:true; a real one never does)
 const bodyOf = job => { const b = { ...job.body }; if (PREVIEW) b.dryRun = true; else delete b.dryRun; return b; };
-function notSaved(job, err){
-  const f = loadLS('fst_failed_'+MODE, []);
-  f.push({ key: job.body.key, uuid: job.uuid, what: pend[job.body.key] ? pend[job.body.key].label : job.body.answer, err: err || '?', body: job.body, at: Date.now() });
-  saveLS('fst_failed_'+MODE, f.slice(-40)); delete pend[job.body.key]; renderFailed(); render(); toast('תשובה לא נשמרה: ' + (err || '?'), 'err', 6000);
+const whatOf = job => { const b = job.body, l = pend[b.key] && pend[b.key].label; return (l || (KIND_HE[b.kind] || b.kind) + ': ' + b.answer) + (b.code ? ' · ' + b.code : '') + (b.value && b.value.sup ? ' · ' + b.value.sup : ''); };
+function notSaved(job, err, noretry){
+  const f = loadLS('fst_failed2_'+MODE, []);
+  f.push({ key: job.body.key, uuid: job.uuid, what: whatOf(job), err: err || '?', noretry: !!noretry, body: job.body, at: Date.now() });
+  saveLS('fst_failed2_'+MODE, f.slice(-40)); delete pend[job.body.key]; renderFailed(); render(); toast('תשובה לא נשמרה: ' + (err || '?'), 'err', 6000);
 }
 function afterOk(job, js){
-  if (js.result === 'changed'){ const now = js.results && js.results[0] ? js.results[0].now : ''; toast('בגיליון כבר כתוב משהו אחר' + (now!=='' ? ' ('+now+')' : '') + ' — לא דרסתי. לבדוק שוב.', 'warn', 6000); delete pend[job.body.key]; }
-  if (js.result === 'partial') toast('נשמר רק חלק: בגיליון כבר היה כתוב משהו אחר באחד התאים — לבדוק', 'warn', 6000);
-  if (js.result === 'gone'){ toast('הפריט כבר לא בלשונית — לא נכתב', 'warn', 4000); delete pend[job.body.key]; }
+  if (pend[job.body.key]) pend[job.body.key].sent = true;
+  if (js.result === 'changed'){ const now = js.results && js.results[0] ? js.results[0].now : ''; notSaved(job, 'בגיליון כבר כתוב משהו אחר' + (now!=='' ? ' ('+now+')' : '') + ' — לא דרסתי', true); return; }
+  if (js.result === 'partial') notSaved(job, 'נשמר רק חלק: בגיליון כבר היה כתוב משהו אחר באחד התאים', true);
+  if (js.result === 'gone'){ notSaved(job, 'הפריט כבר לא בלשונית — לא נכתב', true); return; }
   if (!hidingAns(job.body.answer)) delete pend[job.body.key];   // a note hides nothing: the task stays and the pending mark goes
   if (!PREVIEW) setTimeout(()=>load(false), 600);
 }
@@ -300,6 +303,8 @@ async function sync(){
   try{
     for (const job of await qAll()){
       if (job.mode !== MODE) continue;
+      if (PREVIEW && !job.body.dryRun) continue;                            // a real job is never sent by a preview page
+      if (!PREVIEW && job.body.dryRun){ await qDel(job.uuid); continue; }   // a preview-era job never becomes real
       if (cancelled.has(job.uuid)){ await qDel(job.uuid); continue; }
       if (job.notBefore && job.notBefore > Date.now()) continue;
       let js;
@@ -317,14 +322,16 @@ async function sync(){
   } finally { syncing = false; badge(); }
 }
 function renderFailed(){
-  const f = loadLS('fst_failed_'+MODE, []), b = $('failedBox');
+  let f = loadLS('fst_failed2_'+MODE, []); const b = $('failedBox');
+  if (!PREVIEW){ const g = f.filter(x => !(x.body && x.body.dryRun)); if (g.length !== f.length){ f = g; saveLS('fst_failed2_'+MODE, f); } }   // an entry made in preview never becomes real
   b.classList.toggle('hide', !f.length);
-  b.innerHTML = f.length ? '<b>תשובות שלא נשמרו ('+f.length+'):</b>' + f.map((x,i)=>'<div>'+esc(x.what)+(x.body&&x.body.note?' · "'+esc(x.body.note)+'"':'')+(x.body&&x.body.value&&x.body.value.price?' · '+esc(x.body.value.price)+' '+esc(x.body.value.cur):'')+' · '+esc(x.err)+' <button data-retry="'+i+'">לשלוח שוב</button> <button data-drop="'+i+'">למחוק</button></div>').join('') : '';
-  b.querySelectorAll('[data-retry]').forEach(el => el.onclick = async ()=>{ const f2 = loadLS('fst_failed_'+MODE, []), x = f2[Number(el.dataset.retry)]; if (!x || !x.body) return;
-    f2.splice(Number(el.dataset.retry), 1); saveLS('fst_failed_'+MODE, f2); renderFailed();
-    const job = { uuid: x.uuid || uuid(), ts: Date.now(), mode: MODE, att: 0, soft: 0, notBefore: 0, body: x.body };   // the same uuid: the server answers it once pend[x.key] = { ans: x.body.answer, at: Date.now(), uuid: job.uuid, label: x.what };
+  b.innerHTML = f.length ? '<b>תשובות שלא נשמרו ('+f.length+'):</b>' + f.map((x,i)=>'<div>'+esc(x.what)+(x.body&&x.body.note?' · "'+esc(x.body.note)+'"':'')+(x.body&&x.body.value&&x.body.value.price?' · '+esc(x.body.value.price)+' '+esc(x.body.value.cur):'')+' · '+esc(x.err)+(x.noretry ? '' : ' <button data-retry="'+i+'">לשלוח שוב</button>')+' <button data-drop="'+i+'">'+(x.noretry ? 'סגור' : 'למחוק')+'</button></div>').join('') : '';
+  b.querySelectorAll('[data-retry]').forEach(el => el.onclick = async ()=>{ const f2 = loadLS('fst_failed2_'+MODE, []), x = f2[Number(el.dataset.retry)]; if (!x || !x.body) return;
+    f2.splice(Number(el.dataset.retry), 1); saveLS('fst_failed2_'+MODE, f2); renderFailed();
+    const job = { uuid: x.uuid || uuid(), ts: Date.now(), mode: MODE, att: 0, soft: 0, notBefore: 0, body: x.body };   // the same uuid: the server answers it once
+    pend[x.key] = { ans: x.body.answer, at: Date.now(), uuid: job.uuid, label: x.what };
     if (db){ await qPut(job); badge(); sync(); } else sendNow(job, x.what); render(); });
-  b.querySelectorAll('[data-drop]').forEach(el => el.onclick = ()=>{ const f2 = loadLS('fst_failed_'+MODE, []); f2.splice(Number(el.dataset.drop), 1); saveLS('fst_failed_'+MODE, f2); renderFailed(); });
+  b.querySelectorAll('[data-drop]').forEach(el => el.onclick = ()=>{ const f2 = loadLS('fst_failed2_'+MODE, []); f2.splice(Number(el.dataset.drop), 1); saveLS('fst_failed2_'+MODE, f2); renderFailed(); });
 }
 
 /* ================= LOAD ================= */
@@ -341,7 +348,8 @@ async function load(full){
       if (MODE === 'live' && !PREVIEW) saveLS(LS.data, data);
       lastOk = Date.now();
       // an answer the list now shows (the newest answer of the task is it, or newer) is no longer "pending" on this phone
-      for (const k of Object.keys(pend)){ const a = latest(k); if (a && new Date(a.at).getTime() >= pend[k].at - 120000) delete pend[k]; else if (Date.now() - pend[k].at > 6*3600000) delete pend[k]; }
+      for (const k of Object.keys(pend)){ const p = pend[k]; if (!p.sent) continue;   // an answer still on its way keeps its mark, however old an earlier answer of the task is
+        const a = latest(k); if (a && new Date(a.at).getTime() >= p.at - 120000) delete pend[k]; else if (Date.now() - p.at > 6*3600000) delete pend[k]; }
       $('dot').classList.add('on');
     } else if (js && js.error === 'BAD_KEY') showGate('המפתח לא מתאים. לפתוח שוב את הקישור האישי.');
     else toast('לא הצלחתי לקרוא את הרשימה: ' + (js && js.error || '?'), 'err', 4000);
@@ -414,20 +422,28 @@ function render(){
 }
 const ED_IDS = ['edSup', 'edNote', 'edPrice', 'edCur', 'edSrc'];
 function renderList(){
+  const owner = openEditor + '|' + editorKind;
   const keep = ED_IDS.map(id => [id, $(id) ? $(id).value : null]).filter(x => x[1] !== null), focus = document.activeElement && document.activeElement.id;
   const all = filtered(false), n = shown;
   $('cnt').innerHTML = '<span><b>' + all.length + '</b> משימות' + (all.length > n ? ' · מוצגות ' + n : '') + '</span>' +
     ((F.sup || F.kind || !F.open || query) ? '<button data-fclear="1">נקה סינון</button>' : '');
   $('list').innerHTML = all.slice(0, n).map(cardHtml).join('') + (all.length > n ? '<button class="more" data-more="1">עוד ' + Math.min(PAGE, all.length - n) + ' (נשארו ' + (all.length - n) + ')</button>' : '') ||
     '<div class="empty">אין משימות לפי הסינון הזה.' + (F.open ? ' <br><button data-fo="1" style="margin-top:10px">להראות גם משימות בלי שורת הזמנה</button>' : '') + '</div>';
-  for (const [id, v] of keep) if ($(id)) $(id).value = v;   // what he typed survives every redraw (poll, filter tap, a returning tab)
-  if (focus && ED_IDS.includes(focus) && $(focus)) $(focus).focus();
+  if (owner === openEditor + '|' + editorKind){   // what he typed survives every redraw (poll, filter tap, a returning tab), but only back into the SAME editor
+    for (const [id, v] of keep) if ($(id)) $(id).value = v;
+    if (focus && ED_IDS.includes(focus) && $(focus)) $(focus).focus();
+  }
 }
 function renderBanners(){
   const b = [];
   for (const r of ((data.rows || []).filter(x => x.kind === 'login'))){
     const d = r.d;
     b.push('<div class="banner red"><b>הכניסה לאתר של ' + esc(d.site) + (d.state === 'expired' ? ' פגה' : '') + '.</b> ' + (d.state === 'expired' ? 'המחירים והמלאי שלהם לא מתעדכנים מאז ' + esc(d.since) + '. ' : '') + 'צריך להתחבר שוב פעם אחת במחשב בחנות.</div>');
+  }
+  for (const l of (data.lost || [])){
+    const ack = 'lost|'+l.key+'|'+l.at; if (snoozed(ack) || pend[ack] || pend[l.key]) continue;
+    const r = (data.rows || []).find(x => x.key === l.key) || { name: l.code };
+    b.push('<div class="banner red">ענית ב-' + esc(ddmm(l.at)) + ' על <b>' + esc(r.name) + '</b>: ' + esc(l.val) + ', ובגיליון כתוב עכשיו ' + (l.now === '' ? 'כלום' : '"' + esc(l.now) + '"') + '.<div class="row"><button data-lost="'+esc(l.key)+'" data-act2="again">לכתוב שוב את שלי</button> <button data-lost="'+esc(l.key)+'" data-act2="keep">להשאיר מה שבגיליון</button></div></div>');
   }
   if (data.busy && data.busy.refresh) b.push('<div class="banner amber">הקטלוג מתעדכן עכשיו (מאז ' + esc(data.busy.refresh) + '). התשובות נשמרות בטלפון ונשלחות לבד כשהעדכון נגמר.</div>');
   if (PREVIEW) b.push('<div class="banner info"><b>תצוגה לניסיון.</b> זו הרשימה האמיתית, אבל שום תשובה לא נשמרת: אפשר ללחוץ בחופשיות. מה שלחצת יחזור אחרי רענון.</div>');
@@ -508,19 +524,27 @@ document.addEventListener('click', ev => {
   if (d.ftoggle){ panelOpen = !panelOpen; render(); return; }
   if (d.fclear){ query = ''; setF({ kind: '', sup: '', open: true }); return; }
   if (d.more){ shown += PAGE; renderList(); return; }
+  if (d.lost){
+    const l = ((data && data.lost) || []).find(x => x.key === d.lost); if (!l) return;
+    const r = ((data.rows) || []).find(x => x.key === l.key) || { kind: l.kind, key: l.key, code: l.code, sup: '' };
+    if (d.act2 === 'keep') return answer({ ...r, kind: 'lost', key: 'lost|'+l.key+'|'+l.at }, 'ack', {}, '', 'נשאר מה שבגיליון', true);
+    if (l.ans === 'pick' || l.ans === 'switch') return answer(r, 'switch', { sup: l.val, wasPick: l.now }, '', 'נכתב שוב: '+l.val, false);
+    if (l.ans === 'supplier') return answer(r, 'supplier', { sup: l.val, wasOther: l.now }, '', 'נכתב שוב: '+l.val, false);
+    return;
+  }
   if (d.tact){
     const card = t.closest('[data-tkey]'), o = ((data && data.transit) || []).find(x => x.key === card.dataset.tkey); if (!o) return;
     const r = { kind: 'transit', key: o.key, code: '', sup: o.sup };
     if (d.tact === 'note'){ openEditor = o.key; editorKind = 'note'; renderList(); const f = $('edNote'); if (f) f.focus(); return; }
     if (d.tact === 'notesave'){ const n = ($('edNote').value || '').trim(); if (!n) return; if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; } return answer(r, 'note', {}, n, 'ההערה נשמרה', false); }
-    return answer(r, d.tact, {}, '', d.tact === 'arrived' ? 'סומן שהגיע' : 'נבדק — יחזור בעוד שבוע', true);
+    return answer(r, d.tact, {}, typedNote(o.key), d.tact === 'arrived' ? 'סומן שהגיע' : 'נבדק — יחזור בעוד שבוע', true);
   }
   const card = t.closest('[data-key]'); if (!card || !d.act) return;
   const r = ((data && data.rows) || []).find(x => x.key === card.dataset.key); if (!r) return;
   const o = ((data.overlay && data.overlay.p) || {})[r.code] || {}, dd = r.d, act = d.act;
   const wasOther = () => (((data.overlay && data.overlay.real) || {})[r.code] || {}).other || '';
   if (act === 'edclose'){ openEditor = ''; renderList(); return; }
-  if (act === 'nsquick') return answer(r, 'supplier', { sup: d.sup, wasOther: wasOther() }, '', 'ספק: '+d.sup, true);
+  if (act === 'nsquick') return answer(r, 'supplier', { sup: d.sup, wasOther: wasOther() }, typedNote(r.key), 'ספק: '+d.sup, true);
   if (act === 'nsother'){ openEditor = r.key; editorKind = 'sup'; renderList(); const f = $('edSup'); if (f) f.focus(); return; }
   if (act === 'nssave'){ const s = $('edSup').value, n = $('edNote').value.trim(); if (!s){ toast('לבחור ספק', 'err'); return; } if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; } return answer(r, 'supplier', { sup: s, wasOther: wasOther() }, n, 'ספק: '+s, true); }
   if (act === 'nsunknown') return answer(r, 'unknown', {}, '', 'לא ידוע — יחזור בעוד חודש', true);
@@ -531,11 +555,11 @@ document.addEventListener('click', ev => {
     if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; }
     return answer(r, 'price', { price: p, cur: c, src: s, sup: dd.eff, name: r.name }, n, 'נשמר: '+p+' '+c, true);
   }
-  if (act === 'npskip') return answer(r, 'skip', {}, '', 'דילגתי — יחזור בעוד שבועיים', true);
-  if (act === 'outswitch') return answer(r, 'switch', { sup: d.sup, wasPick: o.pick || '' }, '', 'יוזמן מ-'+d.sup, true);
+  if (act === 'npskip') return answer(r, 'skip', {}, typedNote(r.key), 'דילגתי — יחזור בעוד שבועיים', true);
+  if (act === 'outswitch') return answer(r, 'switch', { sup: d.sup, wasPick: o.pick || '' }, typedNote(r.key), 'יוזמן מ-'+d.sup, true);
   if (act === 'outother'){ openEditor = r.key; editorKind = 'out'; renderList(); const f = $('edSup'); if (f) f.focus(); return; }
   if (act === 'outsave'){ const s = $('edSup').value; if (!s){ toast('לבחור ספק', 'err'); return; } return answer(r, 'switch', { sup: s, wasPick: o.pick || '' }, '', 'יוזמן מ-'+s, true); }
-  if (act === 'outwait') return answer(r, 'wait', {}, '', 'מחכים שיחזור — שבועיים', true);
+  if (act === 'outwait') return answer(r, 'wait', {}, typedNote(r.key), 'מחכים שיחזור — שבועיים', true);
   if (act === 'outdrop'){   // no popup: the first tap asks, the second (within 4 s) does it
     const k = 'drop?' + r.key;
     if (pend[k] && Date.now() - pend[k].at < 500) return;
