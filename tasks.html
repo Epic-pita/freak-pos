@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1a20">
+<link rel="icon" href="./icon-192.png">
+<title>FREAK — משימות ספקים</title>
+<style>
+  :root{
+    --bg:#0f1a20; --surface:#16262e; --surface2:#1d323c; --line:#2a4450;
+    --teal:#3d7a94; --teal-hi:#5aa3c2; --green:#2E7D32; --green-hi:#43a047; --amber:#c77f14;
+    --red:#c0392b; --red-soft:#3a1512; --ink:#e8eef1; --dim:#8fa6b0; --mono:'Roboto Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0; background:var(--bg); color:var(--ink)}
+  body{font-family:-apple-system,'Segoe UI',Roboto,'Heebo',Arial,sans-serif; font-size:16px; line-height:1.4; padding-bottom:40px}
+  button{font-family:inherit; font-size:15px; border:none; border-radius:10px; cursor:pointer; color:var(--ink); background:var(--surface2); padding:10px 12px; min-height:40px}
+  button:disabled{opacity:.45; cursor:default}
+  input,select{font-family:inherit; font-size:16px; color:var(--ink); background:var(--surface2); border:1px solid var(--line); border-radius:10px; padding:10px; width:100%}
+  input:focus,select:focus{outline:2px solid var(--teal)}
+  a{color:var(--teal-hi)}
+  .hide{display:none !important}
+
+  #top{position:sticky; top:0; z-index:50; background:var(--surface); border-bottom:1px solid var(--line)}
+  #topline{display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; padding:9px 12px; max-width:1180px; margin:0 auto}
+  #topline > *{min-width:0}
+  #dot{width:10px; height:10px; border-radius:50%; background:var(--red); flex:none}
+  #dot.on{background:var(--green-hi)}
+  #title{font-weight:700; font-size:16px}
+  #ver{font-size:11px; color:var(--dim)}
+  #topcnt{font-family:var(--mono); font-size:14px; background:var(--surface2); border:1px solid var(--line); border-radius:12px; padding:2px 10px}
+  #upd{margin-inline-start:auto; font-size:12px; color:var(--dim); text-align:end}
+  #upd.stale{color:#ffd479}
+  #upd .sep{display:none}
+  #queueBadge{background:var(--amber); color:#000; font-size:12px; font-weight:700; border-radius:9px; padding:2px 8px}
+  #refreshBtn{padding:7px 11px; font-size:15px; min-height:36px}
+  .olink{display:inline-flex; align-items:center; justify-content:center; min-height:36px; padding:0 12px; border:1px solid var(--teal); border-radius:10px; color:#c9e6f2; text-decoration:none; font-size:14px; font-weight:600; white-space:nowrap}
+
+  #layout{max-width:640px; margin:0 auto; padding:0 12px}
+  .banner{border-radius:12px; padding:10px 12px; font-size:14px; margin:10px 0}
+  .banner.red{background:var(--red-soft); color:#f0b4ac; border:1px solid var(--red)}
+  .banner.amber{background:#3a2c10; color:#ffd479; border:1px solid #5a4418}
+  .banner.info{background:#10303a; color:#9fd8ea; border:1px solid #1f5a6a}
+  .banner b{color:var(--ink)}
+  .banner .row{margin-top:8px}
+
+  /* filters: the kind chips always; the rest behind one "סינון" toggle on a phone, always open on a wide screen (as the order pages) */
+  #kinds{display:flex; gap:6px; overflow-x:auto; padding:10px 0 4px; scrollbar-width:none}
+  #kinds::-webkit-scrollbar{display:none}
+  .chip{flex:none; background:var(--surface2); border:1px solid var(--line); border-radius:18px; padding:8px 13px; font-size:14px; white-space:nowrap; min-height:40px}
+  .chip.on{background:var(--teal); border-color:var(--teal)}
+  .chip .n{font-family:var(--mono); font-size:12px; margin-inline-start:6px; opacity:.85}
+  .chip.tog{border-color:var(--teal-hi)}
+  .chip.act{background:#2a4450; border-color:var(--teal-hi)}
+  .chip.act .x{margin-inline-start:6px; opacity:.85; font-weight:700}
+  #fbar{display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:6px 0 2px}
+  #fpanel{border:1px solid var(--line); border-radius:12px; padding:6px 10px 10px; margin:6px 0; background:var(--surface)}
+  #fpanel .flbl{font-size:13px; font-weight:600; color:#c9d6dc; margin:8px 0 4px}
+  #fpanel .chips{display:flex; flex-wrap:wrap; gap:6px}
+  #q{padding:8px 10px; font-size:15px}
+  #cnt{font-size:13px; color:var(--dim); margin:8px 2px 2px; display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+  #cnt button{background:none; border:1px solid var(--line); color:#ffd479; padding:6px 10px; font-size:13px; min-height:36px}
+
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px; margin:8px 0}
+  .card.pend{opacity:.6}
+  .card.urgent{border-inline-start:4px solid var(--red)}
+  .card .kind{display:inline-block; font-size:11px; color:#c9e6f2; border:1px solid var(--line); border-radius:10px; padding:1px 8px; margin-bottom:6px}
+  .card .nm{font-size:16px; font-weight:700}
+  .card .cd{font-family:var(--mono); font-size:12px; color:var(--dim); margin-inline-start:6px; font-weight:400}
+  .meta{display:flex; flex-wrap:wrap; gap:4px 14px; color:var(--dim); font-size:13px; margin-top:4px}
+  .meta b{color:var(--ink); font-family:var(--mono); font-weight:600}
+  .rec{margin-top:8px; font-size:14px}
+  .rec b{color:var(--teal-hi)}
+  .warn{color:#ffb4a8; font-size:13px; margin-top:6px}
+  .why{color:var(--dim); font-size:12px; margin-top:4px}
+  .offers{width:100%; border-collapse:collapse; margin-top:8px; font-size:13px}
+  .offers td{padding:4px 2px; border-top:1px solid var(--line)}
+  .offers td.p{font-family:var(--mono); text-align:end}
+  .acts{display:flex; gap:6px; margin-top:10px; flex-wrap:wrap}
+  .acts button{flex:1; min-width:92px; padding:10px 8px; font-size:14px}
+  .acts .go{background:var(--green); font-weight:700}
+  .acts .alt{background:var(--surface2); border:1px solid var(--teal)}
+  .acts .no{background:none; border:1px solid var(--line); color:var(--dim)}
+  .chipline{display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 2px}
+  .pendline{margin-top:8px; font-size:13px; color:#ffd479}
+  .editor{margin-top:10px; background:var(--surface2); border-radius:12px; padding:10px}
+  .editor label{display:block; font-size:12px; color:var(--dim); margin:8px 0 4px}
+  .editor .row{display:flex; gap:8px}
+  .editor .row > *{flex:1}
+  .opt{display:block; width:100%; text-align:start; margin-top:6px; background:var(--surface2); border:1px solid var(--line); padding:10px}
+  .opt .s{font-size:12px; color:var(--dim)}
+  .more{display:block; width:100%; margin:8px 0; background:none; border:1px dashed var(--line); color:var(--dim)}
+  .empty{color:var(--dim); text-align:center; padding:30px 10px; font-size:15px}
+  .cardlink{font-size:13px; margin-inline-start:8px}
+
+  #toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--green); color:#fff; padding:12px 18px; border-radius:12px; font-size:15px; font-weight:700;
+         z-index:200; display:none; box-shadow:0 4px 20px rgba(0,0,0,.5); max-width:92vw; text-align:center; align-items:center; gap:12px}
+  #toast.err{background:var(--red)} #toast.warn{background:var(--amber); color:#000}
+  #toast button{background:rgba(0,0,0,.25); padding:6px 12px; font-size:14px; color:inherit}
+  #gate{max-width:480px; margin:60px auto; padding:0 20px}
+  #gate h1{color:var(--teal-hi); font-size:24px}
+  #gate p{color:var(--dim); line-height:1.6}
+  .bigbtn{width:100%; padding:14px; font-size:17px; font-weight:700; margin-top:10px}
+  .bigbtn.go{background:var(--green)}
+  #failedBox{background:var(--red-soft); border:1px solid var(--red); border-radius:10px; padding:10px; font-size:13px; margin:10px 0; color:#f0b4ac}
+  #foot{color:var(--dim); font-size:12px; text-align:center; margin-top:24px}
+
+  /* a phone: nothing in the top bar may be wider than the screen (a wider bar makes the whole page zoom out) */
+  @media (max-width:600px){
+    #ver,#upd br{display:none}
+    #upd .sep{display:inline}
+    #upd{font-size:11px}
+    #ordersLink .lbl{display:none}
+    #ordersLink{padding:0 10px}
+  }
+  /* a wide screen (his PC): the filters always open at the side, the cards in two columns */
+  @media (min-width:1000px){
+    #layout{max-width:1180px; display:grid; grid-template-columns:300px 1fr; gap:0 18px; align-items:start}
+    #side{position:sticky; top:58px}
+    #fbtn{display:none}
+    #fpanel{display:block !important}
+    #kinds{flex-wrap:wrap; overflow:visible}
+    #list{display:grid; grid-template-columns:1fr 1fr; gap:0 12px; align-items:start}
+    #list .more,#list .empty{grid-column:1 / -1}
+  }
+</style>
+</head>
+<body>
+<div id="gate" class="hide">
+  <h1>משימות ספקים</h1>
+  <p>כדי להיכנס צריך את המפתח האישי שלך. הוא נשמר בטלפון הזה בלבד. אם כבר נכנסת לדף הספקים בטלפון הזה, אין צורך בכלום: המפתח שם.</p>
+  <input id="keyIn" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="מפתח">
+  <button id="keyBtn" class="bigbtn go">שמור והמשך</button>
+  <p id="gateMsg"></p>
+</div>
+
+<div id="app" class="hide">
+  <div id="top">
+    <div id="topline">
+      <span id="dot"></span><span id="title">משימות ספקים</span><span id="topcnt">0</span><span id="ver"></span>
+      <span id="queueBadge" class="hide">0</span>
+      <span id="upd"></span>
+      <a id="ordersLink" class="olink" href="order.html" title="הזמנות מספקים">🛒<span class="lbl"> הזמנות מספקים</span></a>
+      <button id="refreshBtn" title="רענון">⟳</button>
+    </div>
+  </div>
+  <div id="layout">
+    <div id="side">
+      <div id="kinds"></div>
+      <div id="fbar"></div>
+      <div id="fpanel" class="hide"></div>
+    </div>
+    <div id="main">
+      <div id="banners"></div>
+      <div id="failedBox" class="hide"></div>
+      <div id="cnt"></div>
+      <div id="list"></div>
+      <div id="foot"></div>
+    </div>
+  </div>
+</div>
+<div id="toast"><span id="toastMsg"></span><button id="toastUndo" class="hide">בטל</button></div>
+
+<script>
+'use strict';
+/* ================= CONFIG ================= */
+const BUILD = 't0.2';   // S-SUP step 2, first cut (16/11/2026): ONE tasks screen for all suppliers, reading and answering through the same backend as suppliers.html
+// the backend is the catalog's script, the same deployments as suppliers.html: LIVE reads the live list; ?api=test writes only the TEST copies;
+// ?preview=1 = REAL rows, but every answer is only TRIED (dryRun: the server says what it would write and writes nothing). Never a URL from the address bar.
+const LIVE_API = 'https://script.google.com/macros/s/AKfycbyCy0D7QPJNjpVIPP7NkNC38rkACV0t-O1C_m-SDsBUTFysG-Q0QUjtDPjI3Go8iYUZfw/exec';
+const TEST_API = 'https://script.google.com/macros/s/AKfycbyzPhJi5UxWBqaJ7hlorCI-iiT_qprXfK8XHE3BHXWVGmNVrD7JWmMiiG5BldURbjPl8A/exec';
+const QS = new URLSearchParams(location.search);
+const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+const MODE = (()=>{ const a = QS.get('api'); return a==='test' ? 'test' : a==='local' && LOCAL ? 'local' : 'live'; })();
+// t0.x: ALWAYS preview. Real answers (the path that writes his typing, root rule 3) are switched on only after the fresh reviewer's pass; until then every tap is only tried.
+const PREVIEW = true;
+const API = MODE==='test' ? TEST_API : MODE==='local' ? location.origin + '/api' : LIVE_API;
+const ENV = MODE==='live' ? '' : 'test';
+const TZ = 'Asia/Jerusalem';
+const LS = { key: 'fs_key', data: 'fst_data_'+MODE, filters: 'fst_filters', os: 'fs_order_sups' };   // fs_key: the one key suppliers.html already keeps on this phone (same site)
+const POLL_MS = 20000, UNDO_MS = 5000, PAGE = 10;
+const KINDS = [['', 'הכול'], ['nosup', 'בלי ספק'], ['noprice', 'בלי מחיר'], ['out', 'אזל אצל הספק'], ['transit', 'בדרך']];
+const KIND_HE = { nosup: 'בלי ספק', noprice: 'בלי מחיר', out: 'אזל אצל הספק', transit: 'בדרך' };
+const COMMON_SUPS = ['Kaissa', 'ICO', 'Glassstaff', 'הקובייה', 'ACD', 'School market', 'VFI', 'PSI', 'Asmodee', 'סינאפסה', 'Breaking Games'];
+const OS_URL = './order-suppliers.json';
+
+/* ================= STATE ================= */
+let KEY = '', data = null, query = '', shown = PAGE, openEditor = '', editorKind = '', panelOpen = false;
+let F = { kind: '', sup: '', open: true };   // the filters, kept on this device
+let pend = {};              // key → { ans, at } — answered on this phone, not yet seen in the list (kept in memory: a reload re-reads the truth)
+let loading = false, lastOk = 0, db = null, syncing = false, loadAgain = false, orderSups = [];
+const cancelled = new Set();
+
+/* ================= UTIL ================= */
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&3|8)).toString(16)}));
+const ils = n => n==null||n==='' ? '' : '₪' + Number(n).toLocaleString('he-IL', {maximumFractionDigits: Number(n) < 100 ? 2 : 0});
+const num = n => n==null||n==='' ? '—' : Number(n).toLocaleString('he-IL', {maximumFractionDigits:1});
+const hhmm = iso => { const d=new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString('he-IL',{timeZone:TZ,hour:'2-digit',minute:'2-digit'}); };
+const ddmm = iso => { const d=new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('he-IL',{timeZone:TZ,day:'2-digit',month:'2-digit'}); };
+function saveLS(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function loadLS(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
+function toast(msg, cls='', ms=2600, undo=null){
+  const t=$('toast'); $('toastMsg').textContent=msg; t.className=cls; t.style.display='flex';
+  const u=$('toastUndo'); u.classList.toggle('hide', !undo); u.onclick = undo ? ()=>{ undo(); t.style.display='none'; } : null;
+  clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', ms);
+}
+function fetchT(url, opts, ms){ const c=new AbortController(); const t=setTimeout(()=>c.abort(), ms); return fetch(url, {...opts, signal:c.signal}).finally(()=>clearTimeout(t)); }
+async function post(body, ms=45000){
+  // Google sometimes turns the POST into a bare GET (doPost never runs; the backend answers GET_NOT_POST): the same request again
+  for (let i = 0; ; i++){
+    const r = await fetchT(API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ k: KEY, env: ENV || undefined, build: BUILD, ...body }) }, ms);
+    const js = await r.json();
+    if (!(js && js.error === 'GET_NOT_POST') || i >= 3) return js;
+  }
+}
+function safeUrl(u){ const s = String(u == null ? '' : u); if (!/^https?:\/\/[^\s"'<>]+$/i.test(s)) return ''; try{ const p = new URL(s).protocol; return p === 'https:' || p === 'http:' ? s : ''; }catch(e){ return ''; } }
+const TEXT_RULE = 'הטקסט לא יכול להתחיל ב-= או להכיל < >, ועד 300 תווים';
+const textOk = t => t === '' || (t.length <= 300 && !/^=|[<>\u0000-\u001f]/.test(t));
+
+/* ================= ORDER PAGES (the link from a supplier's cards) ================= */
+function cleanOS(x){
+  if (!Array.isArray(x)) return null;
+  const out = [];
+  for (const e of x.slice(0, 40)){
+    if (!e || typeof e !== 'object' || !/^[a-z0-9_]{1,20}$/.test(String(e.id || '')) || out.some(o => o.id === e.id)) continue;
+    const href = typeof e.href === 'string' && /^[\w\-]{1,40}\.html$/.test(e.href) ? e.href : '';
+    out.push({ id: String(e.id), href, names: Array.isArray(e.names) ? e.names.filter(n => typeof n === 'string').map(n => n.trim().slice(0, 60)).filter(Boolean) : [] });
+  }
+  return out;
+}
+async function loadOrderSups(){
+  orderSups = cleanOS(loadLS(LS.os, null)) || [];
+  try{ const r = await fetchT(OS_URL, { cache: 'no-cache' }, 8000); if (!r.ok) return; const l = cleanOS(await r.json()); if (!l) return;
+    const was = JSON.stringify(orderSups); orderSups = l; saveLS(LS.os, l); if (data && JSON.stringify(l) !== was) render(); }catch(e){}
+}
+function orderHref(e){ const q = new URLSearchParams(); if (e && e.id && !e.href) q.set('s', e.id); if (MODE !== 'live') q.set('api', MODE); const s = q.toString(); return ((e && e.href) || 'order.html') + (s ? '?' + s : ''); }
+const supNorm = s => String(s || '').trim().toLowerCase();
+function orderLinkOf(sup){ const n = supNorm(sup), e = orderSups.find(x => x.names.some(y => supNorm(y) === n)); return e ? orderHref(e) : ''; }
+
+/* ================= KEY ================= */
+function takeKeyFromHash(){
+  const m = /[#&]k=([\w\-]{20,100})/.exec(location.hash);
+  if (m){ try{ localStorage.setItem(LS.key, m[1]); }catch(e){} history.replaceState(null, '', location.pathname + location.search); }
+}
+async function checkKey(k){ KEY = k; try{ return await post({ action:'ping' }, 30000); }catch(e){ return { ok:false, error:'NET' }; } }
+function showGate(msg){ $('app').classList.add('hide'); $('gate').classList.remove('hide'); $('gateMsg').textContent = msg || ''; }
+
+/* ================= QUEUE (IndexedDB, survives a closed app; repeat-safe by uuid) ================= */
+function idb(){ return new Promise((res,rej)=>{ const r=indexedDB.open('freak-tasks-v1',1); r.onupgradeneeded=()=>r.result.createObjectStore('q',{keyPath:'uuid'}); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+function qPut(j){ return new Promise((res,rej)=>{ const tx=db.transaction('q','readwrite'); tx.objectStore('q').put(j); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }
+function qAll(){ return new Promise((res,rej)=>{ const r=db.transaction('q').objectStore('q').getAll(); r.onsuccess=()=>res(r.result.sort((a,b)=>a.ts-b.ts)); r.onerror=()=>rej(r.error); }); }
+function qDel(id){ return new Promise((res,rej)=>{ const tx=db.transaction('q','readwrite'); tx.objectStore('q').delete(id); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }
+async function badge(){ const n = db ? (await qAll()).filter(j=>j.mode===MODE && !j.body.dryRun).length : 0; const b=$('queueBadge'); b.textContent=n; b.classList.toggle('hide', !n); }
+
+/* answers: shown at once on this phone, sent from the queue; a hiding answer waits 5 s so "בטל" can take it back */
+async function answer(r, ans, value, note, label, hides){
+  const job = { uuid: uuid(), ts: Date.now(), mode: MODE, att: 0, soft: 0, notBefore: hides ? Date.now() + UNDO_MS : 0,
+    body: { action:'answer', kind: r.kind, key: r.key, code: r.code || '', sup: r.sup || '', answer: ans, value: value || {}, note: note || '', ...(PREVIEW ? { dryRun: true } : {}) } };
+  pend[r.key] = { ans, at: Date.now(), uuid: job.uuid, label }; openEditor = '';
+  if (!db || PREVIEW){ render(); toast(label + (PREVIEW ? ' (תצוגה: לא נשמר)' : ''), '', UNDO_MS, hides ? ()=>{ cancelled.add(job.uuid); delete pend[r.key]; render(); } : null);
+    setTimeout(()=>{ if (!cancelled.has(job.uuid)) sendNow(job, label); }, hides ? UNDO_MS + 100 : 0); return; }
+  await qPut(job); badge(); render();
+  if (hides) toast(label, '', UNDO_MS, async ()=>{ cancelled.add(job.uuid); await qDel(job.uuid); delete pend[r.key]; badge(); render(); });
+  else toast(label);
+  setTimeout(sync, hides ? UNDO_MS + 200 : 50);
+}
+const HARD = /^(bad |missing uuid|unknown action|nothing to write|BAD_KEY)/;
+function notSaved(job, err){
+  const f = loadLS('fst_failed_'+MODE, []);
+  f.push({ key: job.body.key, what: pend[job.body.key] ? pend[job.body.key].label : job.body.answer, err: err || '?', body: job.body, at: Date.now() });
+  saveLS('fst_failed_'+MODE, f.slice(-40)); delete pend[job.body.key]; renderFailed(); render();
+}
+function afterOk(job, js){
+  if (js.result === 'changed'){ const now = js.results && js.results[0] ? js.results[0].now : ''; toast('בגיליון כבר כתוב משהו אחר' + (now!=='' ? ' ('+now+')' : '') + ' — לא דרסתי. לבדוק שוב.', 'warn', 6000); delete pend[job.body.key]; }
+  if (js.result === 'partial') toast('נשמר רק חלק: בגיליון כבר היה כתוב משהו אחר באחד התאים — לבדוק', 'warn', 6000);
+  if (js.result === 'gone'){ toast('הפריט כבר לא בלשונית — לא נכתב', 'warn', 4000); delete pend[job.body.key]; }
+  if (!PREVIEW) setTimeout(()=>load(false), 600);
+}
+async function sendNow(job, label){
+  try{ const js = await post({ ...job.body, uuid: job.uuid }, 60000);
+    if (js && js.ok){ if (PREVIEW){ console.log('preview answer tried:', job.body.kind, job.body.answer, js.result, js.plan); return; } return afterOk(job, js); }
+    notSaved(job, js && js.error); }
+  catch(e){ notSaved(job, 'אין חיבור'); }
+}
+async function sync(){
+  if (syncing || !navigator.onLine || !API || !db) return;
+  syncing = true;
+  try{
+    for (const job of await qAll()){
+      if (job.mode !== MODE) continue;
+      if (cancelled.has(job.uuid)){ await qDel(job.uuid); continue; }
+      if (job.notBefore && job.notBefore > Date.now()) continue;
+      let js;
+      try{ js = await post({ ...job.body, uuid: job.uuid }, 60000); }catch(e){ break; }
+      if (js && js.ok){ await qDel(job.uuid); afterOk(job, js); }
+      else if (js && js.error === 'BAD_KEY'){ showGate('המפתח לא מתאים יותר. לפתוח שוב את הקישור האישי.'); break; }
+      else if (js && HARD.test(String(js.error||''))){ await qDel(job.uuid); notSaved(job, js.error); }
+      else {
+        // the catalog is refreshing, Google is slow, the sheet was busy: try again later — 1, 2, 4 … up to 15 minutes apart, for a day
+        job.soft = (job.soft||0)+1; job.notBefore = Date.now() + Math.min(15, Math.pow(2, Math.min(job.soft-1, 4))) * 60000;
+        if (Date.now() - job.ts > 24*3600000){ await qDel(job.uuid); notSaved(job, (js && js.error) || '?'); } else await qPut(job);
+      }
+    }
+  } finally { syncing = false; badge(); }
+}
+function renderFailed(){
+  const f = loadLS('fst_failed_'+MODE, []), b = $('failedBox');
+  b.classList.toggle('hide', !f.length);
+  b.innerHTML = f.length ? '<b>תשובות שלא נשמרו ('+f.length+'):</b>' + f.map((x,i)=>'<div>'+esc(x.what)+' · '+esc(x.err)+' <button data-retry="'+i+'">לשלוח שוב</button> <button data-drop="'+i+'">למחוק</button></div>').join('') : '';
+  b.querySelectorAll('[data-retry]').forEach(el => el.onclick = async ()=>{ const f2 = loadLS('fst_failed_'+MODE, []), x = f2[Number(el.dataset.retry)]; if (!x || !x.body) return;
+    f2.splice(Number(el.dataset.retry), 1); saveLS('fst_failed_'+MODE, f2); renderFailed();
+    const job = { uuid: uuid(), ts: Date.now(), mode: MODE, att: 0, soft: 0, notBefore: 0, body: x.body }; pend[x.key] = { ans: x.body.answer, at: Date.now(), uuid: job.uuid, label: x.what };
+    if (db){ await qPut(job); badge(); sync(); } else sendNow(job, x.what); render(); });
+  b.querySelectorAll('[data-drop]').forEach(el => el.onclick = ()=>{ const f2 = loadLS('fst_failed_'+MODE, []); f2.splice(Number(el.dataset.drop), 1); saveLS('fst_failed_'+MODE, f2); renderFailed(); });
+}
+
+/* ================= LOAD ================= */
+async function load(full){
+  if (!API) return;
+  if (loading){ loadAgain = true; return; }
+  loading = true; $('refreshBtn').disabled = true;
+  try{
+    const js = await post({ action:'tasks', stamp: !full && data && data.rows ? data.stamp : '' }, 60000);
+    if (js && js.ok){
+      const rows = js.rows || (data && data.stamp === js.stamp ? data.rows : null);
+      if (!rows){ loading = false; return load(true); }
+      data = { ...js, rows };
+      if (MODE === 'live' && !PREVIEW) saveLS(LS.data, data);
+      lastOk = Date.now();
+      // an answer the list now shows (the newest answer of the task is it, or newer) is no longer "pending" on this phone
+      for (const k of Object.keys(pend)){ const a = latest(k); if (a && new Date(a.at).getTime() >= pend[k].at - 120000) delete pend[k]; else if (Date.now() - pend[k].at > 6*3600000) delete pend[k]; }
+      $('dot').classList.add('on');
+    } else if (js && js.error === 'BAD_KEY') showGate('המפתח לא מתאים. לפתוח שוב את הקישור האישי.');
+    else toast('לא הצלחתי לקרוא את הרשימה: ' + (js && js.error || '?'), 'err', 4000);
+  } catch(e){ $('dot').classList.remove('on'); }
+  finally { loading = false; $('refreshBtn').disabled = false; render(); if (loadAgain){ loadAgain = false; setTimeout(()=>load(false), 300); } }
+}
+
+/* ================= TASKS: one list, filtered ================= */
+function latest(key){ return (data && data.answers && data.answers[key]) || null; }
+const FINAL_OK = { 'נכתב': true, 'כבר': true, 'נרשם': true };
+function snoozed(key){ const a = latest(key); return !!(a && a.until && new Date(a.until) > new Date() && FINAL_OK[a.res]); }
+const SETTLES = { 'switch': true, supplier: true, price: true, snack: true };
+function done(r){ const a = latest(r.key); if (!a || !SETTLES[a.ans]) return false; return a.res === 'נכתב' || a.res === 'כבר'; }
+const hidingAns = (ans) => ans !== 'note';
+const taskSup = r => r.kind === 'nosup' ? '' : r.kind === 'noprice' ? (r.d.eff || r.sup || '') : (r.d.out || r.sup || '');
+function baseTasks(){
+  const out = [];
+  for (const r of (data && data.rows) || []) if (r.kind === 'nosup' || r.kind === 'noprice' || r.kind === 'out') out.push({ kind: r.kind, key: r.key, r, sup: taskSup(r), rank: Number(r.rank) || 0, vel: Number(r.d.vel) || 0 });
+  for (const o of (data && data.transit) || []) out.push({ kind: 'transit', key: o.key, o, sup: o.sup || '', rank: -1, vel: o.late ? 1 : 0 });
+  return out;
+}
+function isLive(t){
+  if (t.kind === 'transit') return !snoozed(t.key) && !pend[t.key];
+  return !snoozed(t.key) && !(pend[t.key] && hidingAns(pend[t.key].ans)) && !done(t.r);
+}
+function textOf(t){ return t.kind === 'transit' ? (t.o.sup + ' ' + (t.o.no||'') + ' ' + (t.o.lines||[]).map(l => l.name + ' ' + l.code).join(' ')) : (t.r.name + ' ' + t.r.code + ' ' + t.sup); }
+function filtered(skipKind){
+  const q = query.toLowerCase();
+  return baseTasks().filter(isLive).filter(t =>
+    (skipKind || !F.kind || t.kind === F.kind) &&
+    (!F.sup || (F.sup === '__none__' ? !t.sup : t.sup === F.sup)) &&
+    (!F.open || t.kind === 'transit' || t.rank === 0) &&
+    (!q || textOf(t).toLowerCase().includes(q)))
+    .sort((a, b) => lane(a) - lane(b) || a.rank - b.rank || b.vel - a.vel);
+}
+// a late order first, then the tasks that block an order, then orders that are only on their way
+const lane = t => t.kind === 'transit' ? (t.o.late ? 0 : 2) : 1;
+function supOptions(){
+  const m = new Map();
+  for (const t of baseTasks().filter(isLive).filter(t => t.kind === 'transit' || !F.open || t.rank === 0)) { const k = t.sup || '__none__'; m.set(k, (m.get(k) || 0) + 1); }
+  return [...m.entries()].sort((a, b) => b[1] - a[1]);
+}
+const supLabel = k => k === '__none__' ? 'ללא ספק' : k;
+function setF(patch){ F = { ...F, ...patch }; saveLS(LS.filters, F); shown = PAGE; render(); }
+
+/* ================= RENDER ================= */
+function render(){
+  if (!data){ $('list').innerHTML = '<div class="empty">טוען…</div>'; return; }
+  const age = Date.now() - (lastOk || new Date(data.at).getTime());
+  $('upd').innerHTML = 'עודכן ' + esc(hhmm(data.at)) + (data.built ? '<span class="sep"> · </span><br>הרשימה נבנתה ' + esc(hhmm(data.built)) : '');
+  $('upd').classList.toggle('stale', age > 10*60000);
+  const all = filtered(false), forKinds = filtered(true);
+  $('topcnt').textContent = all.length;
+  // kind chips
+  const kc = {}; for (const t of forKinds) kc[t.kind] = (kc[t.kind] || 0) + 1;
+  $('kinds').innerHTML = KINDS.map(([k, t]) => '<button class="chip'+(F.kind===k?' on':'')+'" data-fk="'+k+'">'+esc(t)+'<span class="n">'+(k ? (kc[k]||0) : forKinds.length)+'</span></button>').join('');
+  // the bar: the toggle + the active chips; the panel: supplier chips, the open-line switch, search
+  const act = [];
+  if (F.sup) act.push('<button class="chip act" data-fs="">'+esc(supLabel(F.sup))+'<span class="x">✕</span></button>');
+  if (!F.open) act.push('<button class="chip act" data-fo="1">כולל משימות בלי שורת הזמנה<span class="x">✕</span></button>');
+  $('fbar').innerHTML = '<button id="fbtn" class="chip tog'+(panelOpen?' on':'')+'" data-ftoggle="1">סינון'+(act.length?' ('+act.length+')':'')+'</button>' + act.join('');
+  const fp = $('fpanel'); fp.classList.toggle('hide', !panelOpen);
+  fp.innerHTML = '<div class="flbl">ספק</div><div class="chips"><button class="chip'+(!F.sup?' on':'')+'" data-fs="">כל הספקים</button>' +
+    supOptions().map(([k, n]) => '<button class="chip'+(F.sup===k?' on':'')+'" data-fs="'+esc(k)+'">'+esc(supLabel(k))+'<span class="n">'+n+'</span></button>').join('') + '</div>' +
+    '<div class="flbl">מה להראות</div><div class="chips"><button class="chip'+(F.open?' on':'')+'" data-fo="1">רק משימות על שורת הזמנה פתוחה</button></div>' +
+    '<div class="flbl">חיפוש</div><input id="q" type="search" placeholder="שם, קוד או ספק" value="'+esc(query)+'">';
+  $('q').addEventListener('input', e => { clearTimeout(window._qT); window._qT = setTimeout(()=>{ query = e.target.value.trim(); shown = PAGE; renderList(); }, 200); });
+  renderBanners(); renderList();
+  $('foot').textContent = 'גרסה ' + BUILD + (MODE !== 'live' ? ' · שרת ניסיון' : '') + (PREVIEW ? ' · תצוגה' : '') + ' · ' + (data.who || '');
+}
+function renderList(){
+  const all = filtered(false), n = shown;
+  $('cnt').innerHTML = '<span><b>' + all.length + '</b> משימות' + (all.length > n ? ' · מוצגות ' + n : '') + '</span>' +
+    ((F.sup || F.kind || !F.open || query) ? '<button data-fclear="1">נקה סינון</button>' : '');
+  const open = openEditor;
+  $('list').innerHTML = all.slice(0, n).map(cardHtml).join('') + (all.length > n ? '<button class="more" data-more="1">עוד ' + Math.min(PAGE, all.length - n) + ' (נשארו ' + (all.length - n) + ')</button>' : '') ||
+    '<div class="empty">אין משימות לפי הסינון הזה.' + (F.open ? ' <br><button data-fo="1" style="margin-top:10px">להראות גם משימות בלי שורת הזמנה</button>' : '') + '</div>';
+}
+function renderBanners(){
+  const b = [];
+  for (const r of ((data.rows || []).filter(x => x.kind === 'login'))){
+    const d = r.d;
+    b.push('<div class="banner red"><b>הכניסה לאתר של ' + esc(d.site) + (d.state === 'expired' ? ' פגה' : '') + '.</b> ' + (d.state === 'expired' ? 'המחירים והמלאי שלהם לא מתעדכנים מאז ' + esc(d.since) + '. ' : '') + 'צריך להתחבר שוב פעם אחת במחשב בחנות.</div>');
+  }
+  if (data.busy && data.busy.refresh) b.push('<div class="banner amber">הקטלוג מתעדכן עכשיו (מאז ' + esc(data.busy.refresh) + '). התשובות נשמרות בטלפון ונשלחות לבד כשהעדכון נגמר.</div>');
+  if (PREVIEW) b.push('<div class="banner info"><b>תצוגה לניסיון.</b> זו הרשימה האמיתית, אבל שום תשובה לא נשמרת: אפשר ללחוץ בחופשיות. מה שלחצת יחזור אחרי רענון.</div>');
+  $('banners').innerHTML = b.join('');
+}
+function metaLine(d){
+  return '<div class="meta"><span>מלאי <b>'+num(d.stock)+'</b></span><span>נמכר בשבוע <b>'+num(d.vel)+'</b></span>' +
+    (d.cover!=null ? '<span>ימי כיסוי <b>'+(d.cover<=0?'0':num(d.cover))+'</b></span>' : '') + (d.shelf ? '<span>מדף <b>'+ils(d.shelf)+'</b></span>' : '') + '</div>';
+}
+function leadOf(s){ return data && data.lead ? data.lead[s] : null; }
+function offersTable(offers, best){
+  if (!offers || !offers.length) return '';
+  return '<table class="offers">' + offers.map(o => '<tr class="'+(o.out?'out':o.s===best?'best':'')+'"><td>'+esc(o.s)+'</td><td class="p">'+ils(o.ils)+'</td><td>'+(o.lead!=null?esc(o.lead)+' ימים':'')+'</td><td>'+esc(o.stock||'')+'</td></tr>').join('') + '</table>';
+}
+function supSelect(id, current, extra){
+  const all = [...new Set([...(extra||[]), ...COMMON_SUPS, ...((data && data.suppliers) || [])])].filter(Boolean);
+  return '<select id="'+id+'">' + (all.includes(current) ? '' : '<option value="" selected>בחר ספק…</option>') + all.map(s => '<option'+(s===current?' selected':'')+'>'+esc(s)+'</option>').join('') + '</select>';
+}
+const linkFor = sup => { const h = orderLinkOf(sup); return h ? '<a class="cardlink" href="'+esc(h)+'">להזמנה</a>' : ''; };
+function head(t, name, code){ return '<span class="kind">'+esc(KIND_HE[t.kind])+'</span> '+(t.sup ? '<span class="kind">'+esc(t.sup)+'</span>' : '')+linkFor(t.sup)+'<div class="nm">'+esc(name)+(code?'<span class="cd">'+esc(code)+'</span>':'')+'</div>'; }
+function cardHtml(t){
+  const key = t.key;
+  if (t.kind === 'nosup') return cNosup(t);
+  if (t.kind === 'noprice') return cNoprice(t);
+  if (t.kind === 'out') return cOut(t);
+  return cTransit(t);
+}
+function cNosup(t){
+  const r = t.r, d = r.d, ro = ((data.overlay && data.overlay.real) || {})[r.code] || {};
+  const hint = [d.guess ? 'במערכת: '+d.guess+' (ניחוש)' : '', d.study && d.study !== 'לא ידוע' ? 'הבדיקה: '+d.study+(d.studyConf?' ('+d.studyConf+')':'') : ''].filter(Boolean).join(' · ');
+  const quick = [...new Set([d.guess, d.study, ...COMMON_SUPS.slice(0,6)].filter(s => s && s !== 'לא ידוע'))].slice(0, 6);
+  return '<div class="card'+(d.sug?' urgent':'')+'" data-key="'+esc(r.key)+'">' + head(t, r.name, r.code) + metaLine(d) +
+    (d.sug ? '<div class="rec">המוח רוצה להזמין <b>'+num(d.sug)+'</b></div>' : '') + (hint ? '<div class="why">'+esc(hint)+'</div>' : '') + (ro.other ? '<div class="why">כבר כתוב: '+esc(ro.other)+'</div>' : '') +
+    '<div class="chipline">' + quick.map(s => '<button class="chip" data-act="nsquick" data-sup="'+esc(s)+'">'+esc(s)+'</button>').join('') + '<button class="chip" data-act="nsother">אחר…</button></div>' +
+    '<div class="acts"><button class="no" data-act="nsunknown">לא יודע</button></div>' +
+    (openEditor === r.key && editorKind === 'sup' ? '<div class="editor"><label>מאיפה קונים את זה</label>'+supSelect('edSup', d.guess, [d.guess])+'<label>הערה (לא חובה)</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-act="nssave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + '</div>';
+}
+function cNoprice(t){
+  const r = t.r, d = r.d;
+  return '<div class="card'+(d.sug?' urgent':'')+'" data-key="'+esc(r.key)+'">' + head(t, r.name, r.code) + metaLine(d) +
+    '<div class="rec">ספק: <b>'+esc(d.eff)+'</b>' + (d.sug ? ' · המוח מציע <b>'+num(d.sug)+'</b>' + (d.est ? ' (מוערך '+ils(d.est)+' לפי מחיר המדף)' : '') : '') + '</div>' + (d.why ? '<div class="why">'+esc(d.why)+'</div>' : '') +
+    (openEditor === r.key && editorKind === 'price'
+      ? '<div class="editor"><div class="row"><div><label>מחיר ליחידה שלנו</label><input id="edPrice" type="number" inputmode="decimal" step="0.01" min="0"></div><div><label>מטבע</label><select id="edCur"><option>₪</option><option>€</option><option>$</option><option>£</option></select></div></div>' +
+        '<label>לפי מה</label><select id="edSrc"><option>חשבונית</option><option>מחירון</option><option>הצעת מחיר</option><option>הערכה שלי</option></select>' +
+        '<label>הערה (לא חובה)</label><input id="edNote" maxlength="300" placeholder="למשל: קופסה של 24 ב-€74, אז 3.1 לחבילה"><div class="acts"><button class="go" data-act="npsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>'
+      : '<div class="acts"><button class="go" data-act="npedit">להקליד מחיר</button><button class="no" data-act="npskip">דלג</button></div>') + '</div>';
+}
+function cOut(t){
+  const r = t.r, d = r.d, alts = (d.offers||[]).filter(o => o.s !== d.out);
+  return '<div class="card'+((d.stock||0)<=0?' urgent':'')+'" data-key="'+esc(r.key)+'">' + head(t, r.name, r.code) + metaLine(d) +
+    '<div class="warn">⚠ '+esc(d.outLabel)+'</div>' + (d.sug ? '<div class="rec">המוח מציע להזמין <b>'+num(d.sug)+'</b></div>' : '') +
+    (alts.length ? '<div class="why">אפשר במקום:</div>' + alts.map(o => '<button class="opt" data-act="outswitch" data-sup="'+esc(o.s)+'">להזמין מ-<b>'+esc(o.s)+'</b> · '+ils(o.ils)+(o.lead!=null?' · '+o.lead+' ימים':'')+'<div class="s">'+esc(o.stock || 'מלאי לא ידוע')+'</div></button>').join('') : '<div class="why">אין ספק אחר עם מחיר בקטלוג.</div>') +
+    '<div class="acts"><button class="alt" data-act="outother">ספק אחר…</button><button class="alt" data-act="outwait">לחכות שיחזור</button><button class="no" data-act="outdrop">'+(pend['drop?'+r.key] ? 'בטוח? ללא הבאה נוספת' : 'לא להביא יותר')+'</button></div>' +
+    (openEditor === r.key && editorKind === 'out' ? '<div class="editor"><label>מאיזה ספק להזמין</label>'+supSelect('edSup', '', [])+'<div class="acts"><button class="go" data-act="outsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + '</div>';
+}
+function cTransit(t){
+  const o = t.o, exp = o.lead!=null && o.at ? new Date(new Date(o.at).getTime() + o.lead*86400000) : null;
+  return '<div class="card'+(o.late?' urgent':'')+'" data-tkey="'+esc(o.key)+'"><span class="kind">בדרך</span>'+linkFor(o.sup)+'<div class="nm">'+esc(o.sup)+'<span class="cd">'+esc(o.no || 'לא מהקטלוג')+'</span></div>' +
+    '<div class="meta"><span>נשלח <b>'+esc(ddmm(o.at))+'</b></span>'+(o.days!=null?'<span>לפני <b>'+o.days+'</b> ימים</span>':'')+(exp?'<span>צפוי <b>'+esc(ddmm(exp.toISOString()))+'</b></span>':'')+(o.total?'<span><b>'+ils(o.total)+'</b></span>':'')+'</div>' +
+    (o.late ? '<div class="warn">⚠ מאחר: עברו '+o.days+' ימים, ובדרך כלל לוקח '+o.lead+'</div>' : '') +
+    '<div class="why">'+(o.lines||[]).slice(0,3).map(l => esc(l.name)+' ×'+esc(l.qty)+(l.state?' · '+esc(l.state):'')).join('<br>')+((o.lines||[]).length>3?'<br>ועוד '+((o.lines||[]).length-3)+' שורות':'')+'</div>' +
+    (safeUrl(o.doc) ? '<div class="why"><a href="'+esc(safeUrl(o.doc))+'" target="_blank" rel="noopener">מסמך ההזמנה</a></div>' : '') +
+    '<div class="acts"><button class="go" data-tact="arrived">הגיע</button><button class="alt" data-tact="checked">בדקתי, עדיין בדרך</button><button class="no" data-tact="note">הערה</button></div>' +
+    (openEditor === o.key && editorKind === 'note' ? '<div class="editor"><label>הערה על ההזמנה</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-tact="notesave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + '</div>';
+}
+
+/* ================= EVENTS ================= */
+document.addEventListener('click', ev => {
+  const t = ev.target.closest('button, .chip, a'); if (!t || t.tagName === 'A') return;
+  const d = t.dataset;
+  if (d.fk !== undefined){ setF({ kind: d.fk }); return; }
+  if (d.fs !== undefined){ setF({ sup: d.fs }); return; }
+  if (d.fo){ setF({ open: !F.open }); return; }
+  if (d.ftoggle){ panelOpen = !panelOpen; render(); return; }
+  if (d.fclear){ query = ''; setF({ kind: '', sup: '', open: true }); return; }
+  if (d.more){ shown += PAGE; renderList(); return; }
+  if (d.tact){
+    const card = t.closest('[data-tkey]'), o = ((data && data.transit) || []).find(x => x.key === card.dataset.tkey); if (!o) return;
+    const r = { kind: 'transit', key: o.key, code: '', sup: o.sup };
+    if (d.tact === 'note'){ openEditor = o.key; editorKind = 'note'; renderList(); const f = $('edNote'); if (f) f.focus(); return; }
+    if (d.tact === 'notesave'){ const n = ($('edNote').value || '').trim(); if (!n) return; if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; } return answer(r, 'note', {}, n, 'ההערה נשמרה', false); }
+    return answer(r, d.tact, {}, '', d.tact === 'arrived' ? 'סומן שהגיע' : 'נבדק — יחזור בעוד שבוע', true);
+  }
+  const card = t.closest('[data-key]'); if (!card || !d.act) return;
+  const r = ((data && data.rows) || []).find(x => x.key === card.dataset.key); if (!r) return;
+  const o = ((data.overlay && data.overlay.p) || {})[r.code] || {}, dd = r.d, act = d.act;
+  const wasOther = () => (((data.overlay && data.overlay.real) || {})[r.code] || {}).other || '';
+  if (act === 'edclose'){ openEditor = ''; renderList(); return; }
+  if (act === 'nsquick') return answer(r, 'supplier', { sup: d.sup, wasOther: wasOther() }, '', 'ספק: '+d.sup, true);
+  if (act === 'nsother'){ openEditor = r.key; editorKind = 'sup'; renderList(); const f = $('edSup'); if (f) f.focus(); return; }
+  if (act === 'nssave'){ const s = $('edSup').value, n = $('edNote').value.trim(); if (!s){ toast('לבחור ספק', 'err'); return; } if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; } return answer(r, 'supplier', { sup: s, wasOther: wasOther() }, n, 'ספק: '+s, true); }
+  if (act === 'nsunknown') return answer(r, 'unknown', {}, '', 'לא ידוע — יחזור בעוד חודש', true);
+  if (act === 'npedit'){ openEditor = r.key; editorKind = 'price'; renderList(); const f = $('edPrice'); if (f) f.focus(); return; }
+  if (act === 'npsave'){
+    const p = Number($('edPrice').value), c = $('edCur').value, s = $('edSrc').value, n = $('edNote').value.trim();
+    if (!(p > 0 && p < 100000)){ toast('מחיר לא תקין', 'err'); return; }
+    if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; }
+    return answer(r, 'price', { price: p, cur: c, src: s, sup: dd.eff, name: r.name }, n, 'נשמר: '+p+' '+c, true);
+  }
+  if (act === 'npskip') return answer(r, 'skip', {}, '', 'דילגתי — יחזור בעוד שבועיים', true);
+  if (act === 'outswitch') return answer(r, 'switch', { sup: d.sup, wasPick: o.pick || '' }, '', 'יוזמן מ-'+d.sup, true);
+  if (act === 'outother'){ openEditor = r.key; editorKind = 'out'; renderList(); const f = $('edSup'); if (f) f.focus(); return; }
+  if (act === 'outsave'){ const s = $('edSup').value; if (!s){ toast('לבחור ספק', 'err'); return; } return answer(r, 'switch', { sup: s, wasPick: o.pick || '' }, '', 'יוזמן מ-'+s, true); }
+  if (act === 'outwait') return answer(r, 'wait', {}, '', 'מחכים שיחזור — שבועיים', true);
+  if (act === 'outdrop'){   // no popup: the first tap asks, the second (within 4 s) does it
+    const k = 'drop?' + r.key;
+    if (!pend[k]){ pend[k] = { ans: 'note', at: Date.now() }; renderList(); setTimeout(()=>{ if (pend[k]){ delete pend[k]; renderList(); } }, 4000); return; }
+    delete pend[k]; return answer(r, 'drop', {}, '', 'לא מביאים יותר', true);
+  }
+});
+$('refreshBtn').onclick = () => load(true);
+document.addEventListener('visibilitychange', () => { if (!document.hidden){ load(false); sync(); } });
+$('keyBtn').onclick = async ()=>{
+  const k = $('keyIn').value.trim(); if (!/^[\w\-]{20,100}$/.test(k)){ $('gateMsg').textContent = 'המפתח לא נראה תקין.'; return; }
+  $('gateMsg').textContent = 'בודק…';
+  const js = await checkKey(k);
+  if (js && js.ok){ try{ localStorage.setItem(LS.key, k); }catch(e){} $('keyIn').value = ''; start(); }
+  else $('gateMsg').textContent = js && js.error === 'BAD_KEY' ? 'המפתח לא מתאים.' : 'אין חיבור לשרת. לנסות שוב.';
+};
+window.addEventListener('online', ()=>{ $('dot').classList.add('on'); sync(); load(false); });
+window.addEventListener('offline', ()=> $('dot').classList.remove('on'));
+setInterval(sync, 5000);
+
+/* ================= START ================= */
+async function start(){
+  KEY = (()=>{ try{ return localStorage.getItem(LS.key) || ''; }catch(e){ return ''; } })();
+  if (!KEY){ showGate(''); return; }
+  $('gate').classList.add('hide'); $('app').classList.remove('hide');
+  $('ver').textContent = BUILD + (MODE !== 'live' ? ' · ' + MODE : '') + (PREVIEW ? ' · תצוגה' : '');
+  F = { ...F, ...loadLS(LS.filters, {}) };
+  if (MODE === 'live' && !PREVIEW){ const dd = loadLS(LS.data, null); if (dd && dd.rows) data = dd; }
+  $('ordersLink').href = orderHref(null);
+  renderFailed(); render();
+  loadOrderSups();
+  try{ db = await idb(); }catch(e){ toast('אין אחסון בטלפון — התשובות יישלחו רק עם קליטה', 'warn', 5000); }
+  badge(); sync(); load(!data);
+  setInterval(() => { if (!document.hidden) load(false); }, POLL_MS);
+}
+takeKeyFromHash();
+if (navigator.onLine) $('dot').classList.add('on');
+start();
+</script>
+</body>
+</html>
