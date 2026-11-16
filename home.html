@@ -74,7 +74,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'h1.0';
+const BUILD = 'h1.1';
 // The backend is the F-3 alarm's Apps Script with the L1 files (web app, doPost only). ?api=test is the TEST deployment
 // (the TEST copy), ?api=local only on this PC (the bench). LIVE_API stays empty until the release.
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbxUnoCfolEzKVkRRD2X3iBxc1BKUc29vn-f_rfxCN3M0POOv_tY34iJFrXAHjLwFAWiuQ/exec';   // LIVE deployment @1 (20/10, L1 LIVE h1.0)
@@ -105,10 +105,10 @@ function when(ms){
 function shortVal(v){ const m = /^(\d\d\/\d\d) (\d\d:\d\d)$/.exec(String(v)); return m && m[1] === todayDM() ? 'היום ' + m[2] : v; }
 const safeLink = u => /^https:\/\/(docs\.google\.com\/spreadsheets\/d\/[\w\-]+\/edit|epic-pita\.github\.io\/freak-pos\/[\w\-]+\.html)$/.test(String(u||'')) ? u : '';
 function fetchT(url, opts, ms){ const c = new AbortController(); const t = setTimeout(()=>c.abort(), ms); return fetch(url, {...opts, signal:c.signal}).finally(()=>clearTimeout(t)); }
-async function post(body, ms=30000){
+async function post(body, ms=30000, key=KEY){   // key: the gate's ping passes the typed code, so KEY changes only after it was accepted
   // Google sometimes turns the POST into a bare GET (doPost never runs; the backend answers GET_NOT_POST): send it again
   for (let i = 0; ; i++){
-    const r = await fetchT(API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ k: KEY, build: BUILD, ...body }) }, ms);
+    const r = await fetchT(API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ k: key, build: BUILD, ...body }) }, ms);
     const js = await r.json();
     if (!(js && js.error === 'GET_NOT_POST') || i >= 3) return js;
   }
@@ -144,16 +144,28 @@ function render(r){
   $('foot').textContent = [BUILD, snap.build, r && r.who ? r.who : '', MODE !== 'live' ? MODE : ''].filter(Boolean).join(' · ');
 }
 
+const savedKey = () => { try{ return localStorage.getItem(LS.key) || ''; }catch(e){ return ''; } };
 async function load(){
   if (loading || !API) return;
+  // h1.1: a tab that was opened before the code was saved has no code in memory. It never asks the server without one
+  // (the answer is BAD_KEY, and that used to erase the code another tab had saved); it takes the saved code instead.
+  if (!KEY){ if (savedKey()) start(); return; }
+  const sent = KEY;
+  let again = false;
   loading = true; $('refresh').disabled = true;
   try{
     const js = await post({ action:'home' });
     if (js && js.ok){ last = js; if (MODE === 'live') saveLS(LS.snap, js); render(js); }
-    else if (js && js.error === 'BAD_KEY'){ try{ localStorage.removeItem(LS.key); localStorage.removeItem(LS.snap); }catch(e){} $('boxes').innerHTML = ''; showGate('הקוד לא מתאים יותר. צריך להכניס אותו מחדש.'); }
+    else if (js && js.error === 'BAD_KEY'){
+      // erase only the code that was refused; a newer one saved by another tab is used instead
+      const now = savedKey();
+      if (now && now !== sent) again = true;
+      else { try{ localStorage.removeItem(LS.key); localStorage.removeItem(LS.snap); }catch(e){} KEY = ''; $('boxes').innerHTML = ''; showGate('הקוד לא מתאים יותר. צריך להכניס אותו מחדש.'); }
+    }
     else showBanner('אין תשובה מהשרת. מוצג המצב האחרון שנשמר בטלפון.');
   }catch(e){ showBanner('אין חיבור. מוצג המצב האחרון שנשמר בטלפון.'); }
   finally{ loading = false; $('refresh').disabled = false; }
+  if (again) start();
 }
 function showBanner(t){ const b = $('banner'); b.className = 'warn'; b.textContent = t; }
 
@@ -167,9 +179,8 @@ $('keyBtn').onclick = async ()=>{
   const k = $('keyIn').value.trim();
   if (!/^[\w\-]{24,100}$/.test(k)){ $('gateMsg').textContent = 'הקוד לא נראה תקין.'; return; }
   $('gateMsg').textContent = 'בודק…';
-  KEY = k;
   let js = null;
-  try{ js = await post({ action:'ping' }); }catch(e){ js = { ok:false, error:'NET' }; }
+  try{ js = await post({ action:'ping' }, 30000, k); }catch(e){ js = { ok:false, error:'NET' }; }
   if (js && js.ok){ try{ localStorage.setItem(LS.key, k); }catch(e){} $('keyIn').value = ''; start(); }
   else $('gateMsg').textContent = js && js.error === 'BAD_KEY' ? 'הקוד לא מתאים.' : 'אין חיבור לשרת. לנסות שוב.';
 };
