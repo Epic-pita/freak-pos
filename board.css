@@ -1,0 +1,111 @@
+/* FREAK board — styles (b0.5, 17/11/2026). Second direction, after Chris's answer on the first one ("follow the design
+   rules of Claude or Steam as an example of what counts as good"): the calm, text-first language of the Claude app.
+   Warm neutral surfaces, hairlines instead of shadows, one restrained accent that is spent only on what is urgent,
+   a serif for the page title and the counts, a plain sans for everything else. Nothing decorative: the screen is
+   looked at all day. Light and dark come from the same tokens. Fonts fall back to the system's. */
+.fb-board{
+  --fb-bg:#FAF9F5; --fb-card:#FFFFFF; --fb-soft:#F0EEE6; --fb-ink:#141413; --fb-ink2:#5E5D59; --fb-ink3:#87867F;
+  --fb-line:#E3E1D7; --fb-line2:#CFCCBF; --fb-accent:#C6613F; --fb-accent-soft:#F6E7DF; --fb-accent-ink:#8F3F24;
+  --fb-late:#A83A32; --fb-ok:#3F7D58; --fb-bar:#B8B5A9;
+  --fb-display:'Frank Ruhl Libre','David Libre','David','Times New Roman',serif;
+  --fb-body:'Assistant','Segoe UI','Arial Hebrew',Arial,sans-serif;
+  background:var(--fb-bg); color:var(--fb-ink); font-family:var(--fb-body); font-size:15.5px; line-height:1.5;
+  padding:28px 20px 56px; min-height:100%; box-sizing:border-box; color-scheme:light;
+  -webkit-font-smoothing:antialiased;
+}
+.fb-board[data-theme="dark"]{
+  --fb-bg:#262624; --fb-card:#30302E; --fb-soft:#3B3A37; --fb-ink:#FAF9F5; --fb-ink2:#C2C0B6; --fb-ink3:#9C9A92;
+  --fb-line:#45443F; --fb-line2:#5A5953; --fb-accent:#E08A6B; --fb-accent-soft:#4A3229; --fb-accent-ink:#F2B7A2;
+  --fb-late:#EC9186; --fb-ok:#7DBF98; --fb-bar:#6B6A64; color-scheme:dark;
+}
+@media (prefers-color-scheme:dark){
+  .fb-board:not([data-theme="light"]){
+    --fb-bg:#262624; --fb-card:#30302E; --fb-soft:#3B3A37; --fb-ink:#FAF9F5; --fb-ink2:#C2C0B6; --fb-ink3:#9C9A92;
+    --fb-line:#45443F; --fb-line2:#5A5953; --fb-accent:#E08A6B; --fb-accent-soft:#4A3229; --fb-accent-ink:#F2B7A2;
+    --fb-late:#EC9186; --fb-ok:#7DBF98; --fb-bar:#6B6A64; color-scheme:dark;
+  }
+}
+.fb-board *{box-sizing:border-box}
+.fb-board :where(h1,h2,p,ol){margin:0}   /* :where keeps this reset weaker than every rule below */
+.fb-board bdi{font-variant-numeric:tabular-nums}
+
+/* top: the title, the date, one calm sentence */
+.fb-top{max-width:1120px;margin:0 auto 22px;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 14px}
+.fb-top h1{font-family:var(--fb-display);font-weight:500;font-size:32px;line-height:1.15;letter-spacing:0}
+.fb-date{font-size:15px;color:var(--fb-ink3)}
+.fb-greet{flex-basis:100%;font-size:16.5px;color:var(--fb-ink2);margin-top:6px;max-width:70ch;text-wrap:pretty}
+
+/* the widgets */
+.fb-grid{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;align-items:stretch}
+.fb-card{position:relative;background:var(--fb-card);border:1px solid var(--fb-line);border-radius:14px;padding:18px 18px 14px;
+  display:flex;flex-direction:column;gap:10px;min-width:0}
+.fb-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
+.fb-titles{min-width:0}
+.fb-card h2{font-size:17px;font-weight:600;line-height:1.3;text-wrap:balance}
+.fb-sub{font-size:13.5px;color:var(--fb-ink3)}
+/* the count: a figure, not a badge. The accent is spent here and nowhere else */
+.fb-token{flex:none;display:block;color:var(--fb-ink3);line-height:1}
+.fb-n{font-family:var(--fb-display);font-weight:500;font-size:36px;line-height:.95;direction:ltr;display:block;
+  font-variant-numeric:lining-nums tabular-nums}
+.fb-card.is-urgent .fb-token{color:var(--fb-accent)}
+.fb-token-wait{width:28px;height:28px;border-radius:50%;border:1.5px dashed var(--fb-line2)}
+.fb-count-label{font-size:13.5px;color:var(--fb-ink2);margin-top:-4px}
+.fb-items{list-style:none;padding:0;display:grid}
+.fb-items li{display:grid;gap:1px;padding:9px 0;border-top:1px solid var(--fb-line)}
+.fb-items li:last-child{padding-bottom:2px}
+.fb-it{font-weight:600;font-size:15.5px;line-height:1.35;overflow-wrap:anywhere}
+.fb-meta{font-size:13.5px;color:var(--fb-ink2)}
+.fb-items li.is-late .fb-meta{color:var(--fb-late);font-weight:600}
+.fb-empty,.fb-wait,.fb-blank{font-size:14.5px;color:var(--fb-ink2)}
+.fb-note{font-size:13.5px;color:var(--fb-ink3)}
+.fb-foot{margin-top:auto;padding-top:6px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px 12px}
+.fb-door{display:inline-block;color:var(--fb-ink);font-weight:600;font-size:14.5px;text-decoration:none;padding:6px 12px;
+  border:1px solid var(--fb-line2);border-radius:8px;background:none;transition:background-color .12s}
+.fb-door:hover{background:var(--fb-soft)}
+.fb-door:focus-visible{outline:2px solid var(--fb-accent);outline-offset:2px}
+.fb-at{font-size:12.5px;color:var(--fb-ink3)}
+.fb-card.is-stale .fb-at{color:var(--fb-late);font-weight:600}
+/* not connected yet: an outlined place-holder */
+.fb-card.is-blank{background:none;border-style:dashed;border-color:var(--fb-line2)}
+.fb-card.is-blank h2{color:var(--fb-ink2)}
+.fb-later-title{max-width:1120px;margin:30px auto 12px;font-size:14.5px;font-weight:600;color:var(--fb-ink2)}
+.fb-grid-later{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.fb-grid-later .fb-card{padding:14px 16px 12px;gap:8px}
+.fb-grid-later .fb-card h2{font-size:15.5px}
+
+/* this month against earlier months: thin bars on one scale, the figures in ink */
+.fb-month{max-width:1120px;margin:16px auto 0;background:var(--fb-card);border:1px solid var(--fb-line);border-radius:14px;
+  padding:18px 18px 14px;display:grid;gap:9px}
+.fb-mhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 12px;margin-bottom:4px}
+.fb-month h2{font-size:17px;font-weight:600;line-height:1.3}
+.fb-mrow{display:grid;grid-template-columns:minmax(150px,250px) minmax(40px,1fr) minmax(86px,auto);gap:12px;align-items:center;font-size:14.5px}
+.fb-mlabel{color:var(--fb-ink2)}
+.fb-mrow.is-now .fb-mlabel{color:var(--fb-ink);font-weight:600}
+.fb-mtrack{height:8px;border-radius:4px;background:var(--fb-soft);overflow:hidden;display:block}
+.fb-mfill{display:block;height:100%;border-radius:4px;background:var(--fb-bar)}
+.fb-mrow.is-now .fb-mfill{background:var(--fb-accent)}
+.fb-mrow.is-missing .fb-mtrack{background:none;border:1px dashed var(--fb-line2)}
+.fb-mrow.is-missing .fb-mfill{background:none}
+.fb-mval{font-weight:600;white-space:nowrap;text-align:end}
+.fb-mrow.is-missing .fb-mval{font-weight:400;color:var(--fb-ink3);white-space:normal;font-size:13.5px}
+.fb-mclosed{font-size:14.5px;margin-top:6px;padding-top:10px;border-top:1px solid var(--fb-line);display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.fb-mclosed bdi{font-weight:600}
+.fb-chip{display:inline-block;font-size:12.5px;background:var(--fb-soft);border-radius:999px;padding:1px 10px;color:var(--fb-ink2);white-space:nowrap}
+
+.fb-status{max-width:1120px;margin:22px auto 0;font-size:13.5px;color:var(--fb-ink2);display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.fb-status::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--fb-ok);align-self:center}
+.fb-status.is-bad::before{background:var(--fb-late)}
+
+@media (max-width:480px){
+  .fb-board{padding:18px 14px 40px}
+  .fb-top{margin-bottom:16px}
+  .fb-top h1{font-size:27px}
+  .fb-greet{font-size:15.5px}
+  .fb-grid{gap:12px}
+  .fb-card,.fb-month{padding:16px 16px 12px}
+  .fb-mrow{grid-template-columns:1fr auto;row-gap:4px}
+  .fb-mlabel{grid-column:1}
+  .fb-mval{grid-column:2;grid-row:1}
+  .fb-mtrack{grid-column:1/-1}
+}
+@media (prefers-reduced-motion:reduce){ .fb-door{transition:none} }

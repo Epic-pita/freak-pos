@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>FREAK — לוח הבקרה</title>
+<link rel="icon" href="./icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Frank+Ruhl+Libre:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./board.css">
+<style>
+/* the page around the frame: a message line and the theme switch. The frame itself is board.css / board.js. */
+html,body{margin:0;min-height:100%}
+body{background:#FAF9F5;font-family:'Assistant','Segoe UI','Arial Hebrew',Arial,sans-serif;-webkit-font-smoothing:antialiased}
+body.is-dark{background:#262624}
+@media (prefers-color-scheme:dark){ body:not(.is-light){background:#262624} }
+#msg{max-width:1120px;margin:0 auto;padding:16px 20px 0;font-size:15.5px;line-height:1.5;color:#5E5D59}
+#msg a{color:#141413;font-weight:600}
+#tools{max-width:1120px;margin:0 auto;padding:0 20px 32px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13.5px;color:#87867F}
+#tools button{font:inherit;padding:5px 12px;border-radius:8px;border:1px solid #CFCCBF;background:none;color:#5E5D59;cursor:pointer}
+#tools button[aria-pressed="true"]{background:#F0EEE6;color:#141413;font-weight:600}
+#tools button:focus-visible{outline:2px solid #C6613F;outline-offset:2px}
+body.is-dark #msg{color:#C2C0B6} body.is-dark #msg a{color:#FAF9F5}
+body.is-dark #tools{color:#9C9A92} body.is-dark #tools button{border-color:#5A5953;color:#C2C0B6}
+body.is-dark #tools button[aria-pressed="true"]{background:#3B3A37;color:#FAF9F5}
+@media (prefers-color-scheme:dark){
+  body:not(.is-light) #msg{color:#C2C0B6} body:not(.is-light) #msg a{color:#FAF9F5}
+  body:not(.is-light) #tools{color:#9C9A92} body:not(.is-light) #tools button{border-color:#5A5953;color:#C2C0B6}
+  body:not(.is-light) #tools button[aria-pressed="true"]{background:#3B3A37;color:#FAF9F5}
+}
+</style>
+</head>
+<body>
+<p id="msg" role="status">טוען את הלוח…</p>
+<div id="board"></div>
+<div id="tools"></div>
+<script src="./board.js"></script>
+<script src="./board-page.js"></script>
+</body>
+</html>
