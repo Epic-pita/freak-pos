@@ -104,6 +104,22 @@
   .pace.early{border-color:var(--teal); color:#c9e6f2}
   .pace.unreceived,.pace.unclear{color:#ffd479}
   .pline{font-size:12px; color:var(--dim); margin-top:2px}
+  /* L17: the ordering brain inside the page — the mark on a card, the box above the list, the chip */
+  .brain{margin-top:6px; border-inline-start:3px solid var(--teal); padding-inline-start:8px}
+  .bq{display:inline-block; font-weight:700; color:#c9e6f2; font-size:13px}
+  .bwhy{font-size:12.5px; color:var(--ink)}
+  .bfl,.bsrc{display:block; font-size:12px; color:var(--dim); margin-top:1px}
+  .balt{display:block; font-size:12.5px; color:#ffd479; margin-top:2px}
+  .row .brain,.drow .brain{margin-top:0; border:0; padding:0}
+  .bmark{display:inline-flex; align-items:center; gap:4px; border-radius:10px; padding:0 6px; font-size:11px; border:1px solid var(--teal); color:#c9e6f2; background:#13323d}
+  .bbox{background:var(--surface); border:1px solid var(--teal); border-radius:14px; padding:10px 12px; margin:0 0 10px}
+  .bbox .bh{font-weight:700; color:#c9e6f2}
+  .bbox .bs{font-size:12.5px; color:var(--dim); margin-top:2px}
+  .bbox .acts{margin-top:8px}
+  .bmiss{font-size:12.5px; color:var(--dim); margin-top:6px}
+  .bmiss .chip{display:inline-flex; align-items:center; min-height:40px}   /* the same 40 px tap target as every other chip (a .chip is inline: min-height alone does nothing) */
+  .bmiss .mrow{margin-top:3px; color:var(--ink)}
+  .chip.brain-chip.on{background:#13323d; border-color:var(--teal)}
   /* or1.4 (B-BRN-8): the in-stock line under the pace block of a card — the brain's 'שורה לכרטיס', text only, wraps at 390 px */
   .rline{font-size:12px; color:var(--dim); margin-top:3px; line-height:1.35; overflow-wrap:anywhere}
   .rline .rsep{white-space:nowrap}   /* review 02/11: " ·" stays on the line of the part before it (never a line that starts with ·) */
@@ -394,7 +410,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.7';
+const BUILD = 'or1.8';
 // or1.4 (B-BRN-8, part 2): every card of an item we carry gets ONE more grey line under its pace block — the brain's in-stock line
 // ("נמכר ~N בחודש כשיש במלאי (קצב להזמנה ~N) · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …", the brain's wording of 03/11), copied verbatim from the rates table (jo_load
 // `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
@@ -460,6 +476,7 @@ const DEF_SETTINGS = { v:1, sup:SUP, name_he:'', title_he:'הזמנה מספק',
   groups:[], facets:[], flags:{ new_he:'חדש', new_note_he:'', ours_he:'היה אצלנו' }, minimum:{ kind:'none', he:'מינימום' }, case_he:'קרטון', availability:{ out_he:'אזל אצל הספק', remove:false },
   export:{ kingdom_list:false, text:'', he:'רשימה', column_he:'עמודה לקובץ הממלכה', check_he:'רשימת בדיקה · הורדה', note_he:'להדביק בתא הראשון של העמודה "פריק" (שורה 3) בקובץ של הממלכה; זה מחליף את כל העמודה.' },
   order_window:null,   // or1.6 (B-CAT-24 must-have 7): {cut_dow 0-6, cut_he, late_he, gap_days, lead_he, arrive_he, src_he} or null = the page says nothing
+  brain:null,          // or1.8 (L17): the ordering brain's proposals for this supplier, or null = the page says nothing about the brain
   site_link_he:'', pace_none_he:PACE_HE.none, search_fields:['title','sku','barcode','item_id','description'] };
 const NO_SKU_HE = 'אין מק״ט';   // the older no-code value in sku (the School market feed writes it as the sku itself); or1.3: 'אין ' + S.code_he is read the same way
 // or1.3: the supplier list (order-suppliers.json), this device's last supplier, the shape of a stored key (as takeKeyFromHash takes it)
@@ -470,6 +487,7 @@ const DIGIT_RUN = /\d+(?:[–-]\d+)?\+?/g;   // "3–4", "24–13" and "14+" kee
 let KEY = '', AK = '', who = '', DEVICE = '';
 let S = DEF_SETTINGS;            // the supplier's settings (labels, currency, groups, facets), as jo_load sent them with the catalog
 let GH = {}, FV = {}, FR = {};   // group id → Hebrew; facet id → { value id → Hebrew }; facet id → { value id → {lo, hi} } for a facet whose values are numeric bands (players)
+let BR = new Map();              // or1.8 (L17): item_id → { q, why, fl, bs, by_price, ils, alt } — what the ordering brain proposes for this supplier
 let people = [];                 // [{name, shop}] active, sheet order
 let state = { open: true, closed_at: '', closed_by: '' };
 let cat = null;                  // { stamp, data_date, rows:[{...}], byId: Map }
@@ -484,6 +502,7 @@ let gAll = false;                 // phone: the group row shows every group (els
 const G_TOP = 2;
 const DESK = window.matchMedia('(min-width:1000px)');   // or1.1: the desktop layout (a filter sidebar that is always open, dense rows)
 let showShort = false;           // the summary's "under the supplier's minimum" list is folded until tapped
+let showBmiss = false;           // or1.8 (L17): the brain's proposals this supplier does not carry — folded until tapped
 let mgrOpen = '';                // or1.5 (B-CAT-25, port of jo1.5): kOf(person, item) whose manager control is open in the summary (admin only)
 const mdeb = {};                 // or1.5: kOf(person, item) → { t, qty, fire } the debounce of a manager change
 const MGR_RE = /^MGR\|(\d{1,5})\|(\d{1,5})$/;   // the note of a manager change: MGR|what the person had typed|the new quantity
@@ -713,6 +732,25 @@ function winOf(w){
     lead_he: txt(w.lead_he, '', 60), arrive_he: txt(w.arrive_he, '', 60), src_he: txt(w.src_he, '', 120) };
 }
 /** the supplier's settings block, checked field by field (ids are short slugs, texts are cut); anything missing falls back to the generic words */
+/**
+ * or1.8 (L17): the settings' `brain` block → the labels and counts the page shows (its rows go into BR, in setSettings).
+ * The backend hands this block to FREAK's own admin key only; a participant's key gets the same settings without it, so a page
+ * that shows nothing here is not a fault. null (no block, or not an object) = the page says nothing about the brain, exactly as or1.7.
+ */
+function brainOf(b){
+  if (!b || typeof b !== 'object' || !b.by_id || typeof b.by_id !== 'object') return null;
+  const n = Math.floor(Number(b.n)), tot = Number(b.total_ils), miss = Math.floor(Number(b.missing_n)), bp = Math.floor(Number(b.by_price_n));
+  const o = { as_of: txt(b.as_of, '', 40), src: txt(b.src, '', 80), label_he: txt(b.label_he, 'המוח מציע', 30),
+    n: Number.isFinite(n) && n > 0 ? n : 0, total_ils: Number.isFinite(tot) && b.total_ils !== '' && b.total_ils !== null ? tot : null,
+    by_price_n: Number.isFinite(bp) && bp > 0 ? bp : 0, missing: [], missing_n: Number.isFinite(miss) && miss > 0 ? miss : 0 };
+  for (const m of (Array.isArray(b.missing) ? b.missing.slice(0, 60) : [])){
+    if (!m || typeof m !== 'object') continue;
+    const q = Math.floor(Number(m.q)); if (!Number.isFinite(q) || q <= 0) continue;
+    const name = txt(m.name, '', 80); if (!name) continue;
+    o.missing.push({ name, q, why: txt(m.why, '', 70) });
+  }
+  return o;
+}
 function setSettings(raw){
   const s = raw && typeof raw === 'object' ? raw : {}, D = DEF_SETTINGS;
   const o = { v: 1, sup: SUP, name_he: txt(s.name_he, ''), title_he: txt(s.title_he, s.name_he ? 'הזמנה מ-' + txt(s.name_he, '') : D.title_he),
@@ -724,6 +762,7 @@ function setSettings(raw){
     availability: { out_he: txt(s.availability && s.availability.out_he, D.availability.out_he), remove: !!(s.availability && s.availability.remove === true) },
     export: { kingdom_list: !!(s.export && s.export.kingdom_list), text: s.export && s.export.text === 'supplier' ? 'supplier' : '', he: txt(s.export && s.export.he, D.export.he), column_he: txt(s.export && s.export.column_he, D.export.column_he), check_he: txt(s.export && s.export.check_he, D.export.check_he), note_he: txt(s.export && s.export.note_he, D.export.note_he, 300) },
     order_window: winOf(s.order_window),   // or1.6 (B-CAT-24 must-have 7)
+    brain: brainOf(s.brain),               // or1.8 (L17): the ordering brain's block, or null
     site_link_he: txt(s.site_link_he, '', 30), pace_none_he: txt(s.pace_none_he, D.pace_none_he, 30),
     card_facets: Array.isArray(s.card_facets) ? s.card_facets.filter(f => FACET_COLS.includes(String(f))).map(String) : null,
     search_fields: Array.isArray(s.search_fields) ? s.search_fields.filter(f => typeof f === 'string' && (CAT_HEADER.includes(f))).slice(0, 12) : D.search_fields.slice() };
@@ -736,6 +775,18 @@ function setSettings(raw){
     o.facets.push({ id: String(f.id), he: txt(f.he, String(f.id), 60), multi: f.multi !== false, big: f.big === true, card: f.card !== false, groups: Array.isArray(f.groups) ? f.groups.filter(g => ID_RE.test(String(g||''))).map(String) : null, values: vals.slice(0, 2000) });
   }
   S = o; GH = {}; FV = {}; FR = {};
+  // or1.8 (L17): the brain's rows into BR. Every id, number and text is checked here — the page draws nothing it has not capped itself
+  BR = new Map();
+  const bb = s && typeof s === 'object' ? s.brain : null, byId = bb && typeof bb === 'object' ? bb.by_id : null;
+  if (S.brain && byId && typeof byId === 'object') for (const id of Object.keys(byId).slice(0, 2000)){
+    if (!ID_RE.test(String(id))) continue;
+    const r = byId[id]; if (!r || typeof r !== 'object') continue;
+    const q = Math.floor(Number(r.q)); if (!Number.isFinite(q) || q <= 0 || q > MAX_QTY) continue;
+    const alt = [];
+    for (const a of (Array.isArray(r.alt) ? r.alt.slice(0, 2) : [])){ const p = Number(a && a.p); if (!Number.isFinite(p) || p <= 0) continue; alt.push({ s: txt(a.s, '', 24), p, b: txt(a.b, '', 40) }); }
+    BR.set(String(id), { q, why: txt(r.why, '', 70), fl: txt(r.fl, '', 120), bs: txt(r.bs, '', 24), by_price: r.by_price === true,
+      ils: Number.isFinite(Number(r.ils)) && r.ils !== '' && r.ils !== null ? Number(r.ils) : null, alt });
+  }
   for (const g of S.groups) GH[g.id] = g.he;
   for (const f of S.facets){
     FV[f.id] = {}; for (const v of f.values) FV[f.id][v.id] = v.he;
@@ -1344,6 +1395,7 @@ function inGroup(r){
   if (chip === 'new') return r.is_new;
   if (chip === 'ordered') return totalOf(r.id) > 0;
   if (chip === 'ours') return isOurs(r);
+  if (chip === 'brain') return BR.has(r.id);   // or1.8 (L17): only what the ordering brain proposes from this supplier
   return chip === 'all' || groupOf(r) === chip;
 }
 /** every filter but `skip` (the dimension whose own chips are being counted: a facet id, 'pace' or 'price'); the group and the search always count */
@@ -1371,7 +1423,7 @@ function loadF(){
 function validateF(){
   if (!cat) return;
   const hasOther = cat.rows.some(r => groupOf(r) === 'other');
-  if (!(chip === 'all' || chip === 'new' || chip === 'ordered' || chip === 'ours' || (chip === 'other' && hasOther) || GH[chip])) chip = 'all';
+  if (!(chip === 'all' || chip === 'new' || chip === 'ordered' || chip === 'ours' || (chip === 'brain' && BR.size > 0) || (chip === 'other' && hasOther) || GH[chip])) chip = 'all';
   const fac = {};
   for (const f of S.facets){ const sel = (F.fac[f.id] || []).filter(v => FV[f.id] && FV[f.id][v] !== undefined); if (sel.length) fac[f.id] = f.multi ? sel : sel.slice(0, 1); }
   F.fac = fac;
@@ -1433,7 +1485,8 @@ function renderCatalog(){
   const counts = {}; let newN = 0, ordN = 0, oursN = 0;
   if (cat) for (const r of cat.rows){ const g = groupOf(r); counts[g] = (counts[g]||0) + 1; if (r.is_new) newN++; if (totalOf(r.id) > 0) ordN++; if (isOurs(r)) oursN++; }
   // הכל, then the supplier's groups (the first filter promised), then the flags at the end
-  const chips = [['all','הכל', cat ? cat.rows.length : 0, ''], ...S.groups.filter(g => counts[g.id] || chip === g.id).map(g => [g.id, g.he, counts[g.id]||0, '']), ...(counts.other && !GH.other ? [['other','אחר', counts.other, '']] : []),   // "אחר" = rows whose group is not in settings.groups; when the settings list `other` themselves, that chip is the one
+  const brainN = cat ? cat.rows.reduce((s, r) => s + (BR.has(r.id) ? 1 : 0), 0) : 0;   // or1.8 (L17): how many of this catalog's rows the brain proposes
+  const chips = [['all','הכל', cat ? cat.rows.length : 0, ''], ...(brainN ? [['brain', S.brain ? S.brain.label_he : 'המוח מציע', brainN, 'מה שמוח ההזמנות מציע להזמין מהספק הזה']] : []), ...S.groups.filter(g => counts[g.id] || chip === g.id).map(g => [g.id, g.he, counts[g.id]||0, '']), ...(counts.other && !GH.other ? [['other','אחר', counts.other, '']] : []),   // "אחר" = rows whose group is not in settings.groups; when the settings list `other` themselves, that chip is the one
     ['new', S.flags.new_he, newN, S.flags.new_note_he], ['ordered','הוזמן', ordN, ''], ['ours', S.flags.ours_he, oursN, '']];
   const rows = catRows();
   let facets = '';
@@ -1450,13 +1503,14 @@ function renderCatalog(){
   const actHtml = act.map(([kind, a, b, he]) => '<span class="chip act" '+(kind === 'fac' ? 'data-fac="'+esc(a)+'" data-val="'+esc(b)+'"' : kind === 'pace' ? 'data-pace="'+esc(a)+'"' : 'data-price="1"')+'><bdi>'+bidiNums(he)+'</bdi><span class="x">×</span></span>').join('');
   const cnt = '<span class="cnt" id="cnt">מציג <b>'+num(rows.length)+'</b> מתוך '+num(total)+'</span>';
   const listTog = '<span class="chip tog-list" data-tog="list">'+(list ? 'תצוגת כרטיסים' : 'תצוגת רשימה')+'</span>';
+  const bbox = brainBoxHtml();   // or1.8 (L17): on the phone above the list, on a desktop at the top of the sidebar, so the list keeps its density
   const listHtml = '<div id="list"'+(list ? ' class="listmode"' : '')+'>' + (rows.length ? rows.slice(0, shown).map(list ? rowHtml : cardHtml).join('') + (rows.length > shown ? '<button class="more" data-more="1">עוד '+(rows.length - shown)+'</button>' : '') : '<div class="empty">' + (cat ? 'לא נמצא כלום' : 'טוען את הקטלוג…') + '</div>') + '</div>';
   const oldSide = $('side'), sideTop = oldSide ? oldSide.scrollTop : 0;
   if (desk){
     // desktop: the sidebar (search, sort, every group as a line with its count, every facet as a section, the range, "נקה סינון") is always open
     // and scrolls on its own; the main column has one sticky strip (the count, the ACTIVE chips with ×, the list/cards toggle) and the list
     const glist = chips.map(c => (c[0] === 'new' ? '<div class="gsep"></div>' : '') + chipHtml(c)).join('');
-    $('view').innerHTML = '<div class="dlay"><aside id="side" aria-label="סינון">' + tools +
+    $('view').innerHTML = '<div class="dlay"><aside id="side" aria-label="סינון">' + bbox + tools +
         '<div class="shd"><span class="shead">קבוצות</span></div><div class="glist">' + glist + '</div>' +
         '<div class="shd"><span class="shead">סינון</span>' + (anyFilter() ? '<button class="clear" data-clear="1">נקה סינון</button>' : '') + '</div>' +
         '<div id="fpanel">' + facets + range + '</div></aside>' +
@@ -1471,12 +1525,12 @@ function renderCatalog(){
     const panel = '<div id="fpanel"'+(F.open ? '' : ' class="hide"')+'>' + facets + range + '<button class="showbtn" data-show="1">הצג '+num(rows.length)+' פריטים</button></div>';
     // the group row: הכל, the most common groups, the active one and the flags, then "עוד N קבוצות ▾" that wraps every group in (never a chip
     // scrolled off-screen); the chips keep their order in the row, a folded one is only not drawn
-    const fixed = new Set(['all', 'new', 'ordered', 'ours', chip]);
+    const fixed = new Set(['all', 'brain', 'new', 'ordered', 'ours', chip]);   // or1.8: the brain chip is never folded away
     const top = new Set(chips.filter(c => !fixed.has(c[0])).sort((a, b) => b[2] - a[2]).slice(0, G_TOP).map(c => c[0]));
     const folded = gAll ? [] : chips.filter(c => !fixed.has(c[0]) && !top.has(c[0]));
     const fold = folded.length > 1 ? new Set(folded.map(c => c[0])) : new Set();
     const gmore = fold.size ? '<button class="gmore" data-gall="1">עוד '+num(folded.length)+' קבוצות ▾</button>' : gAll && chips.length - 4 > G_TOP + 1 ? '<button class="gmore" data-gall="1">פחות קבוצות ▴</button>' : '';
-    $('view').innerHTML = tools + '<div class="chipline">' + chips.map(c => chipHtml(c, fold.has(c[0]) ? 'gx' : '')).join('') + gmore + '</div>' + bar + panel + listHtml;
+    $('view').innerHTML = tools + '<div class="chipline">' + chips.map(c => chipHtml(c, fold.has(c[0]) ? 'gx' : '')).join('') + gmore + '</div>' + bar + panel + bbox + listHtml;
   }
   paintRates($('list'));   // or1.4: the in-stock line on the cards just drawn
   if (rows.length && !drawn){ drawn = true; mark('first-draw'); }
@@ -1511,6 +1565,7 @@ function rowHtml(r){
   h += '<img class="thumb'+(im ? '' : ' ph')+'" loading="lazy" decoding="async" src="'+esc(im || PLACEHOLDER)+'" alt="">';
   h += '<div class="rb" data-open="'+esc(r.id)+'"><div class="rt" dir="auto">'+esc(r.title)+'</div>' + (meta ? '<div class="rm2">'+meta+'</div>' : '') + '<div class="rs">' + priceHtml(r, 'd') + (r.price_dealer != null ? '<span>'+esc(S.price.dealer_short_he)+'</span>' : '') +
     (r.pace && r.pace !== 'none' ? '<span class="pace '+esc(r.pace)+'">'+esc(badgeText(r))+'</span>' : '') +   // a row shows a pace only for an item we carried ("חדש אצלנו" on most of a long list is noise; the card still says it)
+    brainMark(r) +   // or1.8 (L17)
     '<span class="qchip tot" data-tot'+(total>0?'':' style="display:none"')+'>סה״כ <b>'+num(total)+'</b></span>' + (r.available ? '' : '<span class="outlbl" style="margin-top:0">אזל</span>') + '</div></div>';
   h += stepperHtml(r) + '</div>';
   return h;
@@ -1525,7 +1580,7 @@ function drowHtml(r){
   h += '<img class="thumb'+(im ? '' : ' ph')+'" loading="eager" decoding="async" src="'+esc(im || PLACEHOLDER)+'" alt="">';
   h += '<div class="rb" data-open="'+esc(r.id)+'"><div class="rt" dir="auto" title="'+esc(r.title)+'">'+esc(r.title)+'</div>' + (meta ? '<div class="rm2">'+meta+'</div>' : '') + '</div>';
   h += '<div class="rp">' + priceHtml(r, 'd') + (r.price_dealer != null ? '<span>'+esc(S.price.dealer_short_he)+'</span>' : '') + '</div>';
-  h += '<div class="rq">' + (r.pace && r.pace !== 'none' ? '<span class="pace '+esc(r.pace)+'">'+esc(badgeText(r))+'</span>' : '') + (r.available ? '' : '<span class="outlbl" style="margin-top:0">אזל</span>') + '</div>';
+  h += '<div class="rq">' + (r.pace && r.pace !== 'none' ? '<span class="pace '+esc(r.pace)+'">'+esc(badgeText(r))+'</span>' : '') + brainMark(r) + (r.available ? '' : '<span class="outlbl" style="margin-top:0">אזל</span>') + '</div>';
   h += '<div class="chips">'+chipsHtml(r)+'</div>';
   h += (stepperHtml(r) || '<span></span>') + '</div>';
   return h;
@@ -1553,6 +1608,81 @@ function paceHtml(r){
     line = p.join(' · ');
   }
   return '<div><span class="pace '+esc(r.pace)+'">'+esc(badgeText(r))+'</span>'+(line ? '<div class="pline">'+esc(line)+'</div>' : '')+'</div>';
+}
+/* ---------- or1.8 (L17): the ordering brain inside the page ----------
+ * The brain says what is missing from this supplier and how much is worth ordering; the page shows it, filters by it and can fill the
+ * quantities. It never decides: a filled quantity is exactly as if he typed it, and he changes any of them. The brain's shekels are
+ * shekels whatever the page's own currency is (the brain works in shekels), so they are written with ₪ and never through money().
+ */
+const shekel = n => n == null || n === '' || isNaN(Number(n)) ? '' : '₪' + num(Math.round(Number(n)));
+const brainOfRow = r => (r && !r.orphan ? BR.get(r.id) : undefined) || null;
+/** when the brain's figures are from, and how they are kept current */
+function brainWhenHe(){
+  const a = S.brain && S.brain.as_of ? S.brain.as_of : '';
+  const d = a ? ddmm(a) : '', t = a ? hhmm(a) : '';
+  return (d ? 'לפי המוח מ-' + d + (t ? ' ' + t : '') : 'לפי המוח') + ' · מתעדכן עם הקטלוג בדחיפה היומית של 07:30';
+}
+/** the mark on a card: the proposed quantity, the reason, where the brain files it when that differs, and another supplier's price */
+function brainHtml(r){
+  const b = brainOfRow(r); if (!b) return '';
+  let h = '<div class="brain"><span class="bq">' + esc(S.brain.label_he) + ' ' + num(b.q) + '</span>' + (b.why ? ' <span class="bwhy">' + bidiNums(b.why) + '</span>' : '');
+  if (b.bs) h += '<span class="bsrc">המוח רושם את הפריט על ' + esc(b.bs) + '; הוא מופיע כאן לפי ההמלצה בקטלוג</span>';
+  if (b.fl) h += '<span class="bfl">' + bidiNums(b.fl) + '</span>';
+  for (const a of b.alt) h += '<span class="balt">גם אצל ' + esc(a.s) + ' — ' + esc(shekel(a.p)) + (a.b ? ' <span class="bfl" style="display:inline">(' + esc(a.b) + ')</span>' : '') + '</span>';
+  return h + '</div>';
+}
+/** the compact mark on a list row */
+function brainMark(r){ const b = brainOfRow(r); return b ? '<span class="bmark">' + esc(S.brain.label_he) + ' ' + num(b.q) + '</span>' : ''; }
+/** every catalog row the brain proposes */
+const brainRows = () => (cat ? cat.rows.filter(r => BR.has(r.id)) : []);
+/** the rows a fill would touch: the supplier has them and I have no quantity on them yet (rule 3: a quantity of mine is never overwritten) */
+const brainFillable = () => brainRows().filter(r => r.available && myQty(r.id) === 0);
+/**
+ * The box above the catalog list: how many items the brain proposes here and for how much, when its figures are from, the fill button,
+ * and the folded list of proposals this supplier does not carry or shows as sold out. Nothing in it saves anything by itself.
+ */
+function brainBoxHtml(){
+  if (!S.brain || !cat) return '';
+  const rows = brainRows(), miss = S.brain.missing, out = rows.filter(r => !r.available);
+  if (!rows.length && !S.brain.missing_n) return '';
+  const can = brainFillable(), sum = rows.reduce((s, r) => s + (BR.get(r.id).ils != null ? BR.get(r.id).ils : 0), 0);
+  let h = '<div class="bbox"><div class="bh">' + esc(S.brain.label_he) + ' <b>' + num(rows.length) + '</b> פריטים מ' + esc(S.name_he || 'הספק') + (sum ? ' · <b>' + esc(shekel(sum)) + '</b>' : '') + '</div>';
+  h += '<div class="bs">' + esc(brainWhenHe()) + '</div>';
+  if (S.brain.by_price_n) h += '<div class="bs">' + num(S.brain.by_price_n) + ' מהם בלי עלות רשומה אצלנו — הסכום שלהם לפי מחיר המכירה, לא לפי עלות</div>';
+  if (rows.length){
+    h += '<div class="acts">' + (state.open && person && ready() ? '<button data-act="brainfill"' + (can.length ? '' : ' disabled') + '>מלא את הכמויות (' + num(can.length) + ')</button>' : '') +
+      (chip === 'brain' ? '<button data-chip="all">הצג את כל הקטלוג</button>' : '<button data-chip="brain">הצג רק אותם</button>') + '</div>';
+    if (state.open && person && ready()) h += '<div class="bs">הכפתור ממלא רק פריטים שאין בהם כמות שלך, ואפשר לשנות כל מספר אחר כך. שום דבר לא נשלח לספק.</div>';
+  }
+  if (S.brain.missing_n || out.length){
+    h += '<div class="bmiss"><span class="chip tog' + (showBmiss ? ' on' : '') + '" data-tog="bmiss">' +
+      (S.brain.missing_n ? '<b>' + num(S.brain.missing_n) + '</b> שהמוח מציע ואין בקטלוג של ' + esc(S.name_he || 'הספק') : '') +
+      (S.brain.missing_n && out.length ? ' · ' : '') + (out.length ? '<b>' + num(out.length) + '</b> שאזלו אצלו' : '') + ' ' + (showBmiss ? '▴' : '▾') + '</span>';
+    if (showBmiss){
+      for (const m of miss) h += '<div class="mrow">· <bdi>' + esc(m.name) + '</bdi> — ' + num(m.q) + (m.why ? ' · ' + bidiNums(m.why) : '') + '</div>';
+      if (S.brain.missing_n > miss.length) h += '<div class="mrow">· ועוד ' + num(S.brain.missing_n - miss.length) + '</div>';
+      for (const r of out) h += '<div class="mrow">· <bdi>' + esc(r.title) + '</bdi> — ' + num(BR.get(r.id).q) + ' · ' + esc(S.availability.out_he) + '</div>';
+    }
+    h += '</div>';
+  }
+  return h + '</div>';
+}
+/** fill the proposed quantities into the rows that have none of mine: each goes through change(), exactly as if he had typed it */
+function brainFill(){
+  const can = brainFillable(); if (!can.length) return;
+  let n = 0;
+  for (const r of can){ const b = BR.get(r.id); if (!b) continue; change(r.id, Math.min(MAX_QTY, b.q), true); n++; }
+  toast('מולאו ' + n + ' פריטים לפי המוח. אפשר לשנות כל מספר.', '', 4000);
+  renderCatalog();
+}
+/** what of the brain's proposal is in the order: my own quantities in "ההזמנה שלי", everyone's in the summary */
+function brainTakenHtml(all){
+  if (!S.brain || !cat) return '';
+  const qOf = r => (all ? totalOf(r.id) : myQty(r.id));
+  const rows = brainRows().filter(r => qOf(r) > 0);
+  if (!rows.length) return '';
+  const units = rows.reduce((s, r) => s + qOf(r), 0), asked = rows.reduce((s, r) => s + BR.get(r.id).q, 0);
+  return '<span class="btaken"> · מתוך ' + esc(S.brain.label_he) + ': <b>' + num(rows.length) + '</b> שורות · <b>' + num(units) + '</b> יח׳ מתוך ' + num(asked) + ' שהוצעו</span>';
 }
 /** the "הוזמן" chip's count after a poll (the list itself is not redrawn) */
 function paintCounts(){ const n = document.querySelector('.chip[data-chip="ordered"] .n'); if (n && cat) n.textContent = cat.rows.filter(r => totalOf(r.id) > 0).length; }
@@ -1634,6 +1764,7 @@ function cardHtml(r){
   if (r.case_qty) meta.push(esc(S.case_he) + ' ' + num(r.case_qty));
   if (meta.length) h += '<div class="meta">' + meta.map(m => '<span>'+m+'</span>').join('') + '</div>';
   h += paceHtml(r);
+  h += brainHtml(r);   // or1.8 (L17): what the brain proposes on this item, right under its stock and pace
   if (!r.available) h += '<span class="outlbl">'+esc(S.availability.out_he)+'</span>';
   h += '</div></div>';
   h += '<div class="chips">'+chipsHtml(r)+'</div>';
@@ -1709,7 +1840,7 @@ function renderMine(){
     return '<div class="mgline" data-go="'+esc(x.v)+'"><bdi>'+esc(r ? r.title : x.v)+'</bdi>: '+mgrWords(x.n)+'</div>'; }).join('') + (state.open && ready() ? '<button class="ack" data-ack="*">ראיתי את כל השינויים</button>' : '') + '</div>' : '';
   $('view').innerHTML = mg + (ls.length ? exportBtns() +
     (Object.keys(mine).length ? '<div class="banner amber">יש כמויות שלך שעוד לא נשמרו: הן מופיעות כאן, אבל הרשימות המיוצאות כוללות רק מה שכבר נשמר.</div>' : '') +
-    '<div class="tot-box"><b>'+ls.length+'</b> שורות · <b>'+num(units)+'</b> יחידות · <b>'+esc(money(total))+'</b> ב'+esc(S.price.dealer_he)+noPriceNote(ls.map(x => x.r))+'</div>' +
+    '<div class="tot-box"><b>'+ls.length+'</b> שורות · <b>'+num(units)+'</b> יחידות · <b>'+esc(money(total))+'</b> ב'+esc(S.price.dealer_he)+noPriceNote(ls.map(x => x.r))+brainTakenHtml(false)+'</div>' +
     ls.map(x => x.r.orphan
       ? '<div class="line"><div class="t"><div dir="auto">'+esc(x.r.title)+'</div><div class="s">הפריט ירד מהקטלוג — הכמות עדיין רשומה</div></div><div class="q">×'+num(x.qty)+'</div>' + (state.open && ready() ? '<button class="rm" data-rm="'+esc(x.r.id)+'">הסר</button>' : '') + '</div>'
       : '<div class="line" data-v="'+esc(x.r.id)+'" data-go="'+esc(x.r.id)+'"><div class="t"><div dir="auto">'+esc(x.r.title)+'</div><div class="s"><bdi dir="ltr">'+esc(codeText(x.r.sku) || x.r.id)+'</bdi></div>'+paceHtml(x.r)+(S.availability.remove && !x.r.available ? '<span class="outlbl">'+esc(S.availability.out_he)+'</span>' : '')+'</div><div class="q">×'+num(x.qty)+'</div><div class="e">'+(x.r.price_dealer != null ? esc(money(x.sum)) : '<span class="noprice">אין מחיר</span>')+'</div>'+stepperHtml(x.r)+rmOutHtml(x.r)+'</div>').join('')   // the pace and my stepper on every line; a sold-out item: its label and 'הסר' (or1.2, when the settings ask)
@@ -1746,7 +1877,7 @@ function renderSummary(){
   let h = exportBtns() + (admin ? '<div class="acts">' + (state.open ? '<button class="danger" data-act="close" id="closeBtn"'+(busy ? ' disabled' : '')+'>סגור הזמנה</button>' : '<button class="ok" data-act="open" id="openBtn">פתח מחדש</button>') + '</div>' : '');
   if (S0.pending || busy) h += '<div class="banner amber">יש כמויות שלך שעוד לא נשמרו: הן מופיעות כאן, אבל הטקסט, ה-CSV והרשימות כוללים רק מה שכבר נשמר' + (admin && busy && state.open ? '; אפשר לסגור כשהכול נשמר' : '') + '.</div>';
   if (!S0.items.length){ $('view').innerHTML = h + '<div class="empty">' + (ready() ? 'עוד אין כמויות בהזמנה.' : firstLoadDone ? 'אין חיבור — הסיכום יופיע כשהחיבור יחזור.' : 'טוען…') + '</div>'; return; }
-  h += '<div class="tot-box">סה״כ להזמנה: <b>'+S0.grand.lines+'</b> פריטים · <b>'+num(S0.grand.units)+'</b> יחידות · <b>'+esc(money(S0.grand.sum))+'</b> ב'+esc(S.price.dealer_he)+noPriceNote(S0.items.map(x => x.r))+'</div>';
+  h += '<div class="tot-box">סה״כ להזמנה: <b>'+S0.grand.lines+'</b> פריטים · <b>'+num(S0.grand.units)+'</b> יחידות · <b>'+esc(money(S0.grand.sum))+'</b> ב'+esc(S.price.dealer_he)+noPriceNote(S0.items.map(x => x.r))+brainTakenHtml(true)+'</div>';
   h += winBoxHtml();     // or1.6 (B-CAT-24): when to send this order and when it arrives (only where the window is known)
   h += minBoxHtml(S0);   // or1.5 (B-CAT-25): the combined value, every shop's share and the supplier's order minimum
   h += '<h2>לפי פריט</h2>' + S0.items.map(x => '<div class="srow" data-v="'+esc(x.r.id)+'"'+(x.r.orphan ? '' : ' data-go="'+esc(x.r.id)+'"')+'><div class="h"><div class="t" dir="auto">'+esc(x.r.title)+'</div><div class="q">×'+num(x.total)+'</div><div class="e">'+(x.r.orphan || x.r.price_dealer != null ? esc(money(x.lineSum)) : '<span class="noprice">אין מחיר</span>')+'</div></div>' +
@@ -1868,6 +1999,7 @@ document.addEventListener('click', ev => {
   if (t.dataset.fmore){ const id = t.dataset.fmore; fx[id] = !fx[id]; renderCatalog(); return; }   // a big facet: the full list A→Z, or back to the 12 most common
   if (t.dataset.tog === 'list'){ F.list = !isList(); saveF(); renderCatalog(); return; }
   if (t.dataset.tog === 'short'){ showShort = !showShort; renderSummary(); return; }
+  if (t.dataset.tog === 'bmiss'){ showBmiss = !showBmiss; renderCatalog(); return; }   // or1.8 (L17): the proposals this supplier does not carry
   if (t.dataset.open){ expanded.add(t.dataset.open); renderCatalog(); return; }   // a list row opens into its card
   if (t.dataset.price){ F.pmin = ''; F.pmax = ''; shown = PAGE; sortSnap = null; saveF(); renderCatalog(); return; }
   if (t.dataset.view){ view = t.dataset.view; sortSnap = null; saveLS(LS.view, view); window.scrollTo(0, 0); render(); return; }
@@ -1883,6 +2015,7 @@ document.addEventListener('click', ev => {
   if (t.dataset.more){ shown += PAGE; renderCatalog(); return; }
   if (t.dataset.moreDesc){ const card = t.closest('.card'); const v = card.dataset.v; if (expanded.has(v)) expanded.delete(v); else expanded.add(v); if (isList() && view === 'catalog'){ renderCatalog(); return; } const d = card.querySelector('.desc'); if (d) d.classList.toggle('open', expanded.has(v)); card.classList.toggle('big', expanded.has(v)); t.textContent = expanded.has(v) ? 'פחות' : 'עוד'; return; }   // open = the picture grows; in the list view "פחות" folds the card back into its row
   if (t.dataset.step){ const host = t.closest('[data-v]'); if (!host) return; const v = host.dataset.v, inp = host.querySelector('input[data-qin]'); const cur = deb[v] ? deb[v].qty : (parseInt(inp && inp.value, 10) || 0); change(v, Math.max(0, cur + Number(t.dataset.step)), false); return; }   // a card, a row, a line of my order or a summary row
+  if (t.dataset.act === 'brainfill') return brainFill();   // or1.8 (L17): fill the proposed quantities into rows with none of mine
   if (t.dataset.act === 'copy') return copyText();
   if (t.dataset.act === 'csv') return downloadCsv();
   if (t.dataset.act === 'column') return copyColumn();
