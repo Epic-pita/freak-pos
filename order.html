@@ -120,6 +120,17 @@
   .bmiss .chip{display:inline-block; min-height:40px; line-height:20px}   /* a 40 px tap target; inline-BLOCK, not flex: a flex chip eats the spaces between its words */
   .bmiss .mrow{margin-top:3px; color:var(--ink)}
   .btaken{color:var(--dim)}   /* the "what of the proposal is in the order" line, inside the totals box */
+  /* or1.9 (L17): a marked item - the brain's line stays, greyed, so he sees what it used to propose and can take it back */
+  .brain.marked{border-inline-start-color:var(--dim)}
+  .brain.marked .bq{color:var(--dim)}
+  .mbox-list .mrow{margin-top:6px; font-size:12px; color:#cfe3ea; line-height:1.5}
+  /* the reason sheet: a plain sheet over the page, big enough to tap on a phone (every button at least 44 px high) */
+  .msheet{position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.55); display:flex; align-items:flex-end; justify-content:center}
+  .msheet .mbox{background:var(--surface); border:1px solid var(--teal); border-radius:16px 16px 0 0; padding:14px; width:100%; max-width:520px; max-height:86vh; overflow:auto}
+  .msheet .mh{font-weight:600; margin-bottom:4px}
+  .msheet .mreason{display:block; width:100%; text-align:start; margin-top:8px; min-height:44px; border-radius:12px; padding:10px 12px}
+  .msheet #mnote{display:block; width:100%; margin-top:10px; min-height:44px; border-radius:12px; padding:8px 10px; background:var(--bg); color:var(--ink); border:1px solid #2b4a55}
+  @media (min-width:700px){ .msheet{align-items:center} .msheet .mbox{border-radius:16px} }
   /* or1.4 (B-BRN-8): the in-stock line under the pace block of a card — the brain's 'שורה לכרטיס', text only, wraps at 390 px */
   .rline{font-size:12px; color:var(--dim); margin-top:3px; line-height:1.35; overflow-wrap:anywhere}
   .rline .rsep{white-space:nowrap}   /* review 02/11: " ·" stays on the line of the part before it (never a line that starts with ·) */
@@ -410,7 +421,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.8';
+const BUILD = 'or1.9';
 // or1.4 (B-BRN-8, part 2): every card of an item we carry gets ONE more grey line under its pace block — the brain's in-stock line
 // ("נמכר ~N בחודש כשיש במלאי (קצב להזמנה ~N) · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …", the brain's wording of 03/11), copied verbatim from the rates table (jo_load
 // `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
@@ -503,6 +514,24 @@ const G_TOP = 2;
 const DESK = window.matchMedia('(min-width:1000px)');   // or1.1: the desktop layout (a filter sidebar that is always open, dense rows)
 let showShort = false;           // the summary's "under the supplier's minimum" list is folded until tapped
 let showBmiss = false;           // or1.8 (L17): the brain's proposals this supplier does not carry — folded until tapped
+// or1.9 (L17, Chris 17/11 14:36): "the brain is wrong about this item". A mark is NEVER a quantity: it rides the same
+// append-only ledger under an item id no catalogue row can carry, it is kept in its OWN map, and nothing that builds
+// an order line ever sees it (root rule 3 — a mark must not be able to remove what somebody typed).
+const NOMARK = 'nomark:';        // the item id of a mark row: nomark:<our item code>
+const NOMARK_RE = /^nomark:/;
+const MARK_NOTE_MAX = 200;       // the free note he may add; the backend's own limit on the whole note is 300
+const MARK_REASONS = [           // a fixed list with ids, never free text (rule 7: fix the input, not the parser)
+  { id: 'slow',          he: 'לא נמכר מספיק / לא כדאי' },
+  { id: 'count_wrong',   he: 'יש במלאי, המספר אצל המוח לא נכון' },
+  { id: 'discontinued',  he: 'יצא מהשוק / לא מזמינים יותר' },
+  { id: 'other_source',  he: 'קונים אותו ממקום אחר' },
+  { id: 'wrong_qty',     he: 'הכמות לא נכונה (אכתוב בהערה)' },
+  { id: 'other',         he: 'אחר (אכתוב בהערה)' }
+];
+const MARK_RE = /^NOMARK\|(set|clear|return)\|([a-z_]*)\|?([\s\S]*)$/;   // the note of a mark row
+let marks = new Map();           // person\u0001nomark:<code> → { verb, reason, note, at, ord } — the LAST row of the pair wins
+let showMarks = false;           // the "סימנתי: אין צורך" list, folded until tapped
+let markFor = '';                // the item code whose reason sheet is open ('' = none)
 let mgrOpen = '';                // or1.5 (B-CAT-25, port of jo1.5): kOf(person, item) whose manager control is open in the summary (admin only)
 const mdeb = {};                 // or1.5: kOf(person, item) → { t, qty, fire } the debounce of a manager change
 const MGR_RE = /^MGR\|(\d{1,5})\|(\d{1,5})$/;   // the note of a manager change: MGR|what the person had typed|the new quantity
@@ -1170,12 +1199,25 @@ function mergeLines(from, rows){
     // rows my own saves wrote AFTER the server took this snapshot (ordinal beyond it) stay until the next poll brings them
     keep = [...lines].filter(([, l]) => l.fresh && l.ord > rows.length + 1);
     for (const k of lines.keys()) changed.add(k.split('\u0001')[1]);
-    lines = new Map(); nLines = 0;
+    lines = new Map(); marks = new Map(); nLines = 0;   // or1.9: the marks are read from the same ledger, so they are rebuilt with it
   }
   else if (from !== nLines){ nLines = 0; return null; }
   rows.forEach((raw, i) => {
     const o = rowObj(LINE_HEADER, raw); const p = String(o.person||''), v = String(o.variant_id||''); if (!p || !v) return;
     const qty = Math.max(0, Math.floor(Number(o.qty) || 0)), ord = from + i + 2;   // sheet row number (header = 1)
+    // or1.9 (L17): a mark row goes to its OWN map and never into `lines`. This one branch is what keeps a mark out of
+    // every place an order line is counted — my order, the summary, the CSV, the supplier text, the orphan list — so
+    // it can never read as somebody's quantity, and never as a quantity REMOVED (root rule 3).
+    if (NOMARK_RE.test(v)){
+      const cm = marks.get(kOf(p, v));
+      if (!cm || ord >= cm.ord){
+        const m = MARK_RE.exec(String(o.note||''));
+        marks.set(kOf(p, v), { verb: m ? m[1] : 'clear', reason: m ? m[2] : '', note: m ? m[3] : '', at: String(o.at||''), ord });
+        const id = idOfCode(v.slice(NOMARK.length)); if (id) changed.add(id);   // the item's own card greys or comes back
+      }
+      if (o.uuid){ const j = queue.find(x => x.uuid === o.uuid); if (j){ queue = queue.filter(x => x !== j); saveQ(); } }
+      return;
+    }
     const cur = lines.get(kOf(p, v));
     // or1.5: note, device and time come along, so a manager change is readable on the page (never written over: a new row only)
     if (!cur || ord >= cur.ord){ const note = String(o.note||''); if (!cur || cur.qty !== qty || (cur.note||'') !== note) changed.add(v); lines.set(kOf(p, v), { qty, ord, shop: String(o.shop||''), sku: String(o.sku||''), note, dev: String(o.device||''), at: String(o.at||'') }); }
@@ -1259,6 +1301,17 @@ function markSaved(v){
 function written(job, js){
   const v = job.variant_id, qty = Number.isFinite(Number(js.qty)) ? Number(js.qty) : job.qty, ord = Number(js.row) || (nLines + 2);
   const k = kOf(job.person, v), cur = lines.get(k), r = cat && cat.byId.get(String(v));
+  // or1.9 (L17): a confirmed MARK goes to the marks map, never into `lines`. Without this branch the write-back would
+  // put a nomark row back into the order as a quantity-0 line of an item not in the catalogue - the very phantom the
+  // read path was branched to prevent, arriving by the other door.
+  if (NOMARK_RE.test(String(v))){
+    const mm = MARK_RE.exec(String(job.note || '')), cm = marks.get(k);
+    if (!cm || ord >= cm.ord) marks.set(k, { verb: mm ? mm[1] : 'clear', reason: mm ? mm[2] : '', note: mm ? mm[3] : '', at: new Date().toISOString(), ord });
+    refreshMarks();
+    const id = idOfCode(String(v).slice(NOMARK.length)); if (id) paintCard(id);
+    if (view === 'catalog') renderCatalog();
+    return;
+  }
   if (!cur || ord >= cur.ord) lines.set(k, { qty, ord, shop: shopOf(job.person), sku: r ? r.sku : (cur ? cur.sku : ''), fresh: true, note: job.note || '', dev: DEVICE, at: new Date().toISOString() });
   saveMeta();   // the cached ledger carries the confirmed write, so a reopen before the first jo_load draws this value, not the last poll's
   if (mine[v] && mine[v].uuid === job.uuid) delete mine[v];
@@ -1373,8 +1426,90 @@ function renderBanners(){
   $('banners').innerHTML = b.join('');
 }
 $('banners').addEventListener('click', ev => { const b = ev.target.closest('[data-goq]'); if (b) goSup(SUPS.find(e => e.id === b.dataset.goq)); });
+/* ===== or1.9 (L17, Chris 17/11 14:36): "המוח טועה — אין צורך להזמין" ===== */
+let BYCODE = null, BYCODE_FOR = null;
+/** our item code → this page's item id (a mark is written on OUR code, the page draws our items by their page id) */
+function idOfCode(code){
+  if (!cat) return '';
+  if (BYCODE_FOR !== cat){ BYCODE = new Map(); for (const r of cat.rows) if (r.our_code) BYCODE.set(String(r.our_code), r.id); BYCODE_FOR = cat; }
+  return BYCODE.get(String(code)) || '';
+}
+/**
+ * Every mark that is live now: for each code the LAST row wins, and only `set` counts — `clear` (his own mark) and
+ * `return` (one the brain itself stopped) both end it. Marks of every person are read, not only mine: only the manager
+ * can write one at all, and a mark made on his other phone is the same decision.
+ */
+function activeMarks(){
+  const last = new Map();
+  for (const [k, m] of marks){
+    const v = k.split('\u0001')[1] || ''; if (!NOMARK_RE.test(v)) continue;
+    const code = v.slice(NOMARK.length), cur = last.get(code);
+    if (!cur || m.ord >= cur.ord) last.set(code, m);
+  }
+  for (const [code, m] of [...last]) if (m.verb !== 'set') last.delete(code);
+  return last;
+}
+/** the same, plus what this phone tapped a moment ago and has not seen come back in the ledger yet */
+function marksNow(){
+  const out = activeMarks();
+  for (const j of queue){
+    if (!NOMARK_RE.test(String(j.variant_id || ''))) continue;
+    const m = MARK_RE.exec(String(j.note || '')); if (!m) continue;
+    const code = String(j.variant_id).slice(NOMARK.length);
+    if (m[1] === 'set') out.set(code, { verb: 'set', reason: m[2], note: m[3], at: new Date(j.ts).toISOString(), pending: true });
+    else out.delete(code);
+  }
+  return out;
+}
+let MNOW = new Map();
+const refreshMarks = () => { MNOW = marksNow(); };
+const markOf = r => (r && r.our_code ? MNOW.get(String(r.our_code)) : null) || null;
+const reasonHe = id => (MARK_REASONS.find(x => x.id === id) || {}).he || '';
+/** may this page mark at all: the manager only, on a live order it can write to (the server refuses a buyer key as well) */
+const markOk = () => who === 'admin' && !!S.brain && state.open && !!person && ready();
+/**
+ * A mark rides the ordinary save path, so it retries and survives a reload like any other write — but under an item id
+ * no catalogue row can carry and with qty 0, so nothing that reads a quantity can ever see it.
+ */
+function markWrite(code, verb, reason, note){
+  if (!markOk() || !code) return;
+  const v = NOMARK + String(code);
+  queue = queue.filter(j => !(j.variant_id === v && j.person === person && !(j.att > 0)));
+  const txt = 'NOMARK|' + verb + '|' + (verb === 'set' ? String(reason || '') : '') + '|' + (verb === 'set' ? String(note || '').slice(0, MARK_NOTE_MAX) : '');
+  queue.push({ uuid: uuid(), ts: Date.now(), person, variant_id: v, qty: 0, att: 0, notBefore: 0, note: txt });
+  saveQ(); refreshMarks(); render(); sync();
+}
+/** the small sheet that asks WHY, because a reason is what teaches the brain (his words: "so we can improve the brain") */
+function markSheetHtml(){
+  if (!markFor) return '';
+  const id = idOfCode(markFor), r = id && cat ? cat.byId.get(id) : null;
+  let h = '<div class="msheet" role="dialog" aria-modal="true" aria-label="אין צורך להזמין"><div class="mbox">';
+  h += '<div class="mh">אין צורך להזמין' + (r ? ' · <bdi>' + esc(r.title) + '</bdi>' : '') + '</div>';
+  h += '<div class="bs">המוח יפסיק להציע את הפריט הזה אצל הספק הזה. אפשר להחזיר בכל רגע.</div>';
+  for (const x of MARK_REASONS) h += '<button class="mreason" data-mreason="' + esc(x.id) + '">' + esc(x.he) + '</button>';
+  h += '<input id="mnote" type="text" maxlength="' + MARK_NOTE_MAX + '" placeholder="הערה (לא חובה)" aria-label="הערה">';
+  h += '<div class="acts"><button data-act="mcancel">ביטול</button></div>';
+  return h + '</div></div>';
+}
+/** his own list of marks on this page, with the reason and a way back — no second screen (his standing decision of 16/11) */
+function marksListHtml(){
+  if (!markOk() && !MNOW.size) return '';
+  const rows = [...MNOW].map(([code, m]) => ({ code, m, id: idOfCode(code) }));
+  if (!rows.length) return '';
+  let h = '<div class="bbox mbox-list"><span class="chip tog' + (showMarks ? ' on' : '') + '" data-tog="marks">סימנתי: אין צורך · ' + num(rows.length) + ' ' + (showMarks ? '▴' : '▾') + '</span>';
+  if (showMarks) for (const x of rows){
+    const r = x.id && cat ? cat.byId.get(x.id) : null;
+    h += '<div class="mrow"><bdi>' + esc(r ? r.title : x.code) + '</bdi>' + (x.m.reason ? ' — ' + esc(reasonHe(x.m.reason)) : '') +
+      (x.m.note ? ' · <bdi>' + esc(x.m.note) + '</bdi>' : '') + (x.m.at ? ' · ' + esc(ddmm(x.m.at)) : '') +
+      (x.m.pending ? ' · <span class="st">נשמר…</span>' : '') +
+      (markOk() ? ' <button class="ack" data-munmark="' + esc(x.code) + '">החזר</button>' : '') + '</div>';
+  }
+  return h + '</div>';
+}
+
 function render(){
   if (!$('app') || $('app').classList.contains('hide')) return;
+  refreshMarks();
   renderTop(); renderTabs(); renderBanners();
   $('view').className = view === 'catalog' ? 'v-cat' : 'v-other';
   setTopH();
@@ -1504,7 +1639,9 @@ function renderCatalog(){
   const actHtml = act.map(([kind, a, b, he]) => '<span class="chip act" '+(kind === 'fac' ? 'data-fac="'+esc(a)+'" data-val="'+esc(b)+'"' : kind === 'pace' ? 'data-pace="'+esc(a)+'"' : 'data-price="1"')+'><bdi>'+bidiNums(he)+'</bdi><span class="x">×</span></span>').join('');
   const cnt = '<span class="cnt" id="cnt">מציג <b>'+num(rows.length)+'</b> מתוך '+num(total)+'</span>';
   const listTog = '<span class="chip tog-list" data-tog="list">'+(list ? 'תצוגת כרטיסים' : 'תצוגת רשימה')+'</span>';
-  const bbox = brainBoxHtml();   // or1.8 (L17): on the phone above the list, on a desktop at the top of the sidebar, so the list keeps its density
+  // or1.8 (L17): on the phone above the list, on a desktop at the top of the sidebar, so the list keeps its density.
+  // or1.9: his own marks ride in the same place, under the brain's box - one place, not a second screen.
+  const bbox = brainBoxHtml() + marksListHtml() + markSheetHtml();
   const listHtml = '<div id="list"'+(list ? ' class="listmode"' : '')+'>' + (rows.length ? rows.slice(0, shown).map(list ? rowHtml : cardHtml).join('') + (rows.length > shown ? '<button class="more" data-more="1">עוד '+(rows.length - shown)+'</button>' : '') : '<div class="empty">' + (cat ? 'לא נמצא כלום' : 'טוען את הקטלוג…') + '</div>') + '</div>';
   const oldSide = $('side'), sideTop = oldSide ? oldSide.scrollTop : 0;
   if (desk){
@@ -1648,10 +1785,20 @@ function altGapHe(r, a){
 /** the mark on a card: the proposed quantity, the reason, where the brain files it when that differs, and another supplier's price */
 function brainHtml(r){
   const b = brainOfRow(r); if (!b) return '';
+  // or1.9: once he has said the brain is wrong here, the card says so instead of going on proposing. The line is still
+  // shown, greyed, so he can see WHAT it used to propose and why he stopped it, and take it back in one tap.
+  const mk = markOf(r);
+  if (mk) return '<div class="brain marked"><span class="bq">אין צורך להזמין</span>' +
+    (mk.reason ? ' <span class="bwhy">' + esc(reasonHe(mk.reason)) + '</span>' : '') +
+    (mk.note ? '<span class="bfl"><bdi>' + esc(mk.note) + '</bdi></span>' : '') +
+    '<span class="bs">המוח הציע ' + num(b.q) + ' · ' + (mk.pending ? 'נשמר…' : 'סומן ' + esc(ddmm(mk.at))) + '</span>' +
+    (markOk() ? '<div class="acts"><button data-munmark="' + esc(String(r.our_code)) + '">החזר</button></div>' : '') + '</div>';
   let h = '<div class="brain"><span class="bq">' + esc(S.brain.label_he) + ' ' + num(b.q) + '</span>' + (b.why ? ' <span class="bwhy">' + bidiNums(b.why) + '</span>' : '');
   if (b.bs) h += '<span class="bsrc">המוח רושם את הפריט על ' + esc(b.bs) + '; הוא מופיע כאן לפי ההמלצה בקטלוג</span>';
   if (b.fl) h += '<span class="bfl">' + bidiNums(b.fl) + '</span>';
   for (const a of b.alt) h += '<span class="balt">גם אצל ' + esc(a.s) + ' — ' + esc(shekel(a.p)) + esc(altGapHe(r, a)) + (a.b ? ' <span class="bfl" style="display:inline">(' + esc(a.b) + ')</span>' : '') + '</span>';
+  // the one new button: it says the brain is wrong about THIS item at THIS supplier, and asks why
+  if (markOk() && r.our_code) h += '<div class="acts"><button data-mmark="' + esc(String(r.our_code)) + '">המוח טועה — אין צורך להזמין</button></div>';
   return h + '</div>';
 }
 /** the compact mark on a list row */
@@ -1660,7 +1807,8 @@ function brainMark(r){ const b = brainOfRow(r); return b ? '<span class="bmark">
 const brainRows = () => (cat ? cat.rows.filter(r => BR.has(r.id)) : []);
 /** the rows a fill would touch: the supplier has them and I have no quantity on them yet (rule 3: a quantity of mine is never overwritten) */
 // a row the person REMOVED has a ledger line of 0, so "no quantity" is not enough: the button must never put back what he took out
-const brainFillable = () => brainRows().filter(r => r.available && myQty(r.id) === 0 && !mine[r.id] && !(person && lines.has(kOf(person, r.id))));
+// or1.9: and never an item he has marked "no need to order" - the fill must not put back what he has just said no to
+const brainFillable = () => brainRows().filter(r => r.available && myQty(r.id) === 0 && !mine[r.id] && !markOf(r) && !(person && lines.has(kOf(person, r.id))));
 /**
  * The box above the catalog list: how many items the brain proposes here and for how much, when its figures are from, the fill button,
  * and the folded list of proposals this supplier does not carry or shows as sold out. Nothing in it saves anything by itself.
@@ -2031,6 +2179,12 @@ document.addEventListener('click', ev => {
   if (t.dataset.tog === 'list'){ F.list = !isList(); saveF(); renderCatalog(); return; }
   if (t.dataset.tog === 'short'){ showShort = !showShort; renderSummary(); return; }
   if (t.dataset.tog === 'bmiss'){ showBmiss = !showBmiss; renderCatalog(); return; }   // or1.8 (L17): the proposals this supplier does not carry
+  if (t.dataset.tog === 'marks'){ showMarks = !showMarks; renderCatalog(); return; }   // or1.9: his own "no need to order" list
+  // or1.9 (L17): the brain is wrong about this item. The tap only OPENS the sheet; nothing is written until he picks a reason.
+  if (t.dataset.mmark){ if (!markOk()) return; markFor = String(t.dataset.mmark); renderCatalog(); return; }
+  if (t.dataset.act === 'mcancel'){ markFor = ''; renderCatalog(); return; }
+  if (t.dataset.mreason){ const code = markFor, note = ($('mnote') || {}).value || ''; markFor = ''; markWrite(code, 'set', t.dataset.mreason, note); return; }
+  if (t.dataset.munmark){ markWrite(String(t.dataset.munmark), 'clear', '', ''); return; }   // "החזר": the brain may propose it again
   if (t.dataset.open){ expanded.add(t.dataset.open); renderCatalog(); return; }   // a list row opens into its card
   if (t.dataset.price){ F.pmin = ''; F.pmax = ''; shown = PAGE; sortSnap = null; saveF(); renderCatalog(); return; }
   if (t.dataset.view){ view = t.dataset.view; sortSnap = null; saveLS(LS.view, view); window.scrollTo(0, 0); render(); return; }
@@ -2055,6 +2209,18 @@ document.addEventListener('click', ev => {
   if (t.dataset.act === 'open') return setOpen(true);
   if (t.dataset.rm) return removeLine(t.dataset.rm);
   if (t.dataset.go){ if (ev.target.closest('.stepper, .mgrbox')) return; return goCard(t.dataset.go); }   // a tap in a line's stepper or in the manager box edits there, it never jumps to the card
+});
+/**
+ * or1.9 (Chris, 17/11 14:36): "a tap on an open item closes it". Only on the card's OWN dead area — never on a
+ * control, a picture, a link or the reason sheet, or a tap meant for the stepper would fold the card instead of
+ * counting. A card that is not open is untouched, so nothing changes for anyone who is not using this.
+ */
+document.addEventListener('click', ev => {
+  if (view !== 'catalog') return;
+  if (ev.target.closest('button, input, select, textarea, a, img, .chip, .stepper, .mgrbox, .msheet')) return;
+  const card = ev.target.closest('.card[data-v]'); if (!card) return;
+  const v = card.dataset.v; if (!expanded.has(v)) return;
+  expanded.delete(v); renderCatalog();
 });
 document.addEventListener('input', ev => {
   const inp = ev.target; if (!inp.dataset || !inp.dataset.qin) return;
