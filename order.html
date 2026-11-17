@@ -1500,7 +1500,11 @@ function markSheetHtml(){
   h += '<div class="mh">אין צורך להזמין' + (r ? ' · <bdi>' + esc(r.title) + '</bdi>' : '') + '</div>';
   h += '<div class="bs">המוח יפסיק להציע את הפריט הזה אצל הספק הזה. אפשר להחזיר בכל רגע.</div>';
   for (const x of MARK_REASONS) h += '<button class="mreason" data-mreason="' + esc(x.id) + '">' + esc(x.he) + '</button>';
-  h += '<input id="mnote" type="text" maxlength="' + MARK_NOTE_MAX + '" placeholder="הערה (לא חובה)" aria-label="הערה">';
+  // The free note is NOT offered in this version, on purpose. Mark rows still travel to every key inside jo_load, so
+  // until the server strips them for anyone but the manager (tomorrow, its own step), a note he typed would sit in
+  // the raw data a Kingdom buyer's browser receives. A reason id is a fixed word from our own list and can live with
+  // that for a day; his own sentences cannot. The field comes back with the wire fix.
+  // h += '<input id="mnote" …>  — restored together with the server-side strip
   h += '<div class="acts"><button data-act="mcancel">ביטול</button></div>';
   return h + '</div></div>';
 }
@@ -2197,7 +2201,7 @@ document.addEventListener('click', ev => {
   // or1.9 (L17): the brain is wrong about this item. The tap only OPENS the sheet; nothing is written until he picks a reason.
   if (t.dataset.mmark){ if (!markOk()) return; markFor = String(t.dataset.mmark); renderCatalog(); return; }
   if (t.dataset.act === 'mcancel'){ markFor = ''; renderCatalog(); return; }
-  if (t.dataset.mreason){ const code = markFor, note = ($('mnote') || {}).value || ''; markFor = ''; markWrite(code, 'set', t.dataset.mreason, note); return; }
+  if (t.dataset.mreason){ const code = markFor, note = ($('mnote') || {}).value || ''; markFor = ''; markWrite(code, 'set', t.dataset.mreason, note); return; }   // the note field is not offered in this version, so this is '' — see markSheetHtml
   if (t.dataset.munmark){ markWrite(String(t.dataset.munmark), 'clear', '', ''); return; }   // "החזר": the brain may propose it again
   if (t.dataset.open){ expanded.add(t.dataset.open); renderCatalog(); return; }   // a list row opens into its card
   if (t.dataset.price){ F.pmin = ''; F.pmax = ''; shown = PAGE; sortSnap = null; saveF(); renderCatalog(); return; }
