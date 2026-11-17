@@ -117,7 +117,7 @@
   .bbox .bs{font-size:12.5px; color:var(--dim); margin-top:2px}
   .bbox .acts{margin-top:8px}
   .bmiss{font-size:12.5px; color:var(--dim); margin-top:6px}
-  .bmiss .chip{display:inline-flex; align-items:center; min-height:40px}   /* the same 40 px tap target as every other chip (a .chip is inline: min-height alone does nothing) */
+  .bmiss .chip{display:inline-block; min-height:40px; line-height:20px}   /* a 40 px tap target; inline-BLOCK, not flex: a flex chip eats the spaces between its words */
   .bmiss .mrow{margin-top:3px; color:var(--ink)}
   .chip.brain-chip.on{background:#13323d; border-color:var(--teal)}
   /* or1.4 (B-BRN-8): the in-stock line under the pace block of a card — the brain's 'שורה לכרטיס', text only, wraps at 390 px */
@@ -1646,7 +1646,8 @@ function brainBoxHtml(){
   const rows = brainRows(), miss = S.brain.missing, out = rows.filter(r => !r.available);
   if (!rows.length && !S.brain.missing_n) return '';
   const can = brainFillable(), sum = rows.reduce((s, r) => s + (BR.get(r.id).ils != null ? BR.get(r.id).ils : 0), 0);
-  let h = '<div class="bbox"><div class="bh">' + esc(S.brain.label_he) + ' <b>' + num(rows.length) + '</b> פריטים מ' + esc(S.name_he || 'הספק') + (sum ? ' · <b>' + esc(shekel(sum)) + '</b>' : '') + '</div>';
+  const supName = S.name_he || 'הספק', from = (/^[A-Za-z0-9]/.test(supName) ? 'מ-' : 'מ') + supName;   // "מ-ICO", but "מהקובייה"
+  let h = '<div class="bbox"><div class="bh">' + esc(S.brain.label_he) + ' <b>' + num(rows.length) + '</b> פריטים ' + esc(from) + (sum ? ' · <b>' + esc(shekel(sum)) + '</b>' : '') + '</div>';
   h += '<div class="bs">' + esc(brainWhenHe()) + '</div>';
   if (S.brain.by_price_n) h += '<div class="bs">' + num(S.brain.by_price_n) + ' מהם בלי עלות רשומה אצלנו — הסכום שלהם לפי מחיר המכירה, לא לפי עלות</div>';
   if (rows.length){
@@ -1655,9 +1656,10 @@ function brainBoxHtml(){
     if (state.open && person && ready()) h += '<div class="bs">הכפתור ממלא רק פריטים שאין בהם כמות שלך, ואפשר לשנות כל מספר אחר כך. שום דבר לא נשלח לספק.</div>';
   }
   if (S.brain.missing_n || out.length){
-    h += '<div class="bmiss"><span class="chip tog' + (showBmiss ? ' on' : '') + '" data-tog="bmiss">' +
-      (S.brain.missing_n ? '<b>' + num(S.brain.missing_n) + '</b> שהמוח מציע ואין בקטלוג של ' + esc(S.name_he || 'הספק') : '') +
-      (S.brain.missing_n && out.length ? ' · ' : '') + (out.length ? '<b>' + num(out.length) + '</b> שאזלו אצלו' : '') + ' ' + (showBmiss ? '▴' : '▾') + '</span>';
+    // bidiNums, not a bare <b>: a digit beside Hebrew and a Latin supplier name reads backwards without the isolation
+    const missHe = [S.brain.missing_n ? num(S.brain.missing_n) + ' שהמוח מציע ואין בקטלוג של ' + supName : '', out.length ? num(out.length) + ' שאזלו אצלו' : '']
+      .filter(Boolean).join(' · ');
+    h += '<div class="bmiss"><span class="chip tog' + (showBmiss ? ' on' : '') + '" data-tog="bmiss">' + bidiNums(missHe) + ' ' + (showBmiss ? '▴' : '▾') + '</span>';
     if (showBmiss){
       for (const m of miss) h += '<div class="mrow">· <bdi>' + esc(m.name) + '</bdi> — ' + num(m.q) + (m.why ? ' · ' + bidiNums(m.why) : '') + '</div>';
       if (S.brain.missing_n > miss.length) h += '<div class="mrow">· ועוד ' + num(S.brain.missing_n - miss.length) + '</div>';
