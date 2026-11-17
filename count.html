@@ -233,6 +233,12 @@
       <button id="eqBtn" onclick="setEq()">= כספית</button>
       <span id="countedTotal">—</span>
     </div>
+    <!-- v3.5.5 (B-CNT-8): a number that differs from the card asks for its reason (a closed list, never required); a big gap asks for a second counter -->
+    <div id="gapBox" class="hide">
+      <div id="gapBig" class="banner warn">הפרש גדול: אם לא נמכרו היום יחידות, אדם אחר סופר שוב לפני שמתקנים את הכרטיס בכספית.</div>
+      <label for="selGap" style="margin-top:10px">סיבה להפרש (לא חובה)</label>
+      <select id="selGap"></select>
+    </div>
 
     <label style="margin-top:16px">תמונה</label>
     <div id="photoState"></div>
@@ -401,7 +407,7 @@
 
 <script>
 /* ================= CONFIG ================= */
-const BUILD = 'v3.5.4';
+const BUILD = 'v3.5.5';
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbzZcnV-OvyDUbwJXpraSAaQrqLbF5FYgtoONr6XCfLIWxg8ifenqzvDAVjALKwzBCr1/exec';   // deployment "V2 live"
 // ?api=test reroutes the page to the TEST deployment (the tests use it); only these two names exist — never a URL from the
 // address bar, so no link can send the page (and what it shows) to a backend of someone else's
@@ -430,6 +436,10 @@ let tasksMeta = { stamp:'', sheetAt:'', sheetAtIso:'', at:'', total:0, fetchedAt
 let taskAnswers = {};                        // key kind|code → { done, note, counted, flag, hide, at, uuid } — answered from this phone; hidden until the list drops the row
 let taskBlock = '';                          // the block chip chosen ('' = all; 'נגעו' = the touched rows: a name, a note, a refused reply)
 const TOUCHED = 'נגעו';
+// v3.5.5 (B-CNT-8): the chip 'ספירת השבוע' — a view over the same rows: the brain gives this week's picks the second instruction line
+// `ספירת השבוע: …` (compute/weekly.ts). Nothing is closed or written by the chip; a row stays in its own block too.
+const WEEKLY = 'השבוע';
+const isWeeklyRow = r => /^ספירת השבוע/m.test(r[T.todo]||'');
 let taskShown = 60;
 let tasksLoading = false, tasksDirty = false;   // dirty: a re-render waited while a confirm panel was open
 let returnScreen = 'screen-scan';            // where the item screen's back button goes — the tasks screen opens items too
@@ -1126,7 +1136,7 @@ async function openItem(it, scannedCode){
   $('eqBtn').disabled = it.caspitQty==null;
   $('fRename').checked=false; $('newName').value=''; $('newName').style.display='none';
   $('fDept').checked=false; $('deptWrap').style.display='none';
-  $('selCond').value=''; $('infoLink').value=''; $('notes').value='';
+  $('selCond').value=''; $('infoLink').value=''; $('notes').value=''; $('selGap').value='';
   renderSupChips(); renderPickBtns();
   renderPhotoState();
 
@@ -1211,7 +1221,28 @@ function addLocRow(l, q, focus){
 }
 function activeLocs(){ return locRowsData.filter(x=>!x._del && x.l && x.q!=='' && x.q!=null); }
 function countedSum(){ return activeLocs().reduce((a,x)=>a+Number(x.q||0),0); }
-function recalcLoc(){ const act=activeLocs(); $('countedTotal').textContent = act.length ? countedSum() : '—'; }
+function recalcLoc(){ const act=activeLocs(); $('countedTotal').textContent = act.length ? countedSum() : '—'; updateGap(); }
+// v3.5.5 (B-CNT-8, Chris 17/11: a reason for every difference, and a second counter for a big one). The card shown is last night's, so this
+// is a prompt, never a verdict: the reason is optional and nothing is blocked. It travels in the count's own note as `סיבה: <word>`.
+const GAP_REASONS = ['לא נקלט מספק','פגום','נמכר ולא נרשם','הועבר למקום אחר','ספירה קודמת שגויה','אחר'];
+const GAP_BIG = 5;
+(function(){ const s=document.getElementById('selGap'); if(s){ s.innerHTML='<option value="">בלי סיבה</option>'+GAP_REASONS.map(r=>'<option>'+r+'</option>').join(''); } })();
+function gapDiff(){
+  const it=currentItem, act=activeLocs();
+  if(!it || it.caspitQty==null || !act.length) return null;
+  return countedSum() - Number(it.caspitQty);
+}
+function updateGap(){
+  const diff=gapDiff(), show = diff!==null && diff!==0;
+  $('gapBox').classList.toggle('hide', !show);
+  $('gapBig').style.display = (show && Math.abs(diff)>=GAP_BIG) ? 'block' : 'none';
+  if(!show) $('selGap').value='';
+}
+/** the note the ledger gets: the person's own note, with the chosen reason in front when there is a difference */
+function noteWithReason(){
+  const note=$('notes').value.trim(), why = gapDiff()!==null && gapDiff()!==0 ? $('selGap').value : '';
+  return why ? 'סיבה: '+why+(note ? ' · '+note : '') : note;
+}
 
 /* flags */
 $('fRename').onchange = e => $('newName').style.display = e.target.checked?'block':'none';
@@ -1296,7 +1327,7 @@ async function saveItem(){
     deptFlag:   $('fDept').checked,
     ptype: fieldVals.ptype, brand: fieldVals.brand, subbrand: fieldVals.subbrand,
     suppliers: [...supSelected].join(', '),
-    link: $('infoLink').value.trim(), notes: $('notes').value.trim(),
+    link: $('infoLink').value.trim(), notes: noteWithReason(),
     scanTime: at,
     caspitQty: it.caspitQty==null ? '' : it.caspitQty,
     computed: it.computed==null ? '' : it.computed,
@@ -1315,7 +1346,8 @@ async function saveItem(){
   saveLatestLS(); updateProgress(); histPush(it, counted);
 
   const diff = it.caspitQty==null ? null : counted - Number(it.caspitQty);
-  toast('נשמר ✓' + (diff===null ? '' : '  פער מול כספית: '+(diff>0?'+':'')+diff), (diff===0||diff===null) ? '' : 'warn');
+  const bigGap = diff!==null && Math.abs(diff)>=GAP_BIG;
+  toast('נשמר ✓' + (diff===null ? '' : '  פער מול כספית: '+(diff>0?'+':'')+diff) + (bigGap ? ' · אם לא נמכרו היום יחידות, אדם אחר סופר שוב לפני שמתקנים את הכרטיס' : ''), (diff===0||diff===null) ? '' : 'warn', bigGap ? 5000 : 2400);
   $('saveBtn').disabled=false;
   backToScan();
 }
@@ -1462,9 +1494,10 @@ function renderTasks(){
   const open = openTaskRows(), touched = touchedTaskRows();
   const counts = new Map();
   for(const r of open){ const b=r[T.block]||'אחר'; counts.set(b, (counts.get(b)||0)+1); }   // the rows come in the sheet's order: smallest block first
-  if(taskBlock && taskBlock!==TOUCHED && !counts.has(taskBlock)) taskBlock='';
+  const weeklyN = open.filter(isWeeklyRow).length;
+  if(taskBlock && taskBlock!==TOUCHED && !(taskBlock===WEEKLY ? weeklyN : counts.has(taskBlock))) taskBlock='';
   const wrap=$('taskBlocks'); wrap.innerHTML='';
-  const chips = [['', 'הכל', open.length], ...[...counts.entries()].map(([b,n])=>[b,b,n])];
+  const chips = [['', 'הכל', open.length], ...(weeklyN ? [[WEEKLY, 'ספירת השבוע', weeklyN]] : []), ...[...counts.entries()].map(([b,n])=>[b,b,n])];
   if(touched.length || taskBlock===TOUCHED) chips.push([TOUCHED, 'נגעו בהם', touched.length]);
   for(const [val,label,n] of chips){
     const c=document.createElement('button'); c.className='chip'+(taskBlock===val?' onc':''); c.textContent=label+' ('+n+')';
@@ -1472,7 +1505,7 @@ function renderTasks(){
     wrap.appendChild(c);
   }
   const q=$('taskSearch').value.trim().toLowerCase();
-  let list = taskBlock===TOUCHED ? touched : open.filter(r => !taskBlock || (r[T.block]||'אחר')===taskBlock);
+  let list = taskBlock===TOUCHED ? touched : taskBlock===WEEKLY ? open.filter(isWeeklyRow) : open.filter(r => !taskBlock || (r[T.block]||'אחר')===taskBlock);
   // v3.5.4 (B-CNT-7, the team 10/11): "מלאי = 0" (also מלאי=0, מלאי: 0, מלאי = -2) shows only the cards whose Caspit number (the 'בכספית N' on the card) is exactly that.
   // A view only: nothing is closed or written. A row with no Caspit number (a manual task) never matches. Anything else searches as before.
   const stockQ = stockQuery(q);
