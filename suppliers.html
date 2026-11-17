@@ -166,7 +166,8 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 's1.3';   // s1.3 (B-CAT-10 or1.3, 31/10): "להזמנה" on a supplier group that has an order page, "הזמנות מספקים" at the top of להזמין
+const BUILD = 's1.4';   // s1.4 (17/11/2026): the "בלי ספק" tab says the same questions also reach his own page as cards (S-SUP's wording)
+// s1.3 (B-CAT-10 or1.3, 31/10): "להזמנה" on a supplier group that has an order page, "הזמנות מספקים" at the top of להזמין
 // the two backends (Apps Script deployments of the catalog's script); ?api=test is the TEST one (it writes only to the TEST copies),
 // ?api=local only on this PC (the bench). Never a URL from the address bar.
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbyCy0D7QPJNjpVIPP7NkNC38rkACV0t-O1C_m-SDsBUTFysG-Q0QUjtDPjI3Go8iYUZfw/exec';   // LIVE deployment (version 7, 18/10)
@@ -543,7 +544,11 @@ function renderOut(){
 
 /* ---------- בלי ספק ---------- */
 function renderNosup(){
-  $('sub').innerHTML = '<div class="why">פריטים שאנחנו מוכרים, ואין חשבונית או קטלוג שמראים מאיפה קונים אותם. הספק שתבחר נכתב בלשונית "ספק אמיתי" (עמודה "ספק אחר"); הספק במערכת עצמה משתנה רק בתהליך המסודר, עם ריצת ניסיון ואישור שלך.</div>';
+  // s1.4 (17/11/2026): the same questions now also reach his own page as cards. The wording is S-SUP's, checked against the
+  // bridge: both paths write the same ספק אחר cell and the same תשובות ledger, the first answer wins, and the task leaves this
+  // tab at the next hourly build. It does not promise that every question is a card, and says nothing about this page closing.
+  $('sub').innerHTML = '<div class="why">פריטים שאנחנו מוכרים, ואין חשבונית או קטלוג שמראים מאיפה קונים אותם. הספק שתבחר נכתב בלשונית "ספק אמיתי" (עמודה "ספק אחר"); הספק במערכת עצמה משתנה רק בתהליך המסודר, עם ריצת ניסיון ואישור שלך.</div>' +
+    '<div class="why">השאלות האלה מגיעות עכשיו כרטיסים גם לדף "שאלות ומשימות לכריס". אפשר לענות באחד משני המקומות: התשובה נכתבת לאותו תא בקטלוג, והשאלה יורדת מכאן בעדכון הבא (עד שעה).</div>';
   const rows = visible('nosup').sort((a,b) => a.rank - b.rank || (b.d.vel||0) - (a.d.vel||0)), n = shown.nosup || PAGE;
   $('list').innerHTML = rows.slice(0, n).map(r => {
     const d = r.d, ro = (data.overlay.real || {})[r.code] || {};
