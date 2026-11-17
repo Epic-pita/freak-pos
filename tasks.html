@@ -165,7 +165,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 't0.5';   // S-SUP step 2, first cut (16/11/2026): ONE tasks screen for all suppliers, reading and answering through the same backend as suppliers.html
+const BUILD = 't1.0';   // S-SUP step 2 (16/11/2026): ONE tasks screen for all suppliers, reading and answering through the same backend as suppliers.html; t1.0 (17/11): the answerer role
 // the backend is the catalog's script, the same deployments as suppliers.html: LIVE reads the live list; ?api=test writes only the TEST copies;
 // ?preview=1 = REAL rows, but every answer is only TRIED (dryRun: the server says what it would write and writes nothing). Never a URL from the address bar.
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbyCy0D7QPJNjpVIPP7NkNC38rkACV0t-O1C_m-SDsBUTFysG-Q0QUjtDPjI3Go8iYUZfw/exec';
@@ -175,7 +175,11 @@ const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const MODE = (()=>{ const a = QS.get('api'); return a==='test' ? 'test' : a==='local' && LOCAL ? 'local' : 'live'; })();
 // t0.x: the LIVE page is ALWAYS preview. Real answers (the path that writes his typing, root rule 3) work only on the TEST deployment (?api=test&real=1, which writes only the
 // private TEST copies) until the reviewer's open items, the TEST run and a second look are done; then the live flip is one reviewed commit.
-const PREVIEW = !(MODE === 'test' && QS.get('real') === '1');
+// t1.0 (17/11/2026, card L1-SUP-2ND-1, Chris's tap 17:39): a PERSONAL ANSWERER LINK (?as=answerer) answers for real, with a limited key. The page never trusts the link alone:
+// real answers go out only while the backend's own list reply says role 'answerer' (roleBad() below), and the backend refuses everything outside that key's allow-list.
+// Any other link (and Chris's own key) stays exactly as before: the LIVE page is preview, real answers only on TEST with &real=1.
+const ANSWERER = QS.get('as') === 'answerer';
+const PREVIEW = !((MODE === 'test' && QS.get('real') === '1') || ANSWERER);
 const API = MODE==='test' ? TEST_API : MODE==='local' ? location.origin + '/api' : LIVE_API;
 const ENV = MODE==='live' ? '' : 'test';
 const TZ = 'Asia/Jerusalem';
@@ -185,6 +189,9 @@ const KINDS = [['', 'הכול'], ['nosup', 'בלי ספק'], ['noprice', 'בלי
 const KIND_HE = { nosup: 'בלי ספק', noprice: 'בלי מחיר', out: 'אזל אצל הספק', transit: 'בדרך' };
 const COMMON_SUPS = ['Kaissa', 'ICO', 'Glassstaff', 'הקובייה', 'ACD', 'School market', 'VFI', 'PSI', 'Asmodee', 'סינאפסה', 'Breaking Games'];
 const OS_URL = './order-suppliers.json';
+// the role the backend reports for this key (in the list reply): 'answerer' = a limited key, with the exact list of answers it may give ('kind/answer').
+// A key without a role (Chris's) may do everything the page offers. The page only HIDES what the key may not do; the backend is what refuses it.
+const ERR_HE = { ALREADY_ANSWERED: 'כבר נענה על ידי מישהו אחר', NOT_ALLOWED: 'התשובה הזאת לא מותרת במפתח הזה' };
 
 /* ================= STATE ================= */
 let KEY = '', data = null, query = '', shown = PAGE, openEditor = '', editorKind = '', panelOpen = false;
@@ -192,6 +199,10 @@ let F = { kind: '', sup: '', open: true };   // the filters, kept on this device
 let pend = {};              // key → { ans, at } — answered on this phone, not yet seen in the list (kept in memory: a reload re-reads the truth)
 let loading = false, lastOk = 0, db = null, syncing = false, loadAgain = false, orderSups = [];
 const cancelled = new Set();
+const ALLOW = () => (data && data.role === 'answerer' && Array.isArray(data.allow)) ? new Set(data.allow) : null;
+const can = (kind, ans) => { const a = ALLOW(); return !a || a.has(kind + '/' + ans); };
+// an answerer link opened with a key that is not an answerer key (or before the first list arrived): nothing real is sent
+const roleBad = () => ANSWERER && !(data && data.role === 'answerer');
 
 /* ================= UTIL ================= */
 const $ = id => document.getElementById(id);
@@ -262,6 +273,7 @@ async function badge(){ const n = db ? (await qAll()).filter(j=>j.mode===MODE &&
 /* answers: shown at once on this phone, sent from the queue; a hiding answer waits 5 s so "בטל" can take it back */
 async function answer(r, ans, value, note, label, hides){
   if (!textOk(String(note || ''))){ toast(TEXT_RULE, 'err', 4000); return; }   // every answer, whichever button it came from: the server's rule (no leading =, no < >, one line, 300 characters) is checked here first
+  if (!PREVIEW && roleBad()){ toast('הקישור הזה מיועד לעונה, והמפתח שבטלפון לא כזה. לא נשמר כלום.', 'err', 6000); return; }
   if (pend[r.key] && pend[r.key].uuid) return;   // a second tap while the first answer is on its way is ignored (it would be a second job with another uuid)
   const job = { uuid: uuid(), ts: Date.now(), mode: MODE, att: 0, soft: 0, notBefore: hides ? Date.now() + UNDO_MS : 0,
     body: { action:'answer', kind: r.kind, key: r.key, code: r.code || '', sup: r.sup || '', answer: ans, value: value || {}, note: note || '', ...(PREVIEW ? { dryRun: true } : {}) } };
@@ -274,14 +286,17 @@ async function answer(r, ans, value, note, label, hides){
   else toast(label);
   setTimeout(sync, hides ? UNDO_MS + 200 : 50);
 }
-const HARD = /^(bad |missing uuid|unknown action|nothing to write|BAD_KEY)/;
+const HARD = /^(bad |missing uuid|unknown action|nothing to write|BAD_KEY|ALREADY_ANSWERED|NOT_ALLOWED)/;
 // every outgoing answer follows PREVIEW, whatever a stored job says (a job stored in preview carries dryRun:true; a real one never does)
 const bodyOf = job => { const b = { ...job.body }; if (PREVIEW) b.dryRun = true; else delete b.dryRun; return b; };
 const whatOf = job => { const b = job.body, l = pend[b.key] && pend[b.key].label; return (l || (KIND_HE[b.kind] || b.kind) + ': ' + b.answer) + (b.code ? ' · ' + b.code : '') + (b.value && b.value.sup ? ' · ' + b.value.sup : ''); };
 function notSaved(job, err, noretry){
+  const raw = err;
+  if (ERR_HE[raw]){ err = ERR_HE[raw]; noretry = true; }   // a refusal by the key's rules, or a task someone else answered first: retrying changes nothing
   const f = loadLS('fst_failed2_'+MODE, []);
   f.push({ key: job.body.key, uuid: job.uuid, what: whatOf(job), err: err || '?', noretry: !!noretry, body: job.body, at: Date.now() });
   saveLS('fst_failed2_'+MODE, f.slice(-40)); delete pend[job.body.key]; renderFailed(); render(); toast('תשובה לא נשמרה: ' + (err || '?'), 'err', 6000);
+  if (raw === 'ALREADY_ANSWERED') setTimeout(()=>load(true), 300);   // the list shows who-less "answered" state at once
 }
 function afterOk(job, js){
   if (pend[job.body.key]) pend[job.body.key].sent = true;
@@ -292,6 +307,7 @@ function afterOk(job, js){
   if (!PREVIEW) setTimeout(()=>load(false), 600);
 }
 async function sendNow(job, label){
+  if (!PREVIEW && roleBad()){ notSaved(job, 'הקישור הזה מיועד לעונה, והמפתח שבטלפון לא כזה'); return; }
   try{ const js = await post({ ...bodyOf(job), uuid: job.uuid }, 60000);
     if (js && js.ok && !PREVIEW && js.result === 'dry'){ notSaved(job, 'השרת ענה בריצת ניסיון'); return; }
     if (js && js.ok){ if (PREVIEW){ console.log('preview answer tried:', job.body.kind, job.body.answer, js.result, js.plan); return; } return afterOk(job, js); }
@@ -300,6 +316,7 @@ async function sendNow(job, label){
 }
 async function sync(){
   if (syncing || !navigator.onLine || !API || !db) return;
+  if (!PREVIEW && roleBad()) return;   // a real job waits in the queue until the list has said role 'answerer' (it is sent on the next 5 s tick)
   syncing = true;
   try{
     for (const job of await qAll()){
@@ -441,7 +458,8 @@ function renderBanners(){
     const d = r.d;
     b.push('<div class="banner red"><b>הכניסה לאתר של ' + esc(d.site) + (d.state === 'expired' ? ' פגה' : '') + '.</b> ' + (d.state === 'expired' ? 'המחירים והמלאי שלהם לא מתעדכנים מאז ' + esc(d.since) + '. ' : '') + 'צריך להתחבר שוב פעם אחת במחשב בחנות.</div>');
   }
-  for (const l of (data.lost || [])){
+  if (ANSWERER && roleBad()) b.push('<div class="banner red"><b>הקישור הזה מיועד לעונה, והמפתח שבטלפון לא כזה.</b> שום תשובה לא נשלחת. לפתוח שוב את הקישור האישי.</div>');
+  for (const l of (ALLOW() ? [] : (data.lost || []))){   // an answerer has no "write mine again" button (the lost-answer answers are not his)
     const ack = 'lost|'+l.key+'|'+l.at; if (snoozed(ack) || pend[ack] || pend[l.key]) continue;
     const r = (data.rows || []).find(x => x.key === l.key) || { name: l.code };
     b.push('<div class="banner red">ענית ב-' + esc(ddmm(l.at)) + ' על <b>' + esc(r.name) + '</b>: ' + esc(l.val) + ', ובגיליון כתוב עכשיו ' + (l.now === '' ? 'כלום' : '"' + esc(l.now) + '"') + '.<div class="row"><button data-lost="'+esc(l.key)+'" data-act2="again">לכתוב שוב את שלי</button> <button data-lost="'+esc(l.key)+'" data-act2="keep">להשאיר מה שבגיליון</button></div></div>');
@@ -481,27 +499,31 @@ function cNosup(t){
   const quick = [...new Set(offered([d.guess, d.study, ...COMMON_SUPS.slice(0,6)]).filter(s => s && s !== 'לא ידוע'))].slice(0, 6);
   return '<div class="card'+(d.sug?' urgent':'')+'" data-key="'+esc(r.key)+'">' + head(t, r.name, r.code) + metaLine(d) +
     (d.sug ? '<div class="rec">המוח רוצה להזמין <b>'+num(d.sug)+'</b></div>' : '') + (hint ? '<div class="why">'+esc(hint)+'</div>' : '') + (ro.other ? '<div class="why">כבר כתוב: '+esc(ro.other)+'</div>' : '') +
-    '<div class="chipline">' + quick.map(s => '<button class="chip" data-act="nsquick" data-sup="'+esc(s)+'">'+esc(s)+'</button>').join('') + '<button class="chip" data-act="nsother">אחר…</button></div>' +
-    '<div class="acts"><button class="no" data-act="nsunknown">לא יודע</button></div>' +
-    (openEditor === r.key && editorKind === 'sup' ? '<div class="editor"><label>מאיפה קונים את זה</label>'+supSelect('edSup', d.guess, [d.guess])+'<label>הערה (לא חובה)</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-act="nssave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + '</div>';
+    (can('nosup', 'supplier') ? '<div class="chipline">' + quick.map(s => '<button class="chip" data-act="nsquick" data-sup="'+esc(s)+'">'+esc(s)+'</button>').join('') + '<button class="chip" data-act="nsother">אחר…</button></div>' : '') +
+    (can('nosup', 'unknown') ? '<div class="acts"><button class="no" data-act="nsunknown">לא יודע</button></div>' : '') +
+    (!can('nosup', 'supplier') && !can('nosup', 'unknown') ? '<div class="why">כאן לצפייה בלבד.</div>' : '') +
+    (can('nosup', 'supplier') && openEditor === r.key && editorKind === 'sup' ? '<div class="editor"><label>מאיפה קונים את זה</label>'+supSelect('edSup', d.guess, [d.guess])+'<label>הערה (לא חובה)</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-act="nssave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + '</div>';
 }
 function cNoprice(t){
   const r = t.r, d = r.d;
   return '<div class="card'+(d.sug?' urgent':'')+'" data-key="'+esc(r.key)+'">' + head(t, r.name, r.code) + metaLine(d) +
     '<div class="rec">ספק: <b>'+esc(d.eff)+'</b>' + (d.sug ? ' · המוח מציע <b>'+num(d.sug)+'</b>' + (d.est ? ' (מוערך '+ils(d.est)+' לפי מחיר המדף)' : '') : '') + '</div>' + (d.why ? '<div class="why">'+esc(d.why)+'</div>' : '') +
-    (openEditor === r.key && editorKind === 'price'
+    (can('noprice', 'price') && openEditor === r.key && editorKind === 'price'
       ? '<div class="editor"><div class="row"><div><label>מחיר ליחידה שלנו</label><input id="edPrice" type="number" inputmode="decimal" step="0.01" min="0"></div><div><label>מטבע</label><select id="edCur"><option>₪</option><option>€</option><option>$</option><option>£</option></select></div></div>' +
         '<label>לפי מה</label><select id="edSrc"><option>חשבונית</option><option>מחירון</option><option>הצעת מחיר</option><option>הערכה שלי</option></select>' +
         '<label>הערה (לא חובה)</label><input id="edNote" maxlength="300" placeholder="למשל: קופסה של 24 ב-€74, אז 3.1 לחבילה"><div class="acts"><button class="go" data-act="npsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>'
-      : '<div class="acts"><button class="go" data-act="npedit">להקליד מחיר</button><button class="no" data-act="npskip">דלג</button></div>') + '</div>';
+      : (!can('noprice', 'price') && !can('noprice', 'skip') ? '<div class="why">כאן לצפייה בלבד: את המחיר מקליד מי שמזמין.</div>'
+        : '<div class="acts">' + (can('noprice', 'price') ? '<button class="go" data-act="npedit">להקליד מחיר</button>' : '') + (can('noprice', 'skip') ? '<button class="no" data-act="npskip">דלג</button>' : '') + '</div>')) + '</div>';
 }
 function cOut(t){
   const r = t.r, d = r.d, alts = (d.offers||[]).filter(o => o.s !== d.out);
   return '<div class="card'+((d.stock||0)<=0?' urgent':'')+'" data-key="'+esc(r.key)+'">' + head(t, r.name, r.code) + metaLine(d) +
     '<div class="warn">⚠ '+esc(d.outLabel)+'</div>' + (d.sug ? '<div class="rec">המוח מציע להזמין <b>'+num(d.sug)+'</b></div>' : '') +
-    (alts.length ? '<div class="why">אפשר במקום:</div>' + alts.map(o => '<button class="opt" data-act="outswitch" data-sup="'+esc(o.s)+'">להזמין מ-<b>'+esc(o.s)+'</b> · '+ils(o.ils)+(ni(o.lead)!==''?' · '+ni(o.lead)+' ימים':'')+'<div class="s">'+esc(o.stock || 'מלאי לא ידוע')+'</div></button>').join('') : '<div class="why">אין ספק אחר עם מחיר בקטלוג.</div>') +
-    '<div class="acts"><button class="alt" data-act="outother">ספק אחר…</button><button class="alt" data-act="outwait">לחכות שיחזור</button><button class="no" data-act="outdrop">'+(pend['drop?'+r.key] ? 'בטוח? ללא הבאה נוספת' : 'לא להביא יותר')+'</button></div>' +
-    (openEditor === r.key && editorKind === 'out' ? '<div class="editor"><label>מאיזה ספק להזמין</label>'+supSelect('edSup', '', [])+'<div class="acts"><button class="go" data-act="outsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + '</div>';
+    (alts.length ? '<div class="why">אפשר במקום:</div>' + alts.map(o => can('out', 'switch')
+        ? '<button class="opt" data-act="outswitch" data-sup="'+esc(o.s)+'">להזמין מ-<b>'+esc(o.s)+'</b> · '+ils(o.ils)+(ni(o.lead)!==''?' · '+ni(o.lead)+' ימים':'')+'<div class="s">'+esc(o.stock || 'מלאי לא ידוע')+'</div></button>'
+        : '<div class="why">'+esc(o.s)+' · '+ils(o.ils)+(ni(o.lead)!==''?' · '+ni(o.lead)+' ימים':'')+' · '+esc(o.stock || 'מלאי לא ידוע')+'</div>').join('') : '<div class="why">אין ספק אחר עם מחיר בקטלוג.</div>') +
+    ((can('out', 'switch') || can('out', 'wait') || can('out', 'drop')) ? '<div class="acts">' + (can('out', 'switch') ? '<button class="alt" data-act="outother">ספק אחר…</button>' : '') + (can('out', 'wait') ? '<button class="alt" data-act="outwait">לחכות שיחזור</button>' : '') + (can('out', 'drop') ? '<button class="no" data-act="outdrop">'+(pend['drop?'+r.key] ? 'בטוח? ללא הבאה נוספת' : 'לא להביא יותר')+'</button>' : '') + '</div>' : '<div class="why">כאן לצפייה בלבד.</div>') +
+    (can('out', 'switch') && openEditor === r.key && editorKind === 'out' ? '<div class="editor"><label>מאיזה ספק להזמין</label>'+supSelect('edSup', '', [])+'<div class="acts"><button class="go" data-act="outsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + '</div>';
 }
 function cTransit(t){
   const o = t.o, exp = ni(o.lead)!=='' && o.at && !isNaN(new Date(o.at)) ? new Date(new Date(o.at).getTime() + Number(o.lead)*86400000) : null;
@@ -511,8 +533,8 @@ function cTransit(t){
     '<div class="why">'+(o.lines||[]).slice(0,3).map(l => esc(l.name)+' ×'+esc(l.qty)+(l.state?' · '+esc(l.state):'')).join('<br>')+((o.lines||[]).length>3?'<br>ועוד '+((o.lines||[]).length-3)+' שורות':'')+'</div>' +
     (safeUrl(o.doc) ? '<div class="why"><a href="'+esc(safeUrl(o.doc))+'" target="_blank" rel="noopener">מסמך ההזמנה</a></div>' : '') +
     ((latest(o.key)||{}).note ? '<div class="why">הערה: '+esc(latest(o.key).note)+'</div>' : '') +
-    '<div class="acts"><button class="go" data-tact="arrived">הגיע</button><button class="alt" data-tact="checked">בדקתי, עדיין בדרך</button><button class="no" data-tact="note">הערה</button></div>' +
-    (openEditor === o.key && editorKind === 'note' ? '<div class="editor"><label>הערה על ההזמנה</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-tact="notesave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + '</div>';
+    ((can('transit', 'arrived') || can('transit', 'checked') || can('transit', 'note')) ? '<div class="acts">' + (can('transit', 'arrived') ? '<button class="go" data-tact="arrived">הגיע</button>' : '') + (can('transit', 'checked') ? '<button class="alt" data-tact="checked">בדקתי, עדיין בדרך</button>' : '') + (can('transit', 'note') ? '<button class="no" data-tact="note">הערה</button>' : '') + '</div>' : '<div class="why">כאן לצפייה בלבד.</div>') +
+    (can('transit', 'note') && openEditor === o.key && editorKind === 'note' ? '<div class="editor"><label>הערה על ההזמנה</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-tact="notesave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + '</div>';
 }
 
 /* ================= EVENTS ================= */
