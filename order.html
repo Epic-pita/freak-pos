@@ -119,7 +119,7 @@
   .bmiss{font-size:12.5px; color:var(--dim); margin-top:6px}
   .bmiss .chip{display:inline-block; min-height:40px; line-height:20px}   /* a 40 px tap target; inline-BLOCK, not flex: a flex chip eats the spaces between its words */
   .bmiss .mrow{margin-top:3px; color:var(--ink)}
-  .chip.brain-chip.on{background:#13323d; border-color:var(--teal)}
+  .btaken{color:var(--dim)}   /* the "what of the proposal is in the order" line, inside the totals box */
   /* or1.4 (B-BRN-8): the in-stock line under the pace block of a card — the brain's 'שורה לכרטיס', text only, wraps at 390 px */
   .rline{font-size:12px; color:var(--dim); margin-top:3px; line-height:1.35; overflow-wrap:anywhere}
   .rline .rsep{white-space:nowrap}   /* review 02/11: " ·" stays on the line of the part before it (never a line that starts with ·) */
@@ -558,7 +558,7 @@ async function post(body, ms=45000){
     const r = await fetchT(API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
       body: JSON.stringify({ k: KEY, ak: AK || undefined, env: ENV || undefined, sup: SUP, build: BUILD, ...body }) }, ms);
     const js = await r.json();
-    if (js && js.who) who = js.who;
+    if (js && js.who){ who = js.who; brainGate(); }   // or1.8 (L17): the moment this phone learns it is not the manager, the brain's figures go
     if (!(js && js.error === 'GET_NOT_POST') || i >= 3) return js;
   }
 }
@@ -787,6 +787,7 @@ function setSettings(raw){
     BR.set(String(id), { q, why: txt(r.why, '', 70), fl: txt(r.fl, '', 120), bs: txt(r.bs, '', 24), by_price: r.by_price === true,
       ils: Number.isFinite(Number(r.ils)) && r.ils !== '' && r.ils !== null ? Number(r.ils) : null, alt });
   }
+  brainGate();   // a phone that already knows it is not the manager never draws the block, not even for the moment until the next reply
   for (const g of S.groups) GH[g.id] = g.he;
   for (const f of S.facets){
     FV[f.id] = {}; for (const v of f.values) FV[f.id][v.id] = v.he;
@@ -1615,6 +1616,17 @@ function paceHtml(r){
  * shekels whatever the page's own currency is (the brain works in shekels), so they are written with ₪ and never through money().
  */
 const shekel = n => n == null || n === '' || isNaN(Number(n)) ? '' : '₪' + num(Math.round(Number(n)));
+/**
+ * The backend serves the brain block to our own key only, but this phone also keeps the last catalog (settings and all) in its own
+ * storage. If the key on it stops being the manager's — the saved admin key is cleared, or the link is opened by someone else — the
+ * block in that cache must not go on being drawn from memory. The moment a reply says who this phone is, a non-admin drops it.
+ */
+function brainGate(){
+  if (!who || who === 'admin' || !S.brain) return;
+  S = { ...S, brain: null }; BR = new Map();
+  const c = loadLS(LS.cat, null);                                   // and out of the stored catalog, so a reload does not bring it back
+  if (c && c.settings && typeof c.settings === 'object' && 'brain' in c.settings){ const s = { ...c.settings }; delete s.brain; saveLS(LS.cat, { ...c, settings: s }); }
+}
 const brainOfRow = r => (r && !r.orphan ? BR.get(r.id) : undefined) || null;
 /** when the brain's figures are from, and how they are kept current */
 function brainWhenHe(){
@@ -1636,7 +1648,8 @@ function brainMark(r){ const b = brainOfRow(r); return b ? '<span class="bmark">
 /** every catalog row the brain proposes */
 const brainRows = () => (cat ? cat.rows.filter(r => BR.has(r.id)) : []);
 /** the rows a fill would touch: the supplier has them and I have no quantity on them yet (rule 3: a quantity of mine is never overwritten) */
-const brainFillable = () => brainRows().filter(r => r.available && myQty(r.id) === 0);
+// a row the person REMOVED has a ledger line of 0, so "no quantity" is not enough: the button must never put back what he took out
+const brainFillable = () => brainRows().filter(r => r.available && myQty(r.id) === 0 && !mine[r.id] && !(person && lines.has(kOf(person, r.id))));
 /**
  * The box above the catalog list: how many items the brain proposes here and for how much, when its figures are from, the fill button,
  * and the folded list of proposals this supplier does not carry or shows as sold out. Nothing in it saves anything by itself.
@@ -1648,12 +1661,15 @@ function brainBoxHtml(){
   const can = brainFillable(), sum = rows.reduce((s, r) => s + (BR.get(r.id).ils != null ? BR.get(r.id).ils : 0), 0);
   const supName = S.name_he || 'הספק', from = (/^[A-Za-z0-9]/.test(supName) ? 'מ-' : 'מ') + supName;   // "מ-ICO", but "מהקובייה"
   let h = '<div class="bbox"><div class="bh">' + esc(S.brain.label_he) + ' <b>' + num(rows.length) + '</b> פריטים ' + esc(from) + (sum ? ' · <b>' + esc(shekel(sum)) + '</b>' : '') + '</div>';
+  // the sum is the brain's OWN estimate (its cost figure, and for some rows our sale price), not the page's price list: say so,
+  // or it reads as a gap against the order's total in מחיר לפני מע״מ right under it
+  if (sum) h += '<div class="bs">הסכום הוא ההערכה של המוח לפי עלות, לא לפי המחיר שבדף</div>';
   h += '<div class="bs">' + esc(brainWhenHe()) + '</div>';
   if (S.brain.by_price_n) h += '<div class="bs">' + num(S.brain.by_price_n) + ' מהם בלי עלות רשומה אצלנו — הסכום שלהם לפי מחיר המכירה, לא לפי עלות</div>';
   if (rows.length){
     h += '<div class="acts">' + (state.open && person && ready() ? '<button data-act="brainfill"' + (can.length ? '' : ' disabled') + '>מלא את הכמויות (' + num(can.length) + ')</button>' : '') +
       (chip === 'brain' ? '<button data-chip="all">הצג את כל הקטלוג</button>' : '<button data-chip="brain">הצג רק אותם</button>') + '</div>';
-    if (state.open && person && ready()) h += '<div class="bs">הכפתור ממלא רק פריטים שאין בהם כמות שלך, ואפשר לשנות כל מספר אחר כך. שום דבר לא נשלח לספק.</div>';
+    if (state.open && person && ready()) h += '<div class="bs">הכמויות ייכנסו על השם <b>' + esc(person) + '</b>. הכפתור ממלא רק פריטים שאין בהם שורה שלך, ואפשר לשנות כל מספר אחר כך. שום דבר לא נשלח לספק.</div>';
   }
   if (S.brain.missing_n || out.length){
     // bidiNums, not a bare <b>: a digit beside Hebrew and a Latin supplier name reads backwards without the isolation
@@ -1674,7 +1690,7 @@ function brainFill(){
   const can = brainFillable(); if (!can.length) return;
   let n = 0;
   for (const r of can){ const b = BR.get(r.id); if (!b) continue; change(r.id, Math.min(MAX_QTY, b.q), true); n++; }
-  toast('מולאו ' + n + ' פריטים לפי המוח. אפשר לשנות כל מספר.', '', 4000);
+  toast('מולאו ' + num(n) + ' פריטים לפי המוח. אפשר לשנות כל מספר.', '', 4000);
   renderCatalog();
 }
 /** what of the brain's proposal is in the order: my own quantities in "ההזמנה שלי", everyone's in the summary */
