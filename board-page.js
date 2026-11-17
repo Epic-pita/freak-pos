@@ -1,4 +1,4 @@
-/* FREAK board — the page around the frame (bp0.2). It asks the home screen's backend for the board with the personal
+/* FREAK board — the page around the frame (bp0.3). It asks the home screen's backend for the board with the personal
  * code this browser already holds (saved once by home.html), draws it with the frame (board.js) and refreshes it.
  * It holds no data and keeps none: nothing of the board is stored on the device. It never asks without a code and
  * never erases the saved code (the home screen owns it). ?api=test reads the TEST copy.
@@ -6,7 +6,10 @@
  * numbers behind the shift counts (it does so for his own key only), the page asks the schedule's web app for today's
  * first names with the personal key this browser already keeps for the schedule app (same site; read, never written or
  * removed: the schedule app owns it), and board-names.js joins them in memory. The names and that key go nowhere else:
- * not into storage, a URL or the console. No schedule key in this browser: the counts, and nothing is said about it. */
+ * not into storage, a URL or the console. No schedule key in this browser: the counts, and nothing is said about it.
+ * bp0.3: a board for staff (card L1-SUP-2ND-1). A personal link to this page (#k=...) saves its code once, as the home
+ * page does, and the address bar drops it at once; the board's server answers a staff code with its own cards, or with
+ * no board and a sentence (no row in the who-sees-what table), which the page says, and then it shows no old board. */
 (function () {
   'use strict';
   var LIVE_API = 'https://script.google.com/macros/s/AKfycbxUnoCfolEzKVkRRD2X3iBxc1BKUc29vn-f_rfxCN3M0POOv_tY34iJFrXAHjLwFAWiuQ/exec';
@@ -17,6 +20,16 @@
   var API = MODE === 'test' ? TEST_API : LIVE_API;
   var KEY_NAME = MODE === 'live' ? 'l1_key' : 'l1_key_test';
   var REFRESH_MS = 5 * 60000, TIMEOUT_MS = 90000;
+  // bp0.3: a personal link (#k=...): the code is saved once (kept in memory too, if storage is refused) and the address
+  // bar drops it, so it stays neither in the address nor in the history
+  var linkKey = '';
+  (function () {
+    var m = /[#&]k=([\w\-]{24,100})/.exec(location.hash || '');
+    if (!m) return;
+    linkKey = m[1];
+    try { localStorage.setItem(KEY_NAME, linkKey); } catch (e) { /* this visit only */ }
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e2) { /* nothing more to do */ }
+  })();
 
   var host = document.getElementById('board'), msg = document.getElementById('msg'), tools = document.getElementById('tools');
   var last = null, loading = false, theme = '';
@@ -24,7 +37,7 @@
   try { theme = localStorage.getItem('fb_theme') || ''; } catch (e) { theme = ''; }
   if (theme !== 'light' && theme !== 'dark') theme = '';
 
-  function savedKey() { try { return localStorage.getItem(KEY_NAME) || ''; } catch (e) { return ''; } }
+  function savedKey() { try { return localStorage.getItem(KEY_NAME) || linkKey; } catch (e) { return linkKey; } }
   function schedKey() { try { return localStorage.getItem(SCHED_KEY) || ''; } catch (e) { return ''; } }
   function say(text, withHome) {
     msg.textContent = text || '';
@@ -94,10 +107,12 @@
     if (loading) return;
     loading = true;
     if (!last) say('טוען את הלוח…');
-    post({ k: k, action: 'board', build: 'bp0.2' }).then(function (js) {
+    post({ k: k, action: 'board', build: 'bp0.3' }).then(function (js) {
       if (js && js.error === 'GET_NOT_POST' && (tries || 0) < 3) { loading = false; load((tries || 0) + 1); return; }
       try {
         if (js && js.ok && js.board) { last = js.board; say(js.err ? 'הבנייה האחרונה של הלוח נכשלה. מוצג המצב הקודם.' : ''); draw(); askNames(); }
+        // bp0.3: the server's own sentence (a staff code with no board): no old board stays on the screen
+        else if (js && js.ok && typeof js.why === 'string' && js.why) { last = null; names = null; namesFor = ''; host.innerHTML = ''; say(js.why); }
         else if (js && js.ok) say('הלוח עוד לא נבנה. לנסות שוב בעוד דקה.');
         else if (js && js.error === 'BAD_KEY') say('הקוד השמור בדפדפן הזה לא התקבל. נכנסים מחדש דרך מסך הבית.', true);
         else say(last ? 'אין תשובה מהשרת. מוצג המצב האחרון.' : 'אין תשובה מהשרת. לנסות שוב בעוד דקה.');
