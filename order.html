@@ -1684,7 +1684,9 @@ function brainBoxHtml(){
   }
   if (S.brain.missing_n || out.length){
     // bidiNums, not a bare <b>: a digit beside Hebrew and a Latin supplier name reads backwards without the isolation
-    const missHe = [S.brain.missing_n ? num(S.brain.missing_n) + ' שהמוח מציע ואין בקטלוג של ' + supName : '', out.length ? num(out.length) + ' שאזלו אצלו' : '']
+    // "no product of theirs is linked to it", not "they do not carry it": on School market most of these are items their own
+    // catalogue does list and our code is simply not tied to a product of theirs yet, which is a different fix
+    const missHe = [S.brain.missing_n ? num(S.brain.missing_n) + ' שהמוח מציע ואין להם מוצר מקושר בקטלוג של ' + supName : '', out.length ? num(out.length) + ' שאזלו אצלו' : '']
       .filter(Boolean).join(' · ');
     h += '<div class="bmiss"><span class="chip tog' + (showBmiss ? ' on' : '') + '" data-tog="bmiss">' + bidiNums(missHe) + ' ' + (showBmiss ? '▴' : '▾') + '</span>';
     if (showBmiss){
