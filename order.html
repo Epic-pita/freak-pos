@@ -1436,8 +1436,16 @@ function idOfCode(code){
 }
 /**
  * Every mark that is live now: for each code the LAST row wins, and only `set` counts — `clear` (his own mark) and
- * `return` (one the brain itself stopped) both end it. Marks of every person are read, not only mine: only the manager
- * can write one at all, and a mark made on his other phone is the same decision.
+ * `return` (one the brain itself stopped) both end it.
+ *
+ * WHY A ROW OF ANY PERSON IS HONOURED HERE (an automated security review asked, 17/11, and the answer is deliberate):
+ * the control that decides who may mark is on the SERVER, not here. jo_set refuses a `nomark:` id unless the call
+ * carries the manager's key, and refuses a NOMARK note to anyone else as well, so a participant key — the Kingdom's —
+ * cannot put such a row on the ledger at all. The only other way one appears is somebody typing it into the
+ * spreadsheet by hand, and anyone who can do that can already rewrite the ledger itself; a filter drawn on this page
+ * would protect nothing against them. Reading every person's rows is also what keeps the page and the file the brain
+ * reads saying the same thing, since tools/nomarks.mts builds that file from the same rows. What a forged mark could
+ * do at worst is hide a proposal, which is a decision not to order — never a change to anything anyone typed.
  */
 function activeMarks(){
   const last = new Map();
