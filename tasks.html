@@ -191,7 +191,8 @@ const COMMON_SUPS = ['Kaissa', 'ICO', 'Glassstaff', 'הקובייה', 'ACD', 'Sc
 const OS_URL = './order-suppliers.json';
 // the role the backend reports for this key (in the list reply): 'answerer' = a limited key, with the exact list of answers it may give ('kind/answer').
 // A key without a role (Chris's) may do everything the page offers. The page only HIDES what the key may not do; the backend is what refuses it.
-const ERR_HE = { ALREADY_ANSWERED: 'כבר נענה על ידי מישהו אחר', NOT_ALLOWED: 'התשובה הזאת לא מותרת במפתח הזה' };
+const ERR_HE = { ALREADY_ANSWERED: 'מישהו כבר ענה על זה — התשובה נשמרה', NOT_ALLOWED: 'התשובה הזאת לא מותרת לך. אפשר לענות על: ספק, מוצר שאזל, משלוחים והערות' };
+const GATE_BAD = ANSWERER ? 'הקישור לא תקף יותר. לבקש קישור חדש.' : 'המפתח לא מתאים. לפתוח שוב את הקישור האישי.';
 
 /* ================= STATE ================= */
 let KEY = '', data = null, query = '', shown = PAGE, openEditor = '', editorKind = '', panelOpen = false;
@@ -329,7 +330,7 @@ async function sync(){
       try{ js = await post({ ...bodyOf(job), uuid: job.uuid }, 60000); }catch(e){ break; }
       if (js && js.ok && !PREVIEW && js.result === 'dry'){ await qDel(job.uuid); notSaved(job, 'השרת ענה בריצת ניסיון'); }
       else if (js && js.ok){ await qDel(job.uuid); afterOk(job, js); }
-      else if (js && js.error === 'BAD_KEY'){ showGate('המפתח לא מתאים יותר. לפתוח שוב את הקישור האישי.'); break; }
+      else if (js && js.error === 'BAD_KEY'){ showGate(GATE_BAD); break; }
       else if (js && HARD.test(String(js.error||''))){ await qDel(job.uuid); notSaved(job, js.error); }
       else {
         // the catalog is refreshing, Google is slow, the sheet was busy: try again later — 1, 2, 4 … up to 15 minutes apart, for a day
@@ -369,7 +370,7 @@ async function load(full){
       for (const k of Object.keys(pend)){ const p = pend[k]; if (!p.sent) continue;   // an answer still on its way keeps its mark, however old an earlier answer of the task is
         const a = latest(k); if (a && new Date(a.at).getTime() >= p.at - 120000) delete pend[k]; else if (Date.now() - p.at > 6*3600000) delete pend[k]; }
       $('dot').classList.add('on');
-    } else if (js && js.error === 'BAD_KEY') showGate('המפתח לא מתאים. לפתוח שוב את הקישור האישי.');
+    } else if (js && js.error === 'BAD_KEY') showGate(GATE_BAD);
     else toast('לא הצלחתי לקרוא את הרשימה: ' + (js && js.error || '?'), 'err', 4000);
   } catch(e){ $('dot').classList.remove('on'); }
   finally { loading = false; $('refreshBtn').disabled = false; render(); if (loadAgain){ loadAgain = false; setTimeout(()=>load(false), 300); } }
