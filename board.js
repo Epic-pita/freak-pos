@@ -1,9 +1,11 @@
-/* FREAK board — the frame (b0.2). A pure render: model in, HTML string out. No names, data, addresses or ids live in
+/* FREAK board — the frame (b0.3). A pure render: model in, HTML string out. No names, data, addresses or ids live in
  * this file (it will sit in the app's public page files): everything arrives in the model at run time.
  * Rules it keeps (agreed with the app's chat, 16/11/2026):
  *  - doors first: a widget still loading is drawn with its door, so a slow backend never leaves a blank screen;
  *  - a widget's door is a button id; a widget whose door is not among the person's own links is not drawn;
  *  - no inline script and no event attributes in the output; hrefs only https or site-relative;
+ *  - b0.3: a widget may have no count (count null or absent: no figure, not in the line of figures), and a row may name
+ *    its own door (item.door, when the person has it) so one card can lead into several systems;
  *  - everything is a way in (b0.2): the line of figures, each widget's heading and each of its rows are links to
  *    that widget's door; a widget without a door the person has contributes nothing, also not a figure.
  * Works in a browser (window.FreakBoard) and in node (module.exports) for the tests. */
@@ -12,7 +14,7 @@
   else root.FreakBoard = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  var VERSION = 'b0.2';
+  var VERSION = 'b0.3';
   var MAX_ITEMS = 3;
 
   function esc(s) {
@@ -61,8 +63,8 @@
     if (!door) return '';                                   // not this person's system: not drawn
     var tone = toneOf(w), href = esc(door.href);
     var cls = 'fb-card is-' + tone + (w.lead ? ' fb-lead' : '') + (w.stale ? ' is-stale' : '');
-    var token = '';
-    if (tone === 'urgent' || tone === 'calm') {
+    var token = '', counted = w.count != null;
+    if ((tone === 'urgent' || tone === 'calm') && counted) {
       token = '<span class="fb-token"' + (w.countLabel ? ' title="' + esc(w.countLabel) + '"' : '') + '>' +
         '<span class="fb-n">' + esc(w.count == null ? 0 : w.count) + '</span></span>';
     } else if (tone === 'loading') token = '<span class="fb-token fb-token-wait" aria-hidden="true"></span>';
@@ -73,7 +75,8 @@
       var items = (w.items || []).slice(0, MAX_ITEMS);
       if (items.length) {
         body = '<ol class="fb-items">' + items.map(function (it) {
-          return '<li' + (it.late ? ' class="is-late"' : '') + '><a class="fb-row" href="' + href + '"><span class="fb-it">' + txt(it.title) + '</span>' +
+          var own = it.door ? doorOf({ door: it.door }, links) : null;   // a row that leads into its own system
+          return '<li' + (it.late ? ' class="is-late"' : '') + '><a class="fb-row" href="' + (own ? esc(own.href) : href) + '"><span class="fb-it">' + txt(it.title) + '</span>' +
             (it.meta ? '<span class="fb-meta">' + txt(it.meta) + '</span>' : '') + '</a></li>';
         }).join('') + '</ol>';
       } else body = '<p class="fb-empty">' + txt(w.empty || '') + '</p>';
@@ -83,7 +86,7 @@
     return '<article class="' + cls + '" data-widget="' + idOf(w.id) + '">' +
       '<header class="fb-head"><a class="fb-hl" href="' + href + '"><div class="fb-titles"><h2>' + txt(w.title) + '</h2>' +
       (w.sub ? '<p class="fb-sub">' + txt(w.sub) + '</p>' : '') + '</div>' + token + '</a></header>' +
-      (w.countLabel && (tone === 'urgent' || tone === 'calm') ? '<p class="fb-count-label">' + txt(w.countLabel) + '</p>' : '') +
+      (w.countLabel && counted && (tone === 'urgent' || tone === 'calm') ? '<p class="fb-count-label">' + txt(w.countLabel) + '</p>' : '') +
       body +
       '<footer class="fb-foot"><a class="fb-door" href="' + href + '" data-door="' + idOf(w.door) + '">' +
       txt(door.label) + '</a>' + (at ? '<span class="fb-at">' + txt(at) + '</span>' : '') + '</footer></article>';
@@ -93,7 +96,7 @@
   function stripHtml(widgets, links) {
     var figs = (widgets || []).map(function (w) {
       var door = doorOf(w, links), tone = toneOf(w);
-      if (!door || (tone !== 'urgent' && tone !== 'calm')) return '';
+      if (!door || w.count == null || (tone !== 'urgent' && tone !== 'calm')) return '';
       return '<a class="fb-fig is-' + tone + (w.stale ? ' is-stale' : '') + '" href="' + esc(door.href) + '" data-fig="' + idOf(w.id) + '">' +
         '<span class="fb-fig-n">' + esc(w.count == null ? 0 : w.count) + '</span><span class="fb-fig-l">' + txt(w.title) + '</span></a>';
     }).join('');
