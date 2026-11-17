@@ -1470,8 +1470,13 @@ function marksNow(){
   return out;
 }
 let MNOW = new Map();
-const refreshMarks = () => { MNOW = marksNow(); };
-const markOf = r => (r && r.our_code ? MNOW.get(String(r.our_code)) : null) || null;
+// The manager's marks carry his reasons and his free notes — "we buy it elsewhere", whatever he types. jo_load hands
+// every ledger row to every key, so the MAP fills on a participant's page too; what must never happen is the page
+// DRAWING any of it for anyone but him. Both doors are gated here, at the only two places that read the map.
+// (Reviewer, 17/11: without this a buyer's page showed the list with titles, reasons and notes as soon as one mark
+// existed, and my own gate check passed only because the ledger had none in it at that moment.)
+const refreshMarks = () => { MNOW = who === 'admin' ? marksNow() : new Map(); };
+const markOf = r => (who === 'admin' && r && r.our_code ? MNOW.get(String(r.our_code)) : null) || null;
 const reasonHe = id => (MARK_REASONS.find(x => x.id === id) || {}).he || '';
 /** may this page mark at all: the manager only, on a live order it can write to (the server refuses a buyer key as well) */
 const markOk = () => who === 'admin' && !!S.brain && state.open && !!person && ready();
@@ -1501,6 +1506,7 @@ function markSheetHtml(){
 }
 /** his own list of marks on this page, with the reason and a way back — no second screen (his standing decision of 16/11) */
 function marksListHtml(){
+  if (who !== 'admin') return '';          // never on a participant's page, whatever is on the ledger
   if (!markOk() && !MNOW.size) return '';
   const rows = [...MNOW].map(([code, m]) => ({ code, m, id: idOfCode(code) }));
   if (!rows.length) return '';
@@ -2261,7 +2267,11 @@ function showNames(){
   $('nameList').querySelectorAll('[data-name]').forEach(b => b.onclick = () => { person = b.dataset.name; try{ localStorage.setItem(LS.person, person); }catch(e){} seedMine(); showApp(); });
 }
 /** my optimistic layer = the queued jobs of the name now picked (another name's pending saves are not mine) */
-function seedMine(){ mine = {}; st = {}; for (const j of queue){ if (j.person === person){ mine[j.variant_id] = { qty: j.qty, uuid: j.uuid }; st[j.variant_id] = 'saving'; } } }
+// a MARK job is skipped: `mine` is the optimistic layer of QUANTITIES, and a mark that sat in it would keep the amber
+// "unsaved quantities" banner up and hold back the supplier export for the rest of the session, since the mark paths
+// never clear `mine` (reviewer, 17/11; it needs a reload while a mark is still unsent, so it is rare and harmless -
+// but it is the sort of thing that is blamed on the export a week later)
+function seedMine(){ mine = {}; st = {}; for (const j of queue){ if (j.person === person && !NOMARK_RE.test(String(j.variant_id || ''))){ mine[j.variant_id] = { qty: j.qty, uuid: j.uuid }; st[j.variant_id] = 'saving'; } } }
 function showApp(){ $('gate').classList.add('hide'); $('names').classList.add('hide'); $('app').classList.remove('hide'); sortSnap = null; render(); if (Date.now() - lastOk > 5000) load(false); }
 $('keyBtn').onclick = async ()=>{
   const k = $('keyIn').value.trim(); if (!/^[\w\-]{20,100}$/.test(k)){ $('gateMsg').textContent = 'המפתח לא נראה תקין.'; return; }
