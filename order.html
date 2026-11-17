@@ -1634,13 +1634,24 @@ function brainWhenHe(){
   const d = a ? ddmm(a) : '', t = a ? hhmm(a) : '';
   return (d ? 'לפי המוח מ-' + d + (t ? ' ' + t : '') : 'לפי המוח') + ' · מתעדכן עם הקטלוג בדחיפה היומית של 07:30';
 }
+/**
+ * Which side is cheaper, in words, so he does not do the arithmetic himself on every card (Chris, 17/11 01:56: compare prices with
+ * other suppliers). Only where the two numbers are the same kind of number: this page's dealer price in shekels against the other
+ * supplier's landed shekels. On a page priced in another currency, or on a row this supplier does not price, nothing is said.
+ */
+function altGapHe(r, a){
+  if (S.currency.code !== 'ILS' || r.price_dealer == null || !(a.p > 0)) return '';
+  const d = Math.round(r.price_dealer - a.p);
+  if (d === 0) return ' · אותו מחיר';
+  return d > 0 ? ' · זול ב-' + shekel(d) : ' · יקר ב-' + shekel(-d);
+}
 /** the mark on a card: the proposed quantity, the reason, where the brain files it when that differs, and another supplier's price */
 function brainHtml(r){
   const b = brainOfRow(r); if (!b) return '';
   let h = '<div class="brain"><span class="bq">' + esc(S.brain.label_he) + ' ' + num(b.q) + '</span>' + (b.why ? ' <span class="bwhy">' + bidiNums(b.why) + '</span>' : '');
   if (b.bs) h += '<span class="bsrc">המוח רושם את הפריט על ' + esc(b.bs) + '; הוא מופיע כאן לפי ההמלצה בקטלוג</span>';
   if (b.fl) h += '<span class="bfl">' + bidiNums(b.fl) + '</span>';
-  for (const a of b.alt) h += '<span class="balt">גם אצל ' + esc(a.s) + ' — ' + esc(shekel(a.p)) + (a.b ? ' <span class="bfl" style="display:inline">(' + esc(a.b) + ')</span>' : '') + '</span>';
+  for (const a of b.alt) h += '<span class="balt">גם אצל ' + esc(a.s) + ' — ' + esc(shekel(a.p)) + esc(altGapHe(r, a)) + (a.b ? ' <span class="bfl" style="display:inline">(' + esc(a.b) + ')</span>' : '') + '</span>';
   return h + '</div>';
 }
 /** the compact mark on a list row */
