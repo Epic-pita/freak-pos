@@ -110,6 +110,14 @@
   .bwhy{font-size:12.5px; color:var(--ink)}
   .bfl,.bsrc{display:block; font-size:12px; color:var(--dim); margin-top:1px}
   .balt{display:block; font-size:12.5px; color:#ffd479; margin-top:2px}
+  /* or1.19 (L17): the same product at the other suppliers - ONE folded line (never wraps), a tap opens one line per supplier */
+  .oth{margin-top:4px; font-size:12.5px}
+  .oth .othf{display:block; width:100%; max-width:100%; text-align:start; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; background:none; border:0; padding:0; margin:0; min-height:0; height:auto; font:inherit; color:#ffd479; cursor:pointer}
+  .oth .otho{display:none; margin-top:2px}
+  .oth.open .otho{display:block}
+  .oth .otho span{display:block; margin-top:2px; color:#ffd479}
+  .oth .otho .bfl{color:var(--dim); font-size:12px}
+  .oth .otho .onote{color:var(--dim); font-size:12px}
   .row .brain,.drow .brain{margin-top:0; border:0; padding:0}
   .bmark{display:inline-flex; align-items:center; gap:4px; border-radius:10px; padding:0 6px; font-size:11px; border:1px solid var(--teal); color:#c9e6f2; background:#13323d}
   .bbox{background:var(--surface); border:1px solid var(--teal); border-radius:14px; padding:10px 12px; margin:0 0 10px}
@@ -421,7 +429,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.18';
+const BUILD = 'or1.19';
 // or1.4 (B-BRN-8, part 2): every card of an item we carry gets ONE more grey line under its pace block — the brain's in-stock line
 // ("נמכר ~N בחודש כשיש במלאי (קצב להזמנה ~N) · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …", the brain's wording of 03/11), copied verbatim from the rates table (jo_load
 // `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
@@ -498,6 +506,8 @@ const DIGIT_RUN = /\d+(?:[–-]\d+)?\+?/g;   // "3–4", "24–13" and "14+" kee
 let KEY = '', AK = '', who = '', DEVICE = '';
 let S = DEF_SETTINGS;            // the supplier's settings (labels, currency, groups, facets), as jo_load sent them with the catalog
 let GH = {}, FV = {}, FR = {};   // group id → Hebrew; facet id → { value id → Hebrew }; facet id → { value id → {lo, hi} } for a facet whose values are numeric bands (players)
+let OP = { on:false, by:new Map(), self:new Map(), day:'', age:14 };   // or1.19 (L17): the other suppliers' prices (settings.brain.op), admin only like BR
+const opOpen = new Set();         // or1.19: card ids whose other-prices line is opened
 let BR = new Map();              // or1.8 (L17): item_id → { q, why, fl, bs, by_price, ils, alt } — what the ordering brain proposes for this supplier
 let people = [];                 // [{name, shop}] active, sheet order
 let state = { open: true, closed_at: '', closed_by: '' };
@@ -844,6 +854,27 @@ function setSettings(raw){
     ur: Number.isFinite(Number(r.ur)) && Number(r.ur) > 1 ? Math.round(Number(r.ur)) : 0,
     qu: Number.isFinite(Number(r.qu)) && Number(r.qu) > 0 ? Math.round(Number(r.qu)) : 0,
       ils: Number.isFinite(Number(r.ils)) && r.ils !== '' && r.ils !== null ? Number(r.ils) : null, alt, ld: landedOf(r.ld) });
+  }
+  // or1.19 (L17): the other suppliers' prices (brain.op, v 1). Every id, number and text is capped here; anything else = the page draws as or1.18
+  OP = { on:false, by:new Map(), self:new Map(), day:'', age:14 };
+  const op = bb && typeof bb === 'object' ? bb.op : null;
+  if (S.brain && op && typeof op === 'object' && op.v === 1 && op.by_id && typeof op.by_id === 'object' && /^\d{4}-\d{2}-\d{2}$/.test(String(op.day || ''))){
+    OP.day = String(op.day); OP.age = Number.isFinite(Number(op.age_days)) && Number(op.age_days) > 0 ? Math.min(365, Math.round(Number(op.age_days))) : 14; OP.on = true;
+    for (const id of Object.keys(op.by_id).slice(0, 2000)){
+      if (!ID_RE.test(String(id)) || !Array.isArray(op.by_id[id])) continue;
+      const ls = [];
+      for (const l of op.by_id[id].slice(0, 3)){
+        if (!l || typeof l !== 'object') continue;
+        const p = Number(l.p); if (!Number.isFinite(p) || !(p > 0)) continue;
+        const k = ['list','invoice','old'].includes(l.k) ? l.k : ''; if (!k) continue;
+        const fe = Number(l.fe), cmp = Number(l.cmp), u = Math.round(Number(l.u));
+        ls.push({ s: txt(l.s, '', 24), sup: txt(l.sup, '', 20), p, cur: txt(l.cur, '', 8), k, d: /^\d{4}-\d{2}-\d{2}$/.test(String(l.d || '')) ? String(l.d) : '', av: l.av !== false,
+          u: Number.isFinite(u) && u > 1 && u <= 1000 ? u : 1, fe: Number.isFinite(fe) && fe > 0 ? fe : null, fm: txt(l.fm, '', 80), cmp: Number.isFinite(cmp) && cmp > 0 ? cmp : null });
+      }
+      if (ls.length) OP.by.set(String(id), ls);
+    }
+    const sf = op.self && typeof op.self === 'object' ? op.self : {};
+    for (const id of Object.keys(sf).slice(0, 2000)){ const p = Number(sf[id] && sf[id].p); if (ID_RE.test(String(id)) && Number.isFinite(p) && p > 0) OP.self.set(String(id), { p, fe: !!sf[id].fe }); }
   }
   // or1.15: the unit factors, for every row that has one - cheap (7 entries today) and independent of the brain
   UNITS = new Map();
@@ -1845,7 +1876,7 @@ const shekel = n => n == null || n === '' || isNaN(Number(n)) ? '' : '₪' + num
  */
 function brainGate(){
   if (!who || who === 'admin' || !S.brain) return;
-  S = { ...S, brain: null }; BR = new Map();
+  S = { ...S, brain: null }; BR = new Map(); OP = { on:false, by:new Map(), self:new Map(), day:'', age:14 };   // or1.19: the other suppliers' prices go with it
   const c = loadLS(LS.cat, null);                                   // and out of the stored catalog, so a reload does not bring it back
   if (c && c.settings && typeof c.settings === 'object' && 'brain' in c.settings){ const s = { ...c.settings }; delete s.brain; saveLS(LS.cat, { ...c, settings: s }); }
 }
@@ -1896,7 +1927,7 @@ function brainHtml(r){
     + '<span class="bsrc"><b>עלות מלאה</b> ' + esc(shekel2(b.ld.fu)) + ' ליחידה</span>'
     + '<span class="bfl">מחושב לפי המסמכים של משלוח ' + docSpan(esc(b.ld.doc)) + ': מקדם ×' + esc(String(Math.round(b.ld.f * 1000) / 1000)) + ', שער ' + ((CUR_HE[b.ld.cur] || b.ld.cur) ? (CUR_HE[b.ld.cur] || b.ld.cur) + ' ' : '') + '<bdi dir="ltr" style="white-space:nowrap">' + esc(String(b.ld.rate)) + '</bdi></span>';
   else if (b.ld && b.ld.st === 'n') h += '<span class="bsrc">אין עלות מלאה: חסרים מסמכי המשלוח</span>';
-  for (const a of b.alt){
+  for (const a of (OP.on ? [] : b.alt)){   // or1.19: with the other-prices block drawn, its own line (otherHtml) carries these
     // or1.17 (B-CAT-2, DL-358): a forward figure with its factor line (a.m), or no number at all when the supplier has no costed shipment (a.nc)
     if (a.nc){ h += '<span class="balt">גם אצל ' + esc(a.s) + ' — ' + esc(a.m || 'אין עלות מלאה: חסרים מסמכי המשלוח') + '</span>'; continue; }
     h += '<span class="balt">גם אצל ' + esc(a.s) + ' — ' + esc(shekel(a.p)) + esc(altGapHe(r, a)) + (a.b ? ' <span class="bfl" style="display:inline">(' + esc(a.b) + ')</span>' : '') + (a.m ? '<span class="bfl">' + nowrapDoc(esc(a.m)) + '</span>' : '') + '</span>';
@@ -1904,6 +1935,56 @@ function brainHtml(r){
   // the one new button: it says the brain is wrong about THIS item at THIS supplier, and asks why
   if (markOk() && r.our_code) h += '<div class="acts"><button data-mmark="' + esc(String(r.our_code)) + '">המוח טועה — אין צורך להזמין</button></div>';
   return h + '</div>';
+}
+/**
+ * or1.19 (L17): the same product at the other suppliers, on a card (never a list row), admin only (OP is empty for anyone else).
+ * Chris, 17/11 01:56: "אני רוצה שזה ייוצג בדף הזמנה אבל גם שנשווה מחירים עם ספקים אחרים". The page never chooses a supplier and moves nothing.
+ * One folded line; a tap opens one line per supplier. A "cheaper" word appears only between two figures that are the same kind of number:
+ * both in shekels per our unit, both a list price (or a forward estimate, then said so). Anything else is shown and never compared.
+ */
+const OP_SYM = { ILS:'₪', EUR:'€', USD:'$' };
+const OP_CUR_HE = { ILS:'בשקלים', EUR:'באירו', USD:'בדולר' };
+const opMoney = (p, cur) => (OP_SYM[cur] || (cur ? cur + ' ' : '')) + Number(p).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: cur === 'ILS' ? 2 : 4 });
+const dayNoOf = d => Date.parse(d + 'T00:00:00Z') / 864e5;
+function otherHtml(r){
+  if (!OP.on || !S.brain || !r || r.orphan) return '';
+  const b = brainOfRow(r);
+  const lines = (OP.by.get(r.id) || []).slice();
+  const have = new Set(lines.map(l => l.s));
+  // the brain's own invoice lines for a supplier that has no page price here (a page price wins over an invoice line of the same supplier)
+  const inv = b ? b.alt.filter(a => !a.nc && a.p > 0 && a.b === 'חשבונית אחרונה' && !have.has(a.s)) : [];
+  if (!lines.length && !inv.length) return '';
+  const self = OP.self.get(r.id) || null;
+  const cmpd = lines.filter(l => l.cmp !== null);
+  const cheaper = self ? cmpd.filter(l => l.cmp < self.p).sort((x, y) => x.cmp - y.cmp)[0] : null;
+  const est = !!(self && self.fe) || cmpd.some(l => l.fe !== null);
+  const n = lines.length + inv.length;
+  let f = 'גם אצל ' + (n === 1 ? (lines[0] || inv[0]).s : num(n) + ' ספקים');
+  if (self && cmpd.length){
+    if (cheaper) f += ' · זול יותר אצל ' + cheaper.s + (est ? ' (הערכה)' : '');
+    else f += ' · כאן הכי זול' + (est ? ' (הערכה)' : '');
+  }
+  const open = opOpen.has(r.id);
+  let h = '<div class="oth' + (open ? ' open' : '') + '"><button class="othf" data-optog="1" dir="auto">' + esc(f) + ' ' + (open ? '▴' : '▾') + '</button><div class="otho">';
+  for (const l of lines){
+    const sameCur = l.cur === S.currency.code;
+    let t = esc(l.s) + ': ' + esc(opMoney(l.p, l.cur)) + ' ליחידה · ';
+    if (l.k === 'list') t += 'מחיר הספק' + (sameCur ? '' : ' ' + esc(OP_CUR_HE[l.cur] || inCur(l.cur)));
+    else if (l.k === 'invoice') t += 'מה ששילמנו בחשבונית' + (l.d ? ' מ-' + esc(ddmm(l.d)) : '');
+    else t += 'מחיר ישן' + (l.d ? ' מ-' + esc(ddmm(l.d)) : '');
+    if (l.k === 'list' && l.d && dayNoOf(OP.day) - dayNoOf(l.d) > OP.age) t += ' · מחירון מ-' + esc(ddmm(l.d));
+    if (!l.av) t += ' · אזל אצל הספק';
+    if (l.u > 1) t += ' (שורה אצלו = ' + num(l.u) + ' יחידות שלנו)';
+    if (self && l.cmp !== null){
+      const g = Math.round((self.p - l.cmp) * 100) / 100;
+      t += g === 0 ? ' · אותו מחיר' : g > 0 ? ' · זול ב-' + esc(shekel2(g)) : ' · יקר ב-' + esc(shekel2(-g));
+    }
+    h += '<span>' + t + '</span>';
+    if (l.fe !== null) h += '<span>' + esc(shekel2(l.fe)) + ' ליחידה · עלות מלאה משוערת, לפי המקדם של המשלוח האחרון<span class="bfl">' + nowrapDoc(esc(l.fm)) + '</span></span>';
+  }
+  for (const a of inv) h += '<span>' + esc(a.s) + ': ' + esc(shekel2(a.p)) + ' ליחידה · מה ששילמנו בחשבונית האחרונה</span>';
+  if (!(self && cmpd.length)) h += '<span class="onote">המחירים לא על אותו בסיס, לכן לא מסומן מה זול יותר</span>';
+  return h + '</div></div>';
 }
 /** the compact mark on a list row */
 function brainMark(r){ const b = brainOfRow(r); return b ? '<span class="bmark">' + esc(S.brain.label_he) + ' ' + num(b.q) + '</span>' : ''; }
@@ -1928,7 +2009,7 @@ function brainBoxHtml(){
   // or it reads as a gap against the order's total in מחיר לפני מע״מ right under it
   if (sum) h += '<div class="bs">הסכום הוא ההערכה של המוח לפי עלות, לא לפי המחיר שבדף</div>';
   // on a page priced in another currency, say it once here rather than on every card: the brain works in shekels
-  if (S.currency.code && S.currency.code !== 'ILS') h += '<div class="bs">המספרים של המוח והמחיר אצל ספק אחר הם בשקלים. המחיר בדף עצמו ' + esc(inCur(S.currency.code)) + '.</div>';
+  if (S.currency.code && S.currency.code !== 'ILS') h += '<div class="bs">' + (OP.on ? 'המספרים של המוח הם בשקלים.' : 'המספרים של המוח והמחיר אצל ספק אחר הם בשקלים.') + ' המחיר בדף עצמו ' + esc(inCur(S.currency.code)) + '.</div>';   // or1.19: with the other prices drawn the sentence no longer claims theirs are in shekels
   h += '<div class="bs">' + esc(brainWhenHe()) + '</div>';
   // or1.12: they are counted and not valued (the main chat, 18/11). Until today their sale price was added into the
   // sum above, which made a "what it costs" figure out of what we would SELL for.
@@ -2055,6 +2136,7 @@ function cardHtml(r){
   if (meta.length) h += '<div class="meta">' + meta.map(m => '<span>'+m+'</span>').join('') + '</div>';
   h += paceHtml(r);
   h += brainHtml(r);   // or1.8 (L17): what the brain proposes on this item, right under its stock and pace
+  h += otherHtml(r);   // or1.19 (L17): the same product at the other suppliers (admin, switch on)
   if (!r.available) h += '<span class="outlbl">'+esc(S.availability.out_he)+'</span>';
   h += '</div></div>';
   h += '<div class="chips">'+chipsHtml(r)+'</div>';
@@ -2311,6 +2393,7 @@ document.addEventListener('click', ev => {
   if (t.dataset.pace !== undefined){ const id = t.dataset.pace, i = F.pace.indexOf(id); if (i >= 0) F.pace.splice(i, 1); else F.pace.push(id); shown = PAGE; sortSnap = null; saveF(); renderCatalog(); return; }
   if (t.dataset.clear){ clearFilters(); renderCatalog(); return; }
   if (t.dataset.more){ shown += PAGE; renderCatalog(); return; }
+  if (t.dataset.optog){ const box = t.closest('.oth'), card = t.closest('[data-v]'); if (box && card){ const v = card.dataset.v; if (opOpen.has(v)) opOpen.delete(v); else opOpen.add(v); box.classList.toggle('open', opOpen.has(v)); t.textContent = t.textContent.replace(/[▴▾]$/, opOpen.has(v) ? '▴' : '▾'); } return; }   // or1.19: open / fold the other suppliers' prices
   if (t.dataset.moreDesc){ const card = t.closest('.card'); const v = card.dataset.v; if (expanded.has(v)) expanded.delete(v); else expanded.add(v); if (isList() && view === 'catalog'){ renderCatalog(); return; } const d = card.querySelector('.desc'); if (d) d.classList.toggle('open', expanded.has(v)); card.classList.toggle('big', expanded.has(v)); t.textContent = expanded.has(v) ? 'פחות' : 'עוד'; return; }   // open = the picture grows; in the list view "פחות" folds the card back into its row
   if (t.dataset.step){ const host = t.closest('[data-v]'); if (!host) return; const v = host.dataset.v, inp = host.querySelector('input[data-qin]'); const cur = deb[v] ? deb[v].qty : (parseInt(inp && inp.value, 10) || 0); change(v, Math.max(0, cur + Number(t.dataset.step)), false); return; }   // a card, a row, a line of my order or a summary row
   if (t.dataset.act === 'brainfill') return brainFill();   // or1.8 (L17): fill the proposed quantities into rows with none of mine
