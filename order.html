@@ -421,7 +421,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.17';
+const BUILD = 'or1.18';
 // or1.4 (B-BRN-8, part 2): every card of an item we carry gets ONE more grey line under its pace block — the brain's in-stock line
 // ("נמכר ~N בחודש כשיש במלאי (קצב להזמנה ~N) · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …", the brain's wording of 03/11), copied verbatim from the rates table (jo_load
 // `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
@@ -474,7 +474,7 @@ const VIEWS = [['catalog','קטלוג'], ['mine','ההזמנה שלי'], ['summa
 const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect width="96" height="96" rx="12" fill="#1d323c"/><path d="M48 18 22 33v30l26 15 26-15V33z" fill="none" stroke="#3d5a68" stroke-width="3"/><path d="M22 33l26 15 26-15M48 48v30" fill="none" stroke="#3d5a68" stroke-width="3"/></svg>');
 // the settings block when the backend sent none (a catalog without labels still draws, in plain generic words)
 // or1.2 (B-CAT-10), every key off or at the or1.1 word by default, so a supplier whose settings do not name it draws exactly as before:
-//   price.dealer_short_he   the word after the price on a list row (or1.1: 'סוחר'; or1.16: 'ספק')
+//   price.dealer_short_he   the word after the price on a list row (or1.1: 'סוחר'; or1.16: 'ספק'; or1.18: 'מחיר ספק')
 //   site_link_he            a row with a product page (url) and no picture: a link to that page under the grey square, with this text (or1.1: '' = the picture search)
 //   pace_none_he            the pace badge and chip of an item we never carried (or1.1: 'חדש אצלנו')
 //   availability.remove     true: a line of mine on an item now sold out shows 'הסר' (qty 0) in my order and the summary (or1.1: false)
@@ -483,7 +483,7 @@ const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns=
 //                           without one (also read as the no-code value in sku, beside the older 'אין מק״ט') there and on the card, my
 //                           order and the summary, and in the search box's hint (default 'מק״ט': PSI and School market draw and copy byte
 //                           for byte as or1.2)
-const DEF_SETTINGS = { v:1, sup:SUP, name_he:'', title_he:'הזמנה מספק', currency:{ code:'', symbol:'', after:false }, price:{ dealer_he:'מחיר הספק', dealer_short_he:'ספק', list_he:'מחירון', dealer_note_he:'' }, date_he:'קטלוג מ-', code_he:'מק״ט',
+const DEF_SETTINGS = { v:1, sup:SUP, name_he:'', title_he:'הזמנה מספק', currency:{ code:'', symbol:'', after:false }, price:{ dealer_he:'מחיר הספק', dealer_short_he:'מחיר ספק', list_he:'מחירון', dealer_note_he:'' }, date_he:'קטלוג מ-', code_he:'מק״ט',
   groups:[], facets:[], flags:{ new_he:'חדש', new_note_he:'', ours_he:'היה אצלנו' }, minimum:{ kind:'none', he:'מינימום' }, case_he:'קרטון', availability:{ out_he:'אזל אצל הספק', remove:false },
   export:{ kingdom_list:false, text:'', he:'רשימה', column_he:'עמודה לקובץ הממלכה', check_he:'רשימת בדיקה · הורדה', note_he:'להדביק בתא הראשון של העמודה "פריק" (שורה 3) בקובץ של הממלכה; זה מחליף את כל העמודה.' },
   order_window:null,   // or1.6 (B-CAT-24 must-have 7): {cut_dow 0-6, cut_he, late_he, gap_days, lead_he, arrive_he, src_he} or null = the page says nothing
@@ -779,8 +779,11 @@ function winOf(w){
  * cost, and the shipment and rate they come from; st 'n' = the shipment has no costed customs file yet. A local supplier has no
  * landed line at all (the catalog's block leaves `ld` out). Every number is checked here, the text is capped.
  */
-/** or1.17: a shipment id never breaks across lines: the id after "ממשלוח " goes in a no-wrap span (text already escaped) */
-const nowrapDoc = h => h.replace(/(ממשלוח )([^\s<]+)/g, '$1<bdi dir="ltr" style="white-space:nowrap">$2</bdi>');
+/** or1.17/or1.18: in a factor line ("מקדם ×F ממשלוח DOC") the shipment id goes in a no-wrap span when it is at most 24 characters long (text already escaped) */
+const docSpan = d => d.length <= 24 ? '<bdi dir="ltr" style="white-space:nowrap">' + d + '</bdi>' : d;   // or1.18: no-wrap only up to 24 characters (a 48-character id wraps)
+const nowrapDoc = h => h.replace(/(מקדם ×[\d.]+ ממשלוח )([^\s<,]{1,48})(?=[\s<,]|$)/g, (m, a, d) => a + docSpan(d));   // or1.18: only the factor line
+const CUR_HE = { EUR:'אירו', USD:'דולר' };   // or1.18: the Hebrew name of a shipment's currency, shown before its rate
+const inCur = c => (/^[A-Za-z]/.test(c) ? 'ב-' : 'ב') + c;   // or1.18: "ב-USD" (a hyphen before a Latin code)
 const shekel2 = n => '₪' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function landedOf(x){
   if (!x || typeof x !== 'object') return null;
@@ -788,7 +791,7 @@ function landedOf(x){
   if (x.st !== 'm') return null;
   const pu = Number(x.pu), f = Number(x.f), fu = Number(x.fu), rate = Number(x.rate);
   if (![pu, f, fu, rate].every(Number.isFinite) || !(pu > 0) || !(f > 0) || !(fu > 0) || !(rate > 0)) return null;
-  return { st:'m', pu, f, fu, rate, doc: txt(x.doc, '', 40) };
+  return { st:'m', pu, f, fu, rate, doc: txt(x.doc, '', 40), cur: txt(x.cur, '', 8) };
 }
 function brainOf(b){
   if (!b || typeof b !== 'object' || !b.by_id || typeof b.by_id !== 'object') return null;
@@ -808,7 +811,7 @@ function setSettings(raw){
   const s = raw && typeof raw === 'object' ? raw : {}, D = DEF_SETTINGS;
   const o = { v: 1, sup: SUP, name_he: txt(s.name_he, ''), title_he: txt(s.title_he, s.name_he ? 'הזמנה מ-' + txt(s.name_he, '') : D.title_he),
     currency: { code: txt(s.currency && s.currency.code, '', 8), symbol: txt(s.currency && s.currency.symbol, '', 4), after: !!(s.currency && s.currency.after) },
-    price: { dealer_he: txt(s.price && s.price.dealer_he, D.price.dealer_he), dealer_short_he: txt(s.price && s.price.dealer_short_he, D.price.dealer_short_he, 30), list_he: txt(s.price && s.price.list_he, D.price.list_he), dealer_note_he: txt(s.price && s.price.dealer_note_he, '') },
+    price: { dealer_he: txt(s.price && s.price.dealer_he, D.price.dealer_he), dealer_short_he: txt(s.price && s.price.dealer_short_he, D.price.dealer_short_he, 30), list_he: txt(s.price && s.price.list_he, D.price.list_he), dealer_note_he: txt(s.price && s.price.dealer_note_he, ''), total_he: txt(s.price && s.price.total_he, ''), box_he: txt(s.price && s.price.box_he, '') },
     date_he: txt(s.date_he, D.date_he), code_he: txt(s.code_he, D.code_he, 20), groups: [], facets: [],
     flags: { new_he: txt(s.flags && s.flags.new_he, D.flags.new_he), new_note_he: txt(s.flags && s.flags.new_note_he, ''), ours_he: txt(s.flags && s.flags.ours_he, D.flags.ours_he) },
     minimum: { kind: txt(s.minimum && s.minimum.kind, 'none', 20), he: txt(s.minimum && s.minimum.he, D.minimum.he) }, case_he: txt(s.case_he, D.case_he),
@@ -1159,7 +1162,7 @@ function minBoxHtml(S0){
   if (MIN.has){
     const cmp = minComparable(), left = round2(MIN.value - grand);
     h += '<div class="mrow"><span>מינימום הזמנה אצל הספק</span><b>'+esc(minMoney(MIN.value))+'</b></div>';
-    if (!cmp) h += '<div class="mnote">המינימום רשום ב'+esc(MIN.currency)+' וההזמנה ב'+esc(S.currency.code || S.currency.symbol || 'מטבע אחר')+', לכן לא מחשבים כאן את הפער.</div>';
+    if (!cmp) h += '<div class="mnote">המינימום רשום '+esc(inCur(MIN.currency))+' וההזמנה '+esc(inCur(S.currency.code || S.currency.symbol || 'מטבע אחר'))+', לכן לא מחשבים כאן את הפער.</div>';
     else if (left > 0) h += '<div class="mrow short"><span>חסר למינימום</span><b>'+esc(money(left))+'</b></div>';
     else h += '<div class="mrow ok"><span>ההזמנה המשותפת עוברת את המינימום</span><b>✓</b></div>';
   }
@@ -1891,7 +1894,7 @@ function brainHtml(r){
   // cost is said in words to be a factor, from which shipment and at which rate, never a number off an invoice.
   if (b.ld && b.ld.st === 'm') h += '<span class="bsrc">מה ששילמנו בחשבונית ' + esc(shekel2(b.ld.pu)) + ' ליחידה</span>'
     + '<span class="bsrc"><b>עלות מלאה</b> ' + esc(shekel2(b.ld.fu)) + ' ליחידה</span>'
-    + '<span class="bfl">מקדם ×' + esc(String(Math.round(b.ld.f * 1000) / 1000)) + ' (לא מספר מחשבונית) ממשלוח <bdi dir="ltr" style="white-space:nowrap">' + esc(b.ld.doc) + '</bdi>, שער <bdi dir="ltr" style="white-space:nowrap">' + esc(String(b.ld.rate)) + '</bdi></span>';
+    + '<span class="bfl">מחושב לפי המסמכים של משלוח ' + docSpan(esc(b.ld.doc)) + ': מקדם ×' + esc(String(Math.round(b.ld.f * 1000) / 1000)) + ', שער ' + ((CUR_HE[b.ld.cur] || b.ld.cur) ? (CUR_HE[b.ld.cur] || b.ld.cur) + ' ' : '') + '<bdi dir="ltr" style="white-space:nowrap">' + esc(String(b.ld.rate)) + '</bdi></span>';
   else if (b.ld && b.ld.st === 'n') h += '<span class="bsrc">עוד אין עלויות למשלוח הזה</span>';
   for (const a of b.alt){
     // or1.17 (B-CAT-2, DL-358): a forward figure with its factor line (a.m), or no number at all when the supplier has no costed shipment (a.nc)
@@ -1925,7 +1928,7 @@ function brainBoxHtml(){
   // or it reads as a gap against the order's total in מחיר לפני מע״מ right under it
   if (sum) h += '<div class="bs">הסכום הוא ההערכה של המוח לפי עלות, לא לפי המחיר שבדף</div>';
   // on a page priced in another currency, say it once here rather than on every card: the brain works in shekels
-  if (S.currency.code && S.currency.code !== 'ILS') h += '<div class="bs">המספרים של המוח, וגם המחיר אצל ספק אחר, הם בשקלים — המחיר בדף עצמו ב' + esc(S.currency.code) + '</div>';
+  if (S.currency.code && S.currency.code !== 'ILS') h += '<div class="bs">המספרים של המוח והמחיר אצל ספק אחר הם בשקלים. המחיר בדף עצמו ' + esc(inCur(S.currency.code)) + '.</div>';
   h += '<div class="bs">' + esc(brainWhenHe()) + '</div>';
   // or1.12: they are counted and not valued (the main chat, 18/11). Until today their sale price was added into the
   // sum above, which made a "what it costs" figure out of what we would SELL for.
@@ -1933,7 +1936,7 @@ function brainBoxHtml(){
   if (rows.length){
     h += '<div class="acts">' + (state.open && person && ready() ? '<button data-act="brainfill"' + (can.length ? '' : ' disabled') + '>מלא את הכמויות (' + num(can.length) + ')</button>' : '') +
       (chip === 'brain' ? '<button data-chip="all">הצג את כל הקטלוג</button>' : '<button data-chip="brain">הצג רק אותם</button>') + '</div>';
-    if (state.open && person && ready()) h += '<div class="bs">הכמויות ייכנסו על השם <b>' + esc(person) + '</b>. הכפתור ממלא רק פריטים שאין בהם שורה שלך, ואפשר לשנות כל מספר אחר כך. שום דבר לא נשלח לספק.</div>';
+    if (state.open && person && ready()) h += '<div class="bs">הכמויות ייכנסו על השם <b>' + esc(person) + '</b>. הכפתור ממלא רק פריטים שאין בהם שורה שלך. אפשר לשנות כל מספר אחר כך. שום דבר לא נשלח לספק.</div>';
   }
   if (S.brain.missing_n || out.length){
     // bidiNums, not a bare <b>: a digit beside Hebrew and a Latin supplier name reads backwards without the isolation
@@ -2129,7 +2132,7 @@ function renderMine(){
     return '<div class="mgline" data-go="'+esc(x.v)+'"><bdi>'+esc(r ? r.title : x.v)+'</bdi>: '+mgrWords(x.n)+'</div>'; }).join('') + (state.open && ready() ? '<button class="ack" data-ack="*">ראיתי את כל השינויים</button>' : '') + '</div>' : '';
   $('view').innerHTML = mg + (ls.length ? exportBtns() +
     (Object.keys(mine).length ? '<div class="banner amber">יש כמויות שלך שעוד לא נשמרו: הן מופיעות כאן, אבל הרשימות המיוצאות כוללות רק מה שכבר נשמר.</div>' : '') +
-    '<div class="tot-box"><b>'+ls.length+'</b> שורות · <b>'+num(units)+'</b> יחידות · <b>'+esc(money(total))+'</b> ב'+esc(S.price.dealer_he)+noPriceNote(ls.map(x => x.r))+brainTakenHtml(false)+'</div>' +
+    '<div class="tot-box"><b>'+ls.length+'</b> שורות · <b>'+num(units)+'</b> יחידות · <b>'+esc(money(total))+'</b> ב'+esc(S.price.box_he || S.price.dealer_he)+noPriceNote(ls.map(x => x.r))+brainTakenHtml(false)+'</div>' +
     ls.map(x => x.r.orphan
       ? '<div class="line"><div class="t"><div dir="auto">'+esc(x.r.title)+'</div><div class="s">הפריט ירד מהקטלוג — הכמות עדיין רשומה</div></div><div class="q">×'+num(x.qty)+'</div>' + (state.open && ready() ? '<button class="rm" data-rm="'+esc(x.r.id)+'">הסר</button>' : '') + '</div>'
       : '<div class="line" data-v="'+esc(x.r.id)+'" data-go="'+esc(x.r.id)+'"><div class="t"><div dir="auto">'+esc(x.r.title)+'</div><div class="s"><bdi dir="ltr">'+esc(codeText(x.r.sku) || x.r.id)+'</bdi></div>'+paceHtml(x.r)+(S.availability.remove && !x.r.available ? '<span class="outlbl">'+esc(S.availability.out_he)+'</span>' : '')+'</div><div class="q">×'+num(x.qty)+'</div><div class="e">'+(x.r.price_dealer != null ? esc(money(x.sum)) : '<span class="noprice">אין מחיר</span>')+'</div>'+stepperHtml(x.r)+rmOutHtml(x.r)+'</div>').join('')   // the pace and my stepper on every line; a sold-out item: its label and 'הסר' (or1.2, when the settings ask)
@@ -2166,7 +2169,7 @@ function renderSummary(){
   let h = exportBtns() + (admin ? '<div class="acts">' + (state.open ? '<button class="danger" data-act="close" id="closeBtn"'+(busy ? ' disabled' : '')+'>סגור הזמנה</button>' : '<button class="ok" data-act="open" id="openBtn">פתח מחדש</button>') + '</div>' : '');
   if (S0.pending || busy) h += '<div class="banner amber">יש כמויות שלך שעוד לא נשמרו: הן מופיעות כאן, אבל הטקסט, ה-CSV והרשימות כוללים רק מה שכבר נשמר' + (admin && busy && state.open ? '; אפשר לסגור כשהכול נשמר' : '') + '.</div>';
   if (!S0.items.length){ $('view').innerHTML = h + '<div class="empty">' + (ready() ? 'עוד אין כמויות בהזמנה.' : firstLoadDone ? 'אין חיבור — הסיכום יופיע כשהחיבור יחזור.' : 'טוען…') + '</div>'; return; }
-  h += '<div class="tot-box">סה״כ להזמנה: <b>'+S0.grand.lines+'</b> פריטים · <b>'+num(S0.grand.units)+'</b> יחידות · <b>'+esc(money(S0.grand.sum))+'</b> ב'+esc(S.price.dealer_he)+noPriceNote(S0.items.map(x => x.r))+brainTakenHtml(true)+'</div>';
+  h += '<div class="tot-box">סה״כ להזמנה: <b>'+S0.grand.lines+'</b> פריטים · <b>'+num(S0.grand.units)+'</b> יחידות · <b>'+esc(money(S0.grand.sum))+'</b> ב'+esc(S.price.box_he || S.price.dealer_he)+noPriceNote(S0.items.map(x => x.r))+brainTakenHtml(true)+'</div>';
   h += winBoxHtml();     // or1.6 (B-CAT-24): when to send this order and when it arrives (only where the window is known)
   h += minBoxHtml(S0);   // or1.5 (B-CAT-25): the combined value, every shop's share and the supplier's order minimum
   h += '<h2>לפי פריט</h2>' + S0.items.map(x => '<div class="srow" data-v="'+esc(x.r.id)+'"'+(x.r.orphan ? '' : ' data-go="'+esc(x.r.id)+'"')+'><div class="h"><div class="t" dir="auto">'+esc(x.r.title)+'</div><div class="q">×'+num(x.total)+'</div><div class="e">'+(x.r.orphan || x.r.price_dealer != null ? esc(money(x.lineSum)) : '<span class="noprice">אין מחיר</span>')+'</div></div>' +
@@ -2194,7 +2197,7 @@ const ddmmyyyy = d => d.toLocaleDateString('en-GB', { timeZone:TZ, day:'2-digit'
  *  supplier's name and the date; one line per item in catalog order (an item that left the catalog last, as the summary lists it):
  *  name · מק״ט (the supplier's code; never our item id: no code → 'אין מק״ט') · כמות (the ORDER total across people) · the line in the
  *  supplier's currency, a line on an item now sold out kept and marked with the supplier's sold-out word; then the total labelled from
- *  settings.price.dealer_he ('מחיר לפני מע״מ' → 'סה״כ לפני מע״מ') */
+ *  settings.price.total_he, else dealer_he ('מחיר לפני מע״מ' → 'סה״כ לפני מע״מ'); or1.18: the copied text never follows the card label */
 function supplierText(){
   // only the lines the supplier can deliver (in the catalog and available) make the total; a sold-out line or one that left the catalog is listed
   // apart, under its own heading, outside the total (Chris sends this text as the order itself)
@@ -2204,7 +2207,7 @@ function supplierText(){
   const sum = round2(go.reduce((s, x) => s + (x.lineSum || 0), 0)), units = go.reduce((s, x) => s + x.total, 0), noPrice = go.filter(x => x.lineSum == null).length;
   const out = [(S.name_he || S.title_he) + ' — הזמנה ' + ddmmyyyy(new Date()), ''];
   for (const x of go) out.push(line(x));
-  out.push('', 'סה״כ ' + S.price.dealer_he.replace(/^מחיר\s+/, '').replace(/^הספק(?=\s|$)/, 'במחיר הספק') + ': ' + money(sum) + ' · ' + go.length + ' פריטים · ' + units + ' יח׳' + (noPrice ? ' (' + noPrice + ' בלי מחיר)' : ''));
+  out.push('', 'סה״כ ' + (S.price.total_he || S.price.dealer_he).replace(/^מחיר\s+/, '') + ': ' + money(sum) + ' · ' + go.length + ' פריטים · ' + units + ' יח׳' + (noPrice ? ' (' + noPrice + ' בלי מחיר)' : ''));
   if (off.length){ out.push('', 'לא נכלל בסה״כ:'); for (const x of off) out.push(line(x) + (x.r.orphan ? '' : ' · ' + S.availability.out_he)); }   // an orphan's line already starts '(לא בקטלוג)'
   return out.join('\n');
 }
