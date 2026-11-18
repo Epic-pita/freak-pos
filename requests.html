@@ -159,7 +159,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'r1.0';
+const BUILD = 'r1.1';
 // Backends: the Apps Script deployments of the special-orders sheet. ?api=test = TEST (invented data only),
 // ?api=local = the bench on this PC. Never a URL from the address bar.
 const LIVE_API = '';   // set at the LIVE release (after Chris's yes)
@@ -207,7 +207,12 @@ function sheet(id, on){ $(id).classList.toggle('hide', !on); if(on) $(id).scroll
 /* ================= START ================= */
 function takeLinkKey(){
   const m = /[#&]k=([^&]+)/.exec(location.hash||'');
-  if(m){ lsSet(LS.key, decodeURIComponent(m[1])); history.replaceState(null, '', location.pathname + location.search); }
+  if(m){
+    /* A link key is taken only when this phone holds no key yet: a link must never swap the person who is signed in
+       (security review 18/11: login fixation). To change person, use "יציאה" and then open the link or type the code. */
+    if(!lsGet(LS.key)) lsSet(LS.key, decodeURIComponent(m[1]));
+    history.replaceState(null, '', location.pathname + location.search);
+  }
 }
 async function start(){
   takeLinkKey();
