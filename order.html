@@ -421,7 +421,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.11';
+const BUILD = 'or1.12';
 // or1.4 (B-BRN-8, part 2): every card of an item we carry gets ONE more grey line under its pace block — the brain's in-stock line
 // ("נמכר ~N בחודש כשיש במלאי (קצב להזמנה ~N) · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …", the brain's wording of 03/11), copied verbatim from the rates table (jo_load
 // `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
@@ -1866,7 +1866,9 @@ function brainBoxHtml(){
   // on a page priced in another currency, say it once here rather than on every card: the brain works in shekels
   if (S.currency.code && S.currency.code !== 'ILS') h += '<div class="bs">המספרים של המוח, וגם המחיר אצל ספק אחר, הם בשקלים — המחיר בדף עצמו ב' + esc(S.currency.code) + '</div>';
   h += '<div class="bs">' + esc(brainWhenHe()) + '</div>';
-  if (S.brain.by_price_n) h += '<div class="bs">' + num(S.brain.by_price_n) + ' מהם בלי עלות רשומה אצלנו — הסכום שלהם לפי מחיר המכירה, לא לפי עלות</div>';
+  // or1.12: they are counted and not valued (the main chat, 18/11). Until today their sale price was added into the
+  // sum above, which made a "what it costs" figure out of what we would SELL for.
+  if (S.brain.by_price_n) h += '<div class="bs">' + num(S.brain.by_price_n) + ' מהם אין עדיין מחיר עלות — הם לא נכללים בסכום</div>';
   if (rows.length){
     h += '<div class="acts">' + (state.open && person && ready() ? '<button data-act="brainfill"' + (can.length ? '' : ' disabled') + '>מלא את הכמויות (' + num(can.length) + ')</button>' : '') +
       (chip === 'brain' ? '<button data-chip="all">הצג את כל הקטלוג</button>' : '<button data-chip="brain">הצג רק אותם</button>') + '</div>';
