@@ -205,6 +205,7 @@ const COMMON_SUPS = ['Kaissa', 'ICO', 'Glassstaff', 'הקובייה', 'ACD', 'Sc
 const OS_URL = './order-suppliers.json';
 // the role the backend reports for this key (in the list reply): 'answerer' = a limited key, with the exact list of answers it may give ('kind/answer').
 // A key without a role (Chris's) may do everything the page offers. The page only HIDES what the key may not do; the backend is what refuses it.
+const T_NOTACTIVE = 'המשתמש שלך ב-FREAK צוות לא פעיל. אם זו טעות יש לפנות למנהל.';
 const T_SIGNIN = 'כדי לענות על שאלות הספקים נכנסים ל-FREAK צוות עם חשבון הגוגל ואז חוזרים לכאן.';
 const T_NOTALLOWED = 'שאלות הספקים פתוחות למנהלים בלבד.';
 const T_RETRY = 'אין תשובה מ-FREAK צוות. לנסות שוב בעוד דקה.';
@@ -349,7 +350,8 @@ function block(text, withLink){
 function passProblem(js){
   if (!js) return false;
   if (js.error === 'NO_PASS'){
-    if (js.code === 'signed_out' || js.code === 'not_active') block(T_SIGNIN, true);
+    if (js.code === 'signed_out') block(T_SIGNIN, true);
+    else if (js.code === 'not_active') block(T_NOTACTIVE);
     else if (js.code === 'not_allowed') block(T_NOTALLOWED);
     else if (data) passNote(T_RETRY); else block(T_RETRY);
     return true;
@@ -700,7 +702,7 @@ document.addEventListener('click', ev => {
 $('refreshBtn').onclick = () => load(true);
 document.addEventListener('visibilitychange', () => { if (!document.hidden){
   if (!PASSMODE && !hasKey() && appSid()){ location.reload(); return; }   // signed in to the app in the meantime: the page starts again (the session id is read once per load)
-  if (PASSMODE && blocked && appSid() !== SID){ location.reload(); return; }
+  if (PASSMODE && appSid() && appSid() !== SID){ location.reload(); return; }   // another app session id: the page starts again
   if (PASSMODE && appSid() !== SID){ dropPass(); passFail = null; }   // signed out (or another session) in the app while the tab was away: the next request asks the app again
   load(false); sync(); } });
 $('keyBtn').onclick = async ()=>{
