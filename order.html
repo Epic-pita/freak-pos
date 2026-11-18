@@ -1895,10 +1895,10 @@ function brainHtml(r){
   if (b.ld && b.ld.st === 'm') h += '<span class="bsrc">מה ששילמנו בחשבונית ' + esc(shekel2(b.ld.pu)) + ' ליחידה</span>'
     + '<span class="bsrc"><b>עלות מלאה</b> ' + esc(shekel2(b.ld.fu)) + ' ליחידה</span>'
     + '<span class="bfl">מחושב לפי המסמכים של משלוח ' + docSpan(esc(b.ld.doc)) + ': מקדם ×' + esc(String(Math.round(b.ld.f * 1000) / 1000)) + ', שער ' + ((CUR_HE[b.ld.cur] || b.ld.cur) ? (CUR_HE[b.ld.cur] || b.ld.cur) + ' ' : '') + '<bdi dir="ltr" style="white-space:nowrap">' + esc(String(b.ld.rate)) + '</bdi></span>';
-  else if (b.ld && b.ld.st === 'n') h += '<span class="bsrc">עוד אין עלויות למשלוח הזה</span>';
+  else if (b.ld && b.ld.st === 'n') h += '<span class="bsrc">אין עלות מלאה: חסרים מסמכי המשלוח</span>';
   for (const a of b.alt){
     // or1.17 (B-CAT-2, DL-358): a forward figure with its factor line (a.m), or no number at all when the supplier has no costed shipment (a.nc)
-    if (a.nc){ h += '<span class="balt">גם אצל ' + esc(a.s) + ' — ' + esc(a.m || 'עוד אין עלויות למשלוח הזה') + '</span>'; continue; }
+    if (a.nc){ h += '<span class="balt">גם אצל ' + esc(a.s) + ' — ' + esc(a.m || 'אין עלות מלאה: חסרים מסמכי המשלוח') + '</span>'; continue; }
     h += '<span class="balt">גם אצל ' + esc(a.s) + ' — ' + esc(shekel(a.p)) + esc(altGapHe(r, a)) + (a.b ? ' <span class="bfl" style="display:inline">(' + esc(a.b) + ')</span>' : '') + (a.m ? '<span class="bfl">' + nowrapDoc(esc(a.m)) + '</span>' : '') + '</span>';
   }
   // the one new button: it says the brain is wrong about THIS item at THIS supplier, and asks why
