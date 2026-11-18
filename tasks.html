@@ -133,6 +133,7 @@
   <input id="keyIn" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="מפתח">
   <button id="keyBtn" class="bigbtn go">שמור והמשך</button>
   <p id="gateMsg"></p>
+  <p>מנהלים נכנסים דרך <a id="gateApp" href="#">FREAK צוות</a>.</p>
 </div>
 
 <div id="app" class="hide">
@@ -152,6 +153,7 @@
       <div id="fpanel" class="hide"></div>
     </div>
     <div id="main">
+      <div id="passMsg" class="hide"></div>
       <div id="banners"></div>
       <div id="failedBox" class="hide"></div>
       <div id="cnt"></div>
@@ -165,7 +167,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 't1.0';   // S-SUP step 2 (16/11/2026): ONE tasks screen for all suppliers, reading and answering through the same backend as suppliers.html; t1.0 (17/11): the answerer role
+const BUILD = 't1.1';   // S-SUP step 2 (16/11/2026): ONE tasks screen for all suppliers, reading and answering through the same backend as suppliers.html; t1.1 (18/11): a manager signed in to the app FREAK צוות answers with a pass (no personal link, no key)
 // the backend is the catalog's script, the same deployments as suppliers.html: LIVE reads the live list; ?api=test writes only the TEST copies;
 // ?preview=1 = REAL rows, but every answer is only TRIED (dryRun: the server says what it would write and writes nothing). Never a URL from the address bar.
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbyCy0D7QPJNjpVIPP7NkNC38rkACV0t-O1C_m-SDsBUTFysG-Q0QUjtDPjI3Go8iYUZfw/exec';
@@ -175,12 +177,22 @@ const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const MODE = (()=>{ const a = QS.get('api'); return a==='test' ? 'test' : a==='local' && LOCAL ? 'local' : 'live'; })();
 // t0.x: the LIVE page is ALWAYS preview. Real answers (the path that writes his typing, root rule 3) work only on the TEST deployment (?api=test&real=1, which writes only the
 // private TEST copies) until the reviewer's open items, the TEST run and a second look are done; then the live flip is one reviewed commit.
-// t1.0 (17/11/2026, card L1-SUP-2ND-1, Chris's tap 17:39): a PERSONAL ANSWERER LINK (?as=answerer) answers for real, with a limited key. The page never trusts the link alone:
-// real answers go out only while the backend's own list reply says role 'answerer' (roleBad() below), and the backend refuses everything outside that key's allow-list.
-// Any other link (and Chris's own key) stays exactly as before: the LIVE page is preview, real answers only on TEST with &real=1.
-const ANSWERER = QS.get('as') === 'answerer';
-const PREVIEW = !((MODE === 'test' && QS.get('real') === '1') || ANSWERER);
+// t1.1 (18/11/2026): PASSMODE = no saved key in this browser AND the app FREAK צוות is signed in here (its session id sits in localStorage). The page then asks the app's
+// service for a short pass (5 min, audience freak-suppliers) and sends it as `p` instead of a key. The page never trusts that alone: real answers go out only while the
+// backend's own list reply says role 'answerer' (roleBad() below), and the backend refuses everything outside the reply's allow-list.
+// Chris's own key (a saved fs_key always wins) stays exactly as before: the LIVE page is preview, real answers only on TEST with &real=1.
+// The session id and the pass are never written, removed, logged, put in a URL or kept in the queue.
+const SID_RE = /^[A-Za-z0-9_-]{40,64}$/;
+const APP_SID = 'freak_app_session', APP_MS = 30000;
+const appSid = () => { try{ const s = JSON.parse(localStorage.getItem(APP_SID) || 'null'); return typeof s === 'string' && SID_RE.test(s) ? s : ''; }catch(e){ return ''; } };
+const hasKey = () => { try{ return !!localStorage.getItem('fs_key') || /[#&]k=[\w\-]{20,100}/.test(location.hash); }catch(e){ return /[#&]k=[\w\-]{20,100}/.test(location.hash); } };
+const SID = hasKey() ? '' : appSid();     // read once per load
+const PASSMODE = !!SID;
+const PREVIEW = PASSMODE ? false : !(MODE === 'test' && QS.get('real') === '1');
 const API = MODE==='test' ? TEST_API : MODE==='local' ? location.origin + '/api' : LIVE_API;
+// the app FREAK צוות (public addresses, the same as board-page.js): its service per copy and the page to sign in on
+const APP_API = MODE==='test' ? 'https://script.google.com/macros/s/AKfycbxs0ebx-l1Z-kjWriJb8itLkUvTz1cbmhiqkxdEKMUe9cOTls_RAe-veNmB0QtWINl-Dw/exec' : MODE==='local' ? location.origin + '/app' : 'https://script.google.com/macros/s/AKfycbyFl51NOb7BCmngZGamwe4Hn7xkoJjQBn9dvkBPswMOZa3yrPazmSYye3BDLEV5Xa7icA/exec';
+const APP_PAGE = MODE==='live' ? 'https://epic-pita.github.io/freak-app/' : 'https://epic-pita.github.io/freak-app/t1/';
 const ENV = MODE==='live' ? '' : 'test';
 const TZ = 'Asia/Jerusalem';
 const LS = { key: 'fs_key', data: 'fst_data_'+MODE, filters: 'fst_filters', os: 'fs_order_sups' };   // fs_key: the one key suppliers.html already keeps on this phone (same site)
@@ -191,8 +203,13 @@ const COMMON_SUPS = ['Kaissa', 'ICO', 'Glassstaff', 'הקובייה', 'ACD', 'Sc
 const OS_URL = './order-suppliers.json';
 // the role the backend reports for this key (in the list reply): 'answerer' = a limited key, with the exact list of answers it may give ('kind/answer').
 // A key without a role (Chris's) may do everything the page offers. The page only HIDES what the key may not do; the backend is what refuses it.
-const ERR_HE = { ALREADY_ANSWERED: 'מישהו כבר ענה על זה — התשובה נשמרה', NOT_ALLOWED: 'התשובה הזאת לא מותרת לך. אפשר לענות על: ספק, מוצר שאזל, משלוחים והערות' };
-const GATE_BAD = ANSWERER ? 'הקישור לא תקף יותר. לבקש קישור חדש.' : 'המפתח לא מתאים. לפתוח שוב את הקישור האישי.';
+const T_SIGNIN = 'כדי לענות על שאלות הספקים נכנסים ל-FREAK צוות עם חשבון הגוגל ואז חוזרים לכאן.';
+const T_NOTALLOWED = 'שאלות הספקים פתוחות למנהלים בלבד.';
+const T_RETRY = 'אין תשובה מ-FREAK צוות. לנסות שוב בעוד דקה.';
+const T_BADPASS = 'הכניסה דרך FREAK צוות לא התקבלה. לסגור את הדף ולפתוח אותו שוב מהאפליקציה.';
+const T_TOP = 'נכנסת דרך FREAK צוות. אפשר לענות על ספק, מוצר שאזל ומשלוחים.';
+const ERR_HE = { ALREADY_ANSWERED: 'מישהו כבר ענה על זה — התשובה נשמרה', NOT_ALLOWED: 'התשובה הזאת לא מותרת לך. אפשר לענות על: ספק, מוצר שאזל, משלוחים והערות', BAD_PASS: T_BADPASS };
+const GATE_BAD = 'המפתח לא מתאים. לפתוח שוב את הקישור האישי.';
 
 /* ================= STATE ================= */
 let KEY = '', data = null, query = '', shown = PAGE, openEditor = '', editorKind = '', panelOpen = false;
@@ -200,10 +217,11 @@ let F = { kind: '', sup: '', open: true };   // the filters, kept on this device
 let pend = {};              // key → { ans, at } — answered on this phone, not yet seen in the list (kept in memory: a reload re-reads the truth)
 let loading = false, lastOk = 0, db = null, syncing = false, loadAgain = false, orderSups = [];
 const cancelled = new Set();
-const ALLOW = () => (data && data.role === 'answerer' && Array.isArray(data.allow)) ? new Set(data.allow) : null;
+// PASSMODE: only what the reply's allow-list names is ever offered (no list = nothing); key mode as before
+const ALLOW = () => PASSMODE ? new Set(data && Array.isArray(data.allow) ? data.allow : []) : (data && data.role === 'answerer' && Array.isArray(data.allow)) ? new Set(data.allow) : null;
 const can = (kind, ans) => { const a = ALLOW(); return !a || a.has(kind + '/' + ans); };
-// an answerer link opened with a key that is not an answerer key (or before the first list arrived): nothing real is sent
-const roleBad = () => ANSWERER && !(data && data.role === 'answerer');
+// a signed-in app session whose list reply does not say role 'answerer' (or before the first list arrived): nothing real is sent
+const roleBad = () => PASSMODE && !(data && data.role === 'answerer');
 
 /* ================= UTIL ================= */
 const $ = id => document.getElementById(id);
@@ -223,13 +241,55 @@ function toast(msg, cls='', ms=2600, undo=null){
   clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', ms);
 }
 function fetchT(url, opts, ms){ const c=new AbortController(); const t=setTimeout(()=>c.abort(), ms); return fetch(url, {...opts, signal:c.signal}).finally(()=>clearTimeout(t)); }
-async function post(body, ms=45000){
+async function postOnce(auth, body, ms){
   // Google sometimes turns the POST into a bare GET (doPost never runs; the backend answers GET_NOT_POST): the same request again
   for (let i = 0; ; i++){
-    const r = await fetchT(API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ k: KEY, env: ENV || undefined, build: BUILD, ...body }) }, ms);
+    const r = await fetchT(API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ ...auth, env: ENV || undefined, build: BUILD, ...body }) }, ms);
     const js = await r.json();
     if (!(js && js.error === 'GET_NOT_POST') || i >= 3) return js;
   }
+}
+/* the pass (PASSMODE): kept in memory only, reused while more than 60 s are left (it lives 5 min, so about one ask per 4 minutes) */
+let PASS = '', PASS_EXP = 0, passAsk = null, passFailAt = 0, passFail = null, passDead = false, passStop = false;
+const dropPass = () => { PASS = ''; PASS_EXP = 0; };
+async function askApp(){
+  for (let i = 0; ; i++){
+    let js = null;
+    try{ const r = await fetchT(APP_API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ a:'pass', sid: SID, aud:'freak-suppliers' }) }, APP_MS); js = await r.json(); }catch(e){ return null; }
+    if (!(js && (js.error === 'GET_NOT_POST' || js.code === 'GET_NOT_POST')) || i >= 2) return js;
+  }
+}
+/** a usable pass { ok:true, pass } or { ok:false, code } (signed_out, not_active, not_allowed or retry) */
+function getPass(fresh){
+  if (!fresh && PASS && PASS_EXP - Date.now() > 60000) return Promise.resolve({ ok: true, pass: PASS });
+  if (passStop) return Promise.resolve({ ok: false, code: 'not_allowed' });                            // the app said this person has no role: nothing more is asked
+  if (passAsk) return passAsk;
+  if (!fresh && passFail && Date.now() - passFailAt < 20000) return Promise.resolve(passFail);          // a failed ask is not repeated every few seconds
+  passAsk = askApp().then(ans => {
+    passAsk = null;
+    if (ans && ans.ok === true && typeof ans.pass === 'string' && ans.pass){ PASS = ans.pass; PASS_EXP = Number(ans.exp) || 0; passFail = null; return { ok: true, pass: PASS }; }
+    const c = ans && typeof ans.code === 'string' ? ans.code : '';
+    if (c === 'not_allowed') passStop = true;
+    passFail = { ok: false, code: /^(signed_out|not_active|not_allowed)$/.test(c) ? c : 'retry' }; passFailAt = Date.now();
+    return passFail;
+  });
+  return passAsk;
+}
+async function post(body, ms=45000){
+  if (!PASSMODE) return postOnce({ k: KEY }, body, ms);
+  if (passDead) return { ok: false, error: 'BAD_PASS' };
+  // a backend that does not know passes answers BAD_KEY: that is a refused pass here, never "the saved key"
+  const send = async p => { const js = await postOnce({ p }, body, ms); return js && js.error === 'BAD_KEY' ? { ok: false, error: 'BAD_PASS' } : js; };
+  let a = await getPass(false);
+  if (!a.ok) return { ok: false, error: 'NO_PASS', code: a.code };
+  let js = await send(a.pass);
+  if (js && js.error === 'BAD_PASS'){            // one fresh pass, the same request once
+    dropPass(); a = await getPass(true);
+    if (!a.ok) return { ok: false, error: 'NO_PASS', code: a.code };
+    js = await send(a.pass);
+    if (js && js.error === 'BAD_PASS'){ passDead = true; dropPass(); }
+  }
+  return js;
 }
 function safeUrl(u){ const s = String(u == null ? '' : u); if (!/^https?:\/\/[^\s"'<>]+$/i.test(s)) return ''; try{ const p = new URL(s).protocol; return p === 'https:' || p === 'http:' ? s : ''; }catch(e){ return ''; } }
 const TEXT_RULE = 'הטקסט לא יכול להתחיל ב-= או להכיל < >, ועד 300 תווים';
@@ -263,6 +323,30 @@ function takeKeyFromHash(){
 }
 async function checkKey(k){ KEY = k; try{ return await post({ action:'ping' }, 30000); }catch(e){ return { ok:false, error:'NET' }; } }
 function showGate(msg){ $('app').classList.add('hide'); $('gate').classList.remove('hide'); $('gateMsg').textContent = msg || ''; }
+/* PASSMODE messages: a sentence on top of the screen (the list stays) or, with block(), instead of the list */
+let blocked = false;
+function passNote(text, withLink){
+  const m = $('passMsg'); m.textContent = '';
+  if (!text){ m.className = 'hide'; return; }
+  m.className = 'banner amber'; m.appendChild(document.createTextNode(text + (withLink ? ' ' : '')));
+  if (withLink){ const a = document.createElement('a'); a.href = APP_PAGE; a.textContent = 'ל-FREAK צוות'; m.appendChild(a); }
+}
+function block(text, withLink){
+  blocked = true; data = null; passNote(text, withLink);
+  $('list').innerHTML = ''; $('cnt').innerHTML = ''; $('banners').innerHTML = ''; $('kinds').innerHTML = ''; $('fbar').innerHTML = ''; $('fpanel').classList.add('hide'); $('topcnt').textContent = '';
+}
+// why a PASSMODE request did not go out: the app's own code, or a refused pass
+function passProblem(js){
+  if (!js) return false;
+  if (js.error === 'NO_PASS'){
+    if (js.code === 'signed_out' || js.code === 'not_active') block(T_SIGNIN, true);
+    else if (js.code === 'not_allowed') block(T_NOTALLOWED);
+    else if (data) passNote(T_RETRY); else block(T_RETRY);
+    return true;
+  }
+  if (js.error === 'BAD_PASS'){ block(T_BADPASS); return true; }
+  return false;
+}
 
 /* ================= QUEUE (IndexedDB, survives a closed app; repeat-safe by uuid) ================= */
 function idb(){ return new Promise((res,rej)=>{ const r=indexedDB.open('freak-tasks-v2',1); r.onupgradeneeded=()=>r.result.createObjectStore('q',{keyPath:'uuid'}); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
@@ -274,7 +358,7 @@ async function badge(){ const n = db ? (await qAll()).filter(j=>j.mode===MODE &&
 /* answers: shown at once on this phone, sent from the queue; a hiding answer waits 5 s so "בטל" can take it back */
 async function answer(r, ans, value, note, label, hides){
   if (!textOk(String(note || ''))){ toast(TEXT_RULE, 'err', 4000); return; }   // every answer, whichever button it came from: the server's rule (no leading =, no < >, one line, 300 characters) is checked here first
-  if (!PREVIEW && roleBad()){ toast('הקישור הזה מיועד לעונה, והמפתח שבטלפון לא כזה. לא נשמר כלום.', 'err', 6000); return; }
+  if (!PREVIEW && roleBad()){ toast(T_NOTALLOWED + ' לא נשמר כלום.', 'err', 6000); return; }
   if (pend[r.key] && pend[r.key].uuid) return;   // a second tap while the first answer is on its way is ignored (it would be a second job with another uuid)
   const job = { uuid: uuid(), ts: Date.now(), mode: MODE, att: 0, soft: 0, notBefore: hides ? Date.now() + UNDO_MS : 0,
     body: { action:'answer', kind: r.kind, key: r.key, code: r.code || '', sup: r.sup || '', answer: ans, value: value || {}, note: note || '', ...(PREVIEW ? { dryRun: true } : {}) } };
@@ -308,8 +392,9 @@ function afterOk(job, js){
   if (!PREVIEW) setTimeout(()=>load(false), 600);
 }
 async function sendNow(job, label){
-  if (!PREVIEW && roleBad()){ notSaved(job, 'הקישור הזה מיועד לעונה, והמפתח שבטלפון לא כזה'); return; }
+  if (!PREVIEW && roleBad()){ notSaved(job, T_NOTALLOWED); return; }
   try{ const js = await post({ ...bodyOf(job), uuid: job.uuid }, 60000);
+    if (js && js.error === 'NO_PASS'){ notSaved(job, 'אין תשובה מ-FREAK צוות'); return; }
     if (js && js.ok && !PREVIEW && js.result === 'dry'){ notSaved(job, 'השרת ענה בריצת ניסיון'); return; }
     if (js && js.ok){ if (PREVIEW){ console.log('preview answer tried:', job.body.kind, job.body.answer, js.result, js.plan); return; } return afterOk(job, js); }
     notSaved(job, js && js.error); }
@@ -330,6 +415,7 @@ async function sync(){
       try{ js = await post({ ...bodyOf(job), uuid: job.uuid }, 60000); }catch(e){ break; }
       if (js && js.ok && !PREVIEW && js.result === 'dry'){ await qDel(job.uuid); notSaved(job, 'השרת ענה בריצת ניסיון'); }
       else if (js && js.ok){ await qDel(job.uuid); afterOk(job, js); }
+      else if (js && (js.error === 'NO_PASS' || (PASSMODE && js.error === 'BAD_PASS'))) break;   // the job waits in the queue (no pass yet, or the pass was refused twice)
       else if (js && js.error === 'BAD_KEY'){ showGate(GATE_BAD); break; }
       else if (js && HARD.test(String(js.error||''))){ await qDel(job.uuid); notSaved(job, js.error); }
       else {
@@ -360,11 +446,14 @@ async function load(full){
   loading = true; $('refreshBtn').disabled = true;
   try{
     const js = await post({ action:'tasks', stamp: !full && data && data.rows ? data.stamp : '' }, 60000);
+    if (PASSMODE && passProblem(js)) return;
+    if (PASSMODE && js && (js.error === 'NOT_ALLOWED' || (js.ok && js.role !== 'answerer'))){ block(T_NOTALLOWED); return; }   // a reply that does not say role 'answerer': no list, nothing real is sent
     if (js && js.ok){
+      blocked = false; passNote('');
       const rows = js.rows || (data && data.stamp === js.stamp ? data.rows : null);
       if (!rows){ loading = false; return load(true); }
       data = { ...js, rows };
-      if (MODE === 'live' && !PREVIEW) saveLS(LS.data, data);
+      if (MODE === 'live' && !PREVIEW && !PASSMODE) saveLS(LS.data, data);
       lastOk = Date.now();
       // an answer the list now shows (the newest answer of the task is it, or newer) is no longer "pending" on this phone
       for (const k of Object.keys(pend)){ const p = pend[k]; if (!p.sent) continue;   // an answer still on its way keeps its mark, however old an earlier answer of the task is
@@ -372,7 +461,7 @@ async function load(full){
       $('dot').classList.add('on');
     } else if (js && js.error === 'BAD_KEY') showGate(GATE_BAD);
     else toast('לא הצלחתי לקרוא את הרשימה: ' + (js && js.error || '?'), 'err', 4000);
-  } catch(e){ $('dot').classList.remove('on'); }
+  } catch(e){ $('dot').classList.remove('on'); if (PASSMODE && !data) passNote(T_RETRY); }
   finally { loading = false; $('refreshBtn').disabled = false; render(); if (loadAgain){ loadAgain = false; setTimeout(()=>load(false), 300); } }
 }
 
@@ -416,7 +505,8 @@ function setF(patch){ F = { ...F, ...patch }; saveLS(LS.filters, F); shown = PAG
 
 /* ================= RENDER ================= */
 function render(){
-  if (!data){ $('list').innerHTML = '<div class="empty">טוען…</div>'; return; }
+  if (blocked) return;
+  if (!data){ $('list').innerHTML = '<div class="empty">' + (PASSMODE ? 'טוען את שאלות הספקים…' : 'טוען…') + '</div>'; return; }
   const age = Date.now() - (lastOk || new Date(data.at).getTime());
   $('upd').innerHTML = 'עודכן ' + esc(hhmm(data.at)) + (data.built ? '<span class="sep"> · </span><br>הרשימה נבנתה ' + esc(hhmm(data.built)) : '');
   $('upd').classList.toggle('stale', age > 10*60000);
@@ -459,13 +549,13 @@ function renderBanners(){
     const d = r.d;
     b.push('<div class="banner red"><b>הכניסה לאתר של ' + esc(d.site) + (d.state === 'expired' ? ' פגה' : '') + '.</b> ' + (d.state === 'expired' ? 'המחירים והמלאי שלהם לא מתעדכנים מאז ' + esc(d.since) + '. ' : '') + 'צריך להתחבר שוב פעם אחת במחשב בחנות.</div>');
   }
-  if (ANSWERER && roleBad()) b.push('<div class="banner red"><b>הקישור הזה מיועד לעונה, והמפתח שבטלפון לא כזה.</b> שום תשובה לא נשלחת. לפתוח שוב את הקישור האישי.</div>');
   for (const l of (ALLOW() ? [] : (data.lost || []))){   // an answerer has no "write mine again" button (the lost-answer answers are not his)
     const ack = 'lost|'+l.key+'|'+l.at; if (snoozed(ack) || pend[ack] || pend[l.key]) continue;
     const r = (data.rows || []).find(x => x.key === l.key) || { name: l.code };
     b.push('<div class="banner red">ענית ב-' + esc(ddmm(l.at)) + ' על <b>' + esc(r.name) + '</b>: ' + esc(l.val) + ', ובגיליון כתוב עכשיו ' + (l.now === '' ? 'כלום' : '"' + esc(l.now) + '"') + '.<div class="row"><button data-lost="'+esc(l.key)+'" data-act2="again">לכתוב שוב את שלי</button> <button data-lost="'+esc(l.key)+'" data-act2="keep">להשאיר מה שבגיליון</button></div></div>');
   }
   if (data.busy && data.busy.refresh) b.push('<div class="banner amber">הקטלוג מתעדכן עכשיו (מאז ' + esc(data.busy.refresh) + '). התשובות נשמרות בטלפון ונשלחות לבד כשהעדכון נגמר.</div>');
+  if (PASSMODE) b.push('<div class="banner info">' + esc(T_TOP) + '</div>');
   if (PREVIEW) b.push('<div class="banner info"><b>תצוגה לניסיון.</b> זו הרשימה האמיתית, אבל שום תשובה לא נשמרת: אפשר ללחוץ בחופשיות. מה שלחצת יחזור אחרי רענון.</div>');
   $('banners').innerHTML = b.join('');
 }
@@ -485,7 +575,7 @@ function supSelect(id, current, extra){
   const all = [...new Set(offered([...(extra||[]), ...COMMON_SUPS, ...knownSups()]))].filter(Boolean);
   return '<select id="'+id+'">' + (all.includes(current) ? '' : '<option value="" selected>בחר ספק…</option>') + all.map(s => '<option'+(s===current?' selected':'')+'>'+esc(s)+'</option>').join('') + '</select>';
 }
-const linkFor = sup => { const h = orderLinkOf(sup); return h ? '<a class="cardlink" href="'+esc(h)+'">להזמנה</a>' : ''; };
+const linkFor = sup => { const h = PASSMODE ? '' : orderLinkOf(sup); return h ? '<a class="cardlink" href="'+esc(h)+'">להזמנה</a>' : ''; };
 function head(t, name, code){ return '<span class="kind">'+esc(KIND_HE[t.kind])+'</span> '+(t.sup ? '<span class="kind">'+esc(t.sup)+'</span>' : '')+linkFor(t.sup)+'<div class="nm">'+esc(name)+(code?'<span class="cd">'+esc(code)+'</span>':'')+'</div>'; }
 function cardHtml(t){
   const key = t.key;
@@ -592,7 +682,10 @@ document.addEventListener('click', ev => {
   }
 });
 $('refreshBtn').onclick = () => load(true);
-document.addEventListener('visibilitychange', () => { if (!document.hidden){ load(false); sync(); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden){
+  if (!PASSMODE && !hasKey() && appSid()){ location.reload(); return; }   // signed in to the app in the meantime: the page starts again (the session id is read once per load)
+  if (PASSMODE && blocked && appSid() !== SID){ location.reload(); return; }
+  load(false); sync(); } });
 $('keyBtn').onclick = async ()=>{
   const k = $('keyIn').value.trim(); if (!/^[\w\-]{20,100}$/.test(k)){ $('gateMsg').textContent = 'המפתח לא נראה תקין.'; return; }
   $('gateMsg').textContent = 'בודק…';
@@ -606,13 +699,14 @@ setInterval(sync, 5000);
 
 /* ================= START ================= */
 async function start(){
-  KEY = (()=>{ try{ return localStorage.getItem(LS.key) || ''; }catch(e){ return ''; } })();
-  if (!KEY){ showGate(''); return; }
+  KEY = PASSMODE ? '' : (()=>{ try{ return localStorage.getItem(LS.key) || ''; }catch(e){ return ''; } })();
+  if (!KEY && !PASSMODE){ showGate(''); return; }
   $('gate').classList.add('hide'); $('app').classList.remove('hide');
   $('ver').textContent = BUILD + (MODE !== 'live' ? ' · ' + MODE : '') + (PREVIEW ? ' · תצוגה' : '');
   F = { ...F, ...loadLS(LS.filters, {}) };
-  if (MODE === 'live' && !PREVIEW){ const dd = loadLS(LS.data, null); if (dd && dd.rows) data = dd; }
-  $('ordersLink').href = orderHref(null);
+  if (PASSMODE) $('ordersLink').classList.add('hide');
+  if (MODE === 'live' && !PREVIEW && !PASSMODE){ const dd = loadLS(LS.data, null); if (dd && dd.rows) data = dd; }
+  if (!PASSMODE) $('ordersLink').href = orderHref(null);
   renderFailed(); render();
   loadOrderSups();
   try{ db = await idb(); }catch(e){ toast('אין אחסון בטלפון — התשובות יישלחו רק עם קליטה', 'warn', 5000); }
@@ -621,6 +715,7 @@ async function start(){
   badge(); sync(); load(!data);
   setInterval(() => { if (!document.hidden) load(false); }, POLL_MS);
 }
+$('gateApp').href = APP_PAGE;
 takeKeyFromHash();
 if (navigator.onLine) $('dot').classList.add('on');
 start();
