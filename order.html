@@ -1517,7 +1517,9 @@ function markSheetHtml(){
   h += '<input id="mnote" type="text" maxlength="' + MARK_NOTE_MAX + '" autocomplete="off" placeholder="אפשר להוסיף הערה במילים שלך (לא חובה)">';
   for (const x of MARK_REASONS) h += '<button class="mreason" data-mreason="' + esc(x.id) + '">' + esc(x.he) + '</button>';
   // or1.11: the free note, back now that the server empties a mark row for anybody but the manager (joMarkStrip_ in
-  // JointOrder.js, version 33). It was deliberately left out of or1.9/or1.10: mark rows travel to every key inside
+  // JointOrder.js, version 33). THE PAIRING IS NOT CHECKED HERE, so it has to be remembered: this field trusts the
+  // backend to be @33 or newer. Roll the backend back on its own and the notes travel again - undo the page FIRST.
+  // The fix that would end the remembering is a capability in the jo_load reply, which this version does not have. It was deliberately left out of or1.9/or1.10: mark rows travel to every key inside
   // jo_load, so a sentence he typed would have sat in the raw data a Kingdom buyer's browser receives. A reason id is
   // a fixed word from our own list and could live with that for a day; his own sentences could not.
   h += '<div class="acts"><button data-act="mcancel">ביטול</button></div>';
