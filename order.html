@@ -1954,7 +1954,7 @@ function otherHtml(r){
   const lines = (OP.by.get(r.id) || []).slice();
   const have = new Set(lines.map(l => l.sup));
   // the brain's own invoice lines for a supplier that has no page price here (a page price wins over an invoice line of the same supplier)
-  const inv = b ? b.alt.filter(a => !a.nc && a.p > 0 && a.b === 'חשבונית אחרונה' && OP_BRAIN_SUP[a.s] !== SUP && !have.has(OP_BRAIN_SUP[a.s] || a.s)) : [];
+  const inv = b ? b.alt.filter(a => !a.nc && a.p > 0 && a.b === 'חשבונית אחרונה' && !/^\s*FREAK\s*TLV\s*$/i.test(a.s) && OP_BRAIN_SUP[a.s] !== SUP && !have.has(OP_BRAIN_SUP[a.s] || a.s)) : [];
   if (!lines.length && !inv.length) return '';
   const self = OP.self.get(r.id) || null;
   const cmpd = lines.filter(l => l.cmp !== null);
@@ -1975,7 +1975,7 @@ function otherHtml(r){
     else if (l.k === 'list') t += 'מחיר הספק' + (sameCur ? '' : ' ' + esc(OP_CUR_HE[l.cur] || inCur(l.cur)));
     else if (l.k === 'invoice') t += 'מה ששילמנו בחשבונית' + (l.d ? ' מ-' + esc(ddmm(l.d)) : '');
     else t += 'מחיר ישן' + (l.d ? ' מ-' + esc(ddmm(l.d)) : '');
-    if (l.k === 'list' && l.d && dayNoOf(OP.day) - dayNoOf(l.d) > OP.age) t += ' · מחירון מ-' + esc(ddmm(l.d));
+    if (l.k === 'list' && l.d) t += ' · מחירון מ-' + esc(ddmm(l.d));   // a fresh list price shows its date too (r2)
     else if (l.k === 'list' && !l.d) t += ' · מחירון בלי תאריך';
     if (!l.av) t += ' · אזל אצל הספק';
     if (l.u > 1) t += ' (שורה אצלו היא ' + num(l.u) + ' יחידות שלנו)';
