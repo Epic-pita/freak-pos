@@ -421,7 +421,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.10';
+const BUILD = 'or1.11';
 // or1.4 (B-BRN-8, part 2): every card of an item we carry gets ONE more grey line under its pace block — the brain's in-stock line
 // ("נמכר ~N בחודש כשיש במלאי (קצב להזמנה ~N) · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …", the brain's wording of 03/11), copied verbatim from the rates table (jo_load
 // `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
@@ -1496,7 +1496,12 @@ function markWrite(code, verb, reason, note){
   if (!markOk() || !code) return;
   const v = NOMARK + String(code);
   queue = queue.filter(j => !(j.variant_id === v && j.person === person && !(j.att > 0)));
-  const txt = 'NOMARK|' + verb + '|' + (verb === 'set' ? String(reason || '') : '') + '|' + (verb === 'set' ? String(note || '').slice(0, MARK_NOTE_MAX) : '');
+  // or1.11: the server refuses < and > ANYWHERE in a note (SAFE_TEXT in Api.js), and a refusal here is not a note
+  // that fails to save - it is the whole MARK thrown away, under a toast that says a quantity was not saved. So the
+  // two characters are taken out here, where he can be told, instead of being sent to be refused.
+  let clean = String(note || '').replace(/[<>]/g, '').slice(0, MARK_NOTE_MAX);
+  if (verb === 'set' && clean !== String(note || '').slice(0, MARK_NOTE_MAX)) toast('הסימנים < ו-> לא נשמרים בהערה, הם הוסרו', '', 2600);
+  const txt = 'NOMARK|' + verb + '|' + (verb === 'set' ? String(reason || '') : '') + '|' + (verb === 'set' ? clean : '');
   queue.push({ uuid: uuid(), ts: Date.now(), person, variant_id: v, qty: 0, att: 0, notBefore: 0, note: txt });
   saveQ(); refreshMarks(); render(); sync();
 }
@@ -1507,12 +1512,14 @@ function markSheetHtml(){
   let h = '<div class="msheet" role="dialog" aria-modal="true" aria-label="אין צורך להזמין"><div class="mbox">';
   h += '<div class="mh">אין צורך להזמין' + (r ? ' · <bdi>' + esc(r.title) + '</bdi>' : '') + '</div>';
   h += '<div class="bs">המוח יפסיק להציע את הפריט הזה אצל הספק הזה. אפשר להחזיר בכל רגע.</div>';
+  // The note goes ABOVE the reasons, not below them: two of the six say "(אכתוב בהערה)", and a tap on any reason
+  // writes the mark and closes the sheet at once - a field he only meets after that is a field he never fills.
+  h += '<input id="mnote" type="text" maxlength="' + MARK_NOTE_MAX + '" autocomplete="off" placeholder="אפשר להוסיף הערה במילים שלך (לא חובה)">';
   for (const x of MARK_REASONS) h += '<button class="mreason" data-mreason="' + esc(x.id) + '">' + esc(x.he) + '</button>';
-  // The free note is NOT offered in this version, on purpose. Mark rows still travel to every key inside jo_load, so
-  // until the server strips them for anyone but the manager (tomorrow, its own step), a note he typed would sit in
-  // the raw data a Kingdom buyer's browser receives. A reason id is a fixed word from our own list and can live with
-  // that for a day; his own sentences cannot. The field comes back with the wire fix.
-  // h += '<input id="mnote" …>  — restored together with the server-side strip
+  // or1.11: the free note, back now that the server empties a mark row for anybody but the manager (joMarkStrip_ in
+  // JointOrder.js, version 33). It was deliberately left out of or1.9/or1.10: mark rows travel to every key inside
+  // jo_load, so a sentence he typed would have sat in the raw data a Kingdom buyer's browser receives. A reason id is
+  // a fixed word from our own list and could live with that for a day; his own sentences could not.
   h += '<div class="acts"><button data-act="mcancel">ביטול</button></div>';
   return h + '</div></div>';
 }
@@ -1540,7 +1547,12 @@ function render(){
   $('view').className = view === 'catalog' ? 'v-cat' : 'v-other';
   setTopH();
   // keep the focused input (a stepper's number, the search box, a price bound or a facet's search box) and what was typed in it across the re-render
-  const act = document.activeElement, keep = act && act.dataset && act.dataset.rin ? null : act && act.dataset && act.dataset.qin ? { v: act.dataset.qin, val: act.value, sel: act.selectionStart } : act && (['q', 'pmin', 'pmax'].includes(act.id) || /^fq_/.test(act.id || '')) ? { fid: act.id, val: act.value, sel: act.selectionStart } : null;
+  // or1.11: 'mnote' is in this list for a reason a reviewer had to find. The mark sheet is drawn inside the same
+  // innerHTML, so a redraw while he is typing his note recreates the field EMPTY - and the tap on a reason reads
+  // whatever is in it at that moment, so the sentence would be lost with nothing to show for it. The overlay blocks
+  // taps, so the redraws that reach it are the network's: an earlier mark confirming (written() calls renderCatalog),
+  // a retry landing, a new catalog stamp from the 07:30 push, a poll that had to start again from zero.
+  const act = document.activeElement, keep = act && act.dataset && act.dataset.rin ? null : act && act.dataset && act.dataset.qin ? { v: act.dataset.qin, val: act.value, sel: act.selectionStart } : act && (['q', 'pmin', 'pmax', 'mnote'].includes(act.id) || /^fq_/.test(act.id || '')) ? { fid: act.id, val: act.value, sel: act.selectionStart } : null;
   if (view === 'catalog') renderCatalog(); else if (view === 'mine') renderMine(); else if (view === 'recv') renderRecv(); else renderSummary();
   if (keep){ const inp = keep.fid ? $(keep.fid) : document.querySelector('input[data-qin="' + CSS.escape(keep.v) + '"]'); if (inp){ inp.value = keep.val; inp.focus({ preventScroll:true }); try{ inp.setSelectionRange(keep.sel, keep.sel); }catch(e){} } }
 }
@@ -2209,7 +2221,7 @@ document.addEventListener('click', ev => {
   // or1.9 (L17): the brain is wrong about this item. The tap only OPENS the sheet; nothing is written until he picks a reason.
   if (t.dataset.mmark){ if (!markOk()) return; markFor = String(t.dataset.mmark); renderCatalog(); return; }
   if (t.dataset.act === 'mcancel'){ markFor = ''; renderCatalog(); return; }
-  if (t.dataset.mreason){ const code = markFor, note = ($('mnote') || {}).value || ''; markFor = ''; markWrite(code, 'set', t.dataset.mreason, note); return; }   // the note field is not offered in this version, so this is '' — see markSheetHtml
+  if (t.dataset.mreason){ const code = markFor, note = ($('mnote') || {}).value || ''; markFor = ''; markWrite(code, 'set', t.dataset.mreason, note); return; }   // or1.11: the note is offered again, and reaches nobody but us (joMarkStrip_)
   if (t.dataset.munmark){ markWrite(String(t.dataset.munmark), 'clear', '', ''); return; }   // "החזר": the brain may propose it again
   if (t.dataset.open){ expanded.add(t.dataset.open); renderCatalog(); return; }   // a list row opens into its card
   if (t.dataset.price){ F.pmin = ''; F.pmax = ''; shown = PAGE; sortSnap = null; saveF(); renderCatalog(); return; }
