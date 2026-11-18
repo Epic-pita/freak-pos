@@ -421,7 +421,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.13';
+const BUILD = 'or1.14';
 // or1.4 (B-BRN-8, part 2): every card of an item we carry gets ONE more grey line under its pace block — the brain's in-stock line
 // ("נמכר ~N בחודש כשיש במלאי (קצב להזמנה ~N) · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …", the brain's wording of 03/11), copied verbatim from the rates table (jo_load
 // `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
@@ -816,6 +816,8 @@ function setSettings(raw){
     const alt = [];
     for (const a of (Array.isArray(r.alt) ? r.alt.slice(0, 2) : [])){ const p = Number(a && a.p); if (!Number.isFinite(p) || p <= 0) continue; alt.push({ s: txt(a.s, '', 24), p, b: txt(a.b, '', 40) }); }
     BR.set(String(id), { q, why: txt(r.why, '', 70), fl: txt(r.fl, '', 120), bs: txt(r.bs, '', 24), by_price: r.by_price === true,
+    ur: Number.isFinite(Number(r.ur)) && Number(r.ur) > 1 ? Math.round(Number(r.ur)) : 0,
+    qu: Number.isFinite(Number(r.qu)) && Number(r.qu) > 0 ? Math.round(Number(r.qu)) : 0,
       ils: Number.isFinite(Number(r.ils)) && r.ils !== '' && r.ils !== null ? Number(r.ils) : null, alt });
   }
   brainGate();   // a phone that already knows it is not the manager never draws the block, not even for the moment until the next reply
@@ -1844,6 +1846,15 @@ function brainHtml(r){
     '<span class="bs">המוח הציע ' + num(b.q) + ' · ' + (mk.pending ? 'נשמר…' : 'סומן ' + esc(ddmm(mk.at))) + '</span>' +
     (markOk() ? '<div class="acts"><button data-munmark="' + esc(String(r.our_code)) + '">החזר</button></div>' : '') + '</div>';
   let h = '<div class="brain"><span class="bq">' + esc(S.brain.label_he) + ' ' + num(b.q) + '</span>' + (b.why ? ' <span class="bwhy">' + bidiNums(b.why) + '</span>' : '');
+  // or1.14: on a row that holds several of OUR units (a Kaissa display of 15 singles), the quantity is in ROWS. The
+  // brain asked for units, the page asks for rows, and the two numbers are not the same - so the card says which it
+  // is. Without this line a "3" on a 15-count display reads as 3 singles, and the whole point of the conversion is
+  // to stop an order being 15 times what it should be.
+  // or1.14: the factor AND the product. ceil() is deliberately generous - it has to be, a display is the only way to
+  // buy the single - but a factor on its own hides by how much: 4 singles on a 3-per-row display is 2 rows = 6, half
+  // again as many. The line says what the order actually buys and what was asked for, so the overshoot is visible.
+  if (b.ur) h += '<span class="bsrc">שורה אחת כאן = ' + num(b.ur) + ' יחידות אצלנו, אז ' + num(b.q) + ' שורות = ' + num(b.q * b.ur) + ' יחידות'
+    + (b.qu ? ' (המוח ביקש ' + num(b.qu) + ')' : '') + '</span>';
   if (b.bs) h += '<span class="bsrc">המוח רושם את הפריט על ' + esc(b.bs) + '; הוא מופיע כאן לפי ההמלצה בקטלוג</span>';
   if (b.fl) h += '<span class="bfl">' + bidiNums(b.fl) + '</span>';
   for (const a of b.alt) h += '<span class="balt">גם אצל ' + esc(a.s) + ' — ' + esc(shekel(a.p)) + esc(altGapHe(r, a)) + (a.b ? ' <span class="bfl" style="display:inline">(' + esc(a.b) + ')</span>' : '') + '</span>';
@@ -1886,9 +1897,11 @@ function brainBoxHtml(){
   }
   if (S.brain.missing_n || out.length){
     // bidiNums, not a bare <b>: a digit beside Hebrew and a Latin supplier name reads backwards without the isolation
-    // "no product of theirs is linked to it", not "they do not carry it": on School market most of these are items their own
-    // catalogue does list and our code is simply not tied to a product of theirs yet, which is a different fix
-    const missHe = [S.brain.missing_n ? num(S.brain.missing_n) + ' שהמוח מציע ואין להם מוצר מקושר בקטלוג של ' + supName : '', out.length ? num(out.length) + ' שאזלו אצלו' : '']
+    // or1.14: the heading says only what is true of EVERY line under it - that they are not among the items above -
+    // and each line gives its own reason. It used to say "no product of theirs is linked to it", which a reviewer
+    // showed was false for 9 of Kaissa's 19: their row IS in the supplier's catalogue, tied to our own display code,
+    // and the line now says so. A heading that is wrong about half its list is a heading he stops believing.
+    const missHe = [S.brain.missing_n ? num(S.brain.missing_n) + ' שהמוח מציע ואינם ברשימה שלמעלה — הסיבה ליד כל אחד' : '', out.length ? num(out.length) + ' שאזלו אצל ' + supName : '']
       .filter(Boolean).join(' · ');
     h += '<div class="bmiss"><span class="chip tog' + (showBmiss ? ' on' : '') + '" data-tog="bmiss">' + bidiNums(missHe) + ' ' + (showBmiss ? '▴' : '▾') + '</span>';
     if (showBmiss){
