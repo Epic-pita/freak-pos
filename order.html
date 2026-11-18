@@ -421,7 +421,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.16';
+const BUILD = 'or1.17';
 // or1.4 (B-BRN-8, part 2): every card of an item we carry gets ONE more grey line under its pace block — the brain's in-stock line
 // ("נמכר ~N בחודש כשיש במלאי (קצב להזמנה ~N) · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …", the brain's wording of 03/11), copied verbatim from the rates table (jo_load
 // `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
@@ -834,7 +834,7 @@ function setSettings(raw){
     const r = byId[id]; if (!r || typeof r !== 'object') continue;
     const q = Math.floor(Number(r.q)); if (!Number.isFinite(q) || q <= 0 || q > MAX_QTY) continue;
     const alt = [];
-    for (const a of (Array.isArray(r.alt) ? r.alt.slice(0, 2) : [])){ const p = Number(a && a.p); if (!Number.isFinite(p) || p <= 0) continue; alt.push({ s: txt(a.s, '', 24), p, b: txt(a.b, '', 40) }); }
+    for (const a of (Array.isArray(r.alt) ? r.alt.slice(0, 2) : [])){ const p = Number(a && a.p), nc = !!a && a.nc === true; if (!nc && (!Number.isFinite(p) || p <= 0)) continue; alt.push({ s: txt(a.s, '', 24), p: nc ? 0 : p, b: txt(a.b, '', 80), m: txt(a.m, '', 80), nc }); }
     BR.set(String(id), { q, why: txt(r.why, '', 70), fl: txt(r.fl, '', 120), bs: txt(r.bs, '', 24), by_price: r.by_price === true,
     ur: Number.isFinite(Number(r.ur)) && Number(r.ur) > 1 ? Math.round(Number(r.ur)) : 0,
     qu: Number.isFinite(Number(r.qu)) && Number(r.qu) > 0 ? Math.round(Number(r.qu)) : 0,
@@ -1891,7 +1891,11 @@ function brainHtml(r){
     + '<span class="bsrc"><b>עלות מלאה</b> ' + esc(shekel2(b.ld.fu)) + ' ליחידה</span>'
     + '<span class="bfl">מקדם ×' + esc(String(Math.round(b.ld.f * 1000) / 1000)) + ' (לא מספר מחשבונית) ממשלוח <bdi dir="ltr">' + esc(b.ld.doc) + '</bdi>, שער <bdi dir="ltr">' + esc(String(b.ld.rate)) + '</bdi></span>';
   else if (b.ld && b.ld.st === 'n') h += '<span class="bsrc">עוד אין עלויות למשלוח הזה</span>';
-  for (const a of b.alt) h += '<span class="balt">גם אצל ' + esc(a.s) + ' — ' + esc(shekel(a.p)) + esc(altGapHe(r, a)) + (a.b ? ' <span class="bfl" style="display:inline">(' + esc(a.b) + ')</span>' : '') + '</span>';
+  for (const a of b.alt){
+    // or1.17 (B-CAT-2, DL-358): a forward figure with its factor line (a.m), or no number at all when the supplier has no costed shipment (a.nc)
+    if (a.nc){ h += '<span class="balt">גם אצל ' + esc(a.s) + ' — ' + esc(a.m || 'עוד אין עלויות למשלוח הזה') + '</span>'; continue; }
+    h += '<span class="balt">גם אצל ' + esc(a.s) + ' — ' + esc(shekel(a.p)) + esc(altGapHe(r, a)) + (a.b ? ' <span class="bfl" style="display:inline">(' + esc(a.b) + ')</span>' : '') + (a.m ? '<span class="bfl">' + esc(a.m) + '</span>' : '') + '</span>';
+  }
   // the one new button: it says the brain is wrong about THIS item at THIS supplier, and asks why
   if (markOk() && r.our_code) h += '<div class="acts"><button data-mmark="' + esc(String(r.our_code)) + '">המוח טועה — אין צורך להזמין</button></div>';
   return h + '</div>';
@@ -2198,7 +2202,7 @@ function supplierText(){
   const sum = round2(go.reduce((s, x) => s + (x.lineSum || 0), 0)), units = go.reduce((s, x) => s + x.total, 0), noPrice = go.filter(x => x.lineSum == null).length;
   const out = [(S.name_he || S.title_he) + ' — הזמנה ' + ddmmyyyy(new Date()), ''];
   for (const x of go) out.push(line(x));
-  out.push('', 'סה״כ ' + S.price.dealer_he.replace(/^מחיר\s+/, '') + ': ' + money(sum) + ' · ' + go.length + ' פריטים · ' + units + ' יח׳' + (noPrice ? ' (' + noPrice + ' בלי מחיר)' : ''));
+  out.push('', 'סה״כ ' + S.price.dealer_he.replace(/^מחיר\s+/, '').replace(/^הספק(?=\s|$)/, 'במחיר הספק') + ': ' + money(sum) + ' · ' + go.length + ' פריטים · ' + units + ' יח׳' + (noPrice ? ' (' + noPrice + ' בלי מחיר)' : ''));
   if (off.length){ out.push('', 'לא נכלל בסה״כ:'); for (const x of off) out.push(line(x) + (x.r.orphan ? '' : ' · ' + S.availability.out_he)); }   // an orphan's line already starts '(לא בקטלוג)'
   return out.join('\n');
 }
