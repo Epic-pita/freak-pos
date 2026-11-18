@@ -1944,15 +1944,17 @@ function brainHtml(r){
  */
 const OP_SYM = { ILS:'₪', EUR:'€', USD:'$' };
 const OP_CUR_HE = { ILS:'בשקלים', EUR:'באירו', USD:'בדולר' };
-const opMoney = (p, cur) => (OP_SYM[cur] || (cur ? cur + ' ' : '')) + Number(p).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: cur === 'ILS' ? 2 : 4 });
+const opMoney = (p, cur) => (OP_SYM[cur] || (cur ? cur + ' ' : '')) + Number(p).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });   // to the cent; the data keeps 4 decimals
+// the brain names a supplier by its own word; a page line carries the page id. One map, so the two are compared by id
+const OP_BRAIN_SUP = { 'ICO':'ico', 'Kaissa':'kaissa', 'PSI':'psi', 'School market':'schoolmarket', 'הקובייה':'hakubia' };
 const dayNoOf = d => Date.parse(d + 'T00:00:00Z') / 864e5;
 function otherHtml(r){
   if (!OP.on || !S.brain || !r || r.orphan) return '';
   const b = brainOfRow(r);
   const lines = (OP.by.get(r.id) || []).slice();
-  const have = new Set(lines.map(l => l.s));
+  const have = new Set(lines.map(l => l.sup));
   // the brain's own invoice lines for a supplier that has no page price here (a page price wins over an invoice line of the same supplier)
-  const inv = b ? b.alt.filter(a => !a.nc && a.p > 0 && a.b === 'חשבונית אחרונה' && !have.has(a.s)) : [];
+  const inv = b ? b.alt.filter(a => !a.nc && a.p > 0 && a.b === 'חשבונית אחרונה' && OP_BRAIN_SUP[a.s] !== SUP && !have.has(OP_BRAIN_SUP[a.s] || a.s)) : [];
   if (!lines.length && !inv.length) return '';
   const self = OP.self.get(r.id) || null;
   const cmpd = lines.filter(l => l.cmp !== null);
@@ -1969,12 +1971,14 @@ function otherHtml(r){
   for (const l of lines){
     const sameCur = l.cur === S.currency.code;
     let t = esc(l.s) + ': ' + esc(opMoney(l.p, l.cur)) + ' ליחידה · ';
-    if (l.k === 'list') t += 'מחיר הספק' + (sameCur ? '' : ' ' + esc(OP_CUR_HE[l.cur] || inCur(l.cur)));
+    if (l.k === 'list' && l.sup === 'psi') t += 'מחיר משוער לפי המחירון' + (sameCur ? '' : ' ' + esc(OP_CUR_HE[l.cur] || inCur(l.cur)));   // PSI's page price is the list price x a median dealer factor, not its own price
+    else if (l.k === 'list') t += 'מחיר הספק' + (sameCur ? '' : ' ' + esc(OP_CUR_HE[l.cur] || inCur(l.cur)));
     else if (l.k === 'invoice') t += 'מה ששילמנו בחשבונית' + (l.d ? ' מ-' + esc(ddmm(l.d)) : '');
     else t += 'מחיר ישן' + (l.d ? ' מ-' + esc(ddmm(l.d)) : '');
     if (l.k === 'list' && l.d && dayNoOf(OP.day) - dayNoOf(l.d) > OP.age) t += ' · מחירון מ-' + esc(ddmm(l.d));
+    else if (l.k === 'list' && !l.d) t += ' · מחירון בלי תאריך';
     if (!l.av) t += ' · אזל אצל הספק';
-    if (l.u > 1) t += ' (שורה אצלו = ' + num(l.u) + ' יחידות שלנו)';
+    if (l.u > 1) t += ' (שורה אצלו היא ' + num(l.u) + ' יחידות שלנו)';
     if (self && l.cmp !== null){
       const g = Math.round((self.p - l.cmp) * 100) / 100;
       t += g === 0 ? ' · אותו מחיר' : g > 0 ? ' · זול ב-' + esc(shekel2(g)) : ' · יקר ב-' + esc(shekel2(-g));
