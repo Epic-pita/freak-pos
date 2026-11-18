@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1a20">
+<meta name="robots" content="noindex">
+<link rel="icon" href="./icon-192.png">
+<title>FREAK — הזמנות לקוחות</title>
+<style>
+  :root{
+    --bg:#0f1a20; --surface:#16262e; --surface2:#1d323c; --line:#2a4450;
+    --teal:#3d7a94; --teal-hi:#5aa3c2; --green:#2E7D32; --green-hi:#43a047; --amber:#c77f14;
+    --red:#c0392b; --red-soft:#3a1512; --ink:#e8eef1; --dim:#8fa6b0; --mono:'Roboto Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0; background:var(--bg); color:var(--ink)}
+  body{font-family:-apple-system,'Segoe UI',Roboto,'Heebo',Arial,sans-serif; font-size:16px; line-height:1.4; padding-bottom:60px}
+  button{font-family:inherit; font-size:15px; border:none; border-radius:10px; cursor:pointer; color:var(--ink); background:var(--surface2); padding:10px 12px}
+  button:disabled{opacity:.45; cursor:default}
+  button.primary{background:var(--teal); font-weight:700}
+  button.green{background:var(--green)}
+  button.red{background:var(--red)}
+  button.ghost{background:transparent; border:1px solid var(--line)}
+  input,select,textarea{font-family:inherit; font-size:16px; color:var(--ink); background:var(--surface2); border:1px solid var(--line); border-radius:10px; padding:10px; width:100%}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--teal)}
+  label{display:block; font-size:13px; color:var(--dim); margin:12px 0 4px}
+  a{color:var(--teal-hi)}
+  .hide{display:none !important}
+  .wrap{max-width:640px; margin:0 auto; padding:0 12px}
+  #top{position:sticky; top:0; z-index:50; background:var(--surface); border-bottom:1px solid var(--line)}
+  #topline{display:flex; align-items:center; gap:10px; padding:9px 12px; max-width:640px; margin:0 auto}
+  #title{font-weight:700}
+  #env{background:var(--amber); color:#000; font-size:12px; font-weight:700; border-radius:9px; padding:2px 8px}
+  #me{margin-inline-start:auto; font-size:13px; color:var(--dim)}
+  #menuBtn{padding:6px 11px}
+  #tabs{display:flex; gap:6px; overflow-x:auto; padding:8px 12px 10px; max-width:640px; margin:0 auto; scrollbar-width:none}
+  .tab{flex:none; background:var(--surface2); border:1px solid var(--line); border-radius:20px; padding:7px 12px; font-size:14px; white-space:nowrap}
+  .tab.on{background:var(--teal); border-color:var(--teal)}
+  .tab .n{font-family:var(--mono); font-size:12px; margin-inline-start:4px}
+  .tab .n.red{color:#ffb4a8}
+  .bigbtn{display:block; width:100%; font-size:18px; padding:14px; margin:12px 0}
+  .tools{display:flex; gap:8px; margin:10px 0}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:11px 12px; margin:8px 0; cursor:pointer}
+  .card .l1{display:flex; gap:8px; align-items:baseline}
+  .card .item{font-weight:700; flex:1}
+  .card .who{font-size:13px; color:var(--dim)}
+  .card .why{font-size:14px; color:#ffb4a8; margin-top:4px}
+  .card .why.ok{color:#9fe0a6}
+  .chip{display:inline-block; background:var(--surface2); border:1px solid var(--line); border-radius:14px; padding:2px 9px; font-size:12px; white-space:nowrap}
+  .chip.st-ORDERED{border-color:#5a4418; color:#ffd479} .chip.st-ARRIVED,.chip.st-TOLD{border-color:#2f6b3a; color:#9fe0a6}
+  .chip.st-CANT{border-color:var(--red); color:#ffb4a8} .chip.free{border-color:#5a4418; color:#ffd479}
+  .banner{border-radius:12px; padding:10px 12px; font-size:14px; margin:10px 0}
+  .banner.red{background:var(--red-soft); color:#f0b4ac; border:1px solid var(--red)}
+  .banner.amber{background:#3a2c10; color:#ffd479; border:1px solid #5a4418}
+  .banner.info{background:#10303a; color:#9fd8ea; border:1px solid #1f5a6a}
+  .banner.green{background:#12301a; color:#9fe0a6; border:1px solid #2f6b3a}
+  .sheet{position:fixed; inset:0; z-index:80; background:var(--bg); overflow-y:auto}
+  .sheet .head{position:sticky; top:0; background:var(--surface); border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; padding:10px 12px}
+  .sheet .head b{flex:1}
+  .kv{display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:15px; margin:10px 0}
+  .kv span:nth-child(odd){color:var(--dim)}
+  .actions{display:flex; flex-wrap:wrap; gap:8px; margin:12px 0}
+  .actions button{flex:1 1 45%}
+  .log{font-size:13px; color:var(--dim); border-top:1px solid var(--line); margin-top:12px; padding-top:8px}
+  .log div{margin:3px 0}
+  .pick{background:var(--surface2); border:1px solid var(--line); border-radius:10px; padding:9px 10px; margin:5px 0; cursor:pointer; font-size:15px}
+  .pick small{color:var(--dim); display:block; font-size:12px}
+  .chosen{background:#10303a; border:1px solid #1f5a6a; border-radius:12px; padding:10px 12px; margin:8px 0}
+  .row2{display:flex; gap:8px} .row2 > *{flex:1}
+  .stepper{display:flex; align-items:center; gap:8px} .stepper button{width:44px; font-size:20px; padding:6px} .stepper input{text-align:center; width:70px}
+  #reader{width:100%; max-width:480px; margin:8px auto; border-radius:12px; overflow:hidden}
+  #toast{position:fixed; bottom:16px; left:12px; right:12px; z-index:200; display:none; align-items:center; gap:10px; background:#24414d; border-radius:12px; padding:12px 14px; font-size:15px; box-shadow:0 6px 24px #0008}
+  #toast.warn{background:#5a2a20} #toast.ok{background:#1e4a28}
+  #busy{position:fixed; top:0; left:0; right:0; height:3px; background:var(--teal-hi); z-index:300; display:none; animation:pulse 1s infinite}
+  @keyframes pulse{0%{opacity:.3}50%{opacity:1}100%{opacity:.3}}
+  .muted{color:var(--dim); font-size:13px}
+  .empty{text-align:center; color:var(--dim); padding:30px 0}
+</style>
+</head>
+<body>
+<div id="busy"></div>
+<div id="top">
+  <div id="topline">
+    <span id="title">הזמנות לקוחות</span><span id="env" class="hide"></span>
+    <span id="me"></span>
+    <button id="menuBtn" type="button" aria-label="תפריט">☰</button>
+  </div>
+  <div id="tabs" class="hide"></div>
+</div>
+
+<!-- gate: the personal code -->
+<div id="gate" class="wrap hide">
+  <h2>כניסה</h2>
+  <p>מקלידים את הקוד האישי שקיבלת מכריס, פעם אחת. הטלפון זוכר אותו.</p>
+  <label for="keyIn">קוד אישי</label>
+  <input id="keyIn" autocomplete="off" autocapitalize="off" spellcheck="false" dir="ltr">
+  <button id="keySave" class="primary bigbtn" type="button">כניסה</button>
+  <div id="gateMsg" class="banner red hide"></div>
+</div>
+
+<!-- home -->
+<div id="home" class="wrap hide">
+  <button id="newBtn" class="primary bigbtn" type="button">➕ בקשה חדשה</button>
+  <div class="tools">
+    <input id="q" placeholder="חיפוש: שם, מוצר, 4 ספרות אחרונות או טלפון מלא" autocomplete="off">
+  </div>
+  <div id="listMsg"></div>
+  <div id="list"></div>
+</div>
+
+<!-- one request -->
+<div id="reqSheet" class="sheet hide">
+  <div class="head"><button id="reqBack" type="button">→</button><b id="reqTitle"></b></div>
+  <div class="wrap" id="reqBody"></div>
+</div>
+
+<!-- new request -->
+<div id="newSheet" class="sheet hide">
+  <div class="head"><button id="newBack" type="button">→</button><b>בקשה חדשה</b></div>
+  <div class="wrap">
+    <label>המוצר</label>
+    <div id="chosen" class="chosen hide"></div>
+    <div id="pickArea">
+      <div class="row2">
+        <input id="itemQ" placeholder="שם המוצר או ברקוד" autocomplete="off">
+        <button id="scanBtn" type="button" style="flex:0 0 auto">📷 סריקה</button>
+      </div>
+      <div id="reader" class="hide"></div>
+      <div id="picks"></div>
+      <div class="row2" style="margin-top:6px">
+        <button id="supSearchBtn" type="button" class="ghost hide">חיפוש בקטלוג הספקים</button>
+        <button id="freeBtn" type="button" class="ghost">לא נמצא — לכתוב ביד</button>
+      </div>
+    </div>
+    <label for="qty">כמות</label>
+    <div class="stepper"><button type="button" id="qMinus">−</button><input id="qty" inputmode="numeric" value="1"><button type="button" id="qPlus">+</button></div>
+    <label for="cName">שם הלקוח</label>
+    <input id="cName" autocomplete="off">
+    <label for="cPhone">טלפון</label>
+    <input id="cPhone" type="tel" dir="ltr" autocomplete="off" placeholder="05X-XXXXXXX או +…">
+    <label><input id="preChk" type="checkbox" style="width:auto"> הזמנה מוקדמת (מוצר שעוד לא יצא)</label>
+    <input id="preDate" type="date" class="hide">
+    <label for="cNote">הערה (לא חובה)</label>
+    <input id="cNote" maxlength="200" autocomplete="off">
+    <div id="newMsg"></div>
+    <button id="saveNew" class="primary bigbtn" type="button">שמירה</button>
+  </div>
+</div>
+
+<!-- menu -->
+<div id="menuSheet" class="sheet hide">
+  <div class="head"><button id="menuBack" type="button">→</button><b>תפריט</b></div>
+  <div class="wrap" id="menuBody"></div>
+</div>
+
+<div id="toast"><span id="toastMsg"></span></div>
+<script src="./html5-qrcode.min.js" defer></script>
+<script>
+'use strict';
+/* ================= CONFIG ================= */
+const BUILD = 'r1.0';
+// Backends: the Apps Script deployments of the special-orders sheet. ?api=test = TEST (invented data only),
+// ?api=local = the bench on this PC. Never a URL from the address bar.
+const LIVE_API = '';   // set at the LIVE release (after Chris's yes)
+const TEST_API = 'https://script.google.com/macros/s/AKfycbwdutmsWS9ig4pXuYd-_R5Ig03JhifRlEDT3dzFQtFqFvoVbKR2wOZ5Hs1W9WBxSxTl/exec';   // TEST deployment (19/10; invented data only)
+const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+const MODE = (()=>{ const a = new URLSearchParams(location.search).get('api'); return a==='test' ? 'test' : a==='local' && LOCAL ? 'local' : 'live'; })();
+const API = MODE==='test' ? TEST_API : MODE==='local' ? location.origin + '/api' : LIVE_API;
+const TZ = 'Asia/Jerusalem';
+const LS = { key: 'g1_key', dev: 'g1_dev', tab: 'g1_tab' };   // no customer data and no catalog stored on the phone (the till's queue shares this storage)
+
+/* ================= STATE ================= */
+let KEY = '', BOOT = null, LIST = null, CAT = null, tab = 'today', query = '';
+let chosen = null, freeMode = false;
+const pending = new Map();  // uuid → body, writes not yet confirmed (in memory only)
+
+/* ================= UTIL ================= */
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&3|8)).toString(16)}));
+const ddmm = iso => { const d=new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('he-IL',{timeZone:TZ,day:'2-digit',month:'2-digit'}); };
+const daysAgo = iso => { const d=new Date(iso); return isNaN(d) ? '' : Math.max(0, Math.round((Date.now()-d.getTime())/86400000)); };
+const norm = s => String(s||'').toLowerCase().replace(/["'׳״`.,:;!?()\[\]{}\/\\_\-]+/g,' ').replace(/\s+/g,' ').trim();
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
+function toast(msg, cls='', ms=2800){ const t=$('toast'); $('toastMsg').textContent=msg; t.className=cls; t.style.display='flex'; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', ms); }
+function busy(on){ $('busy').style.display = on ? 'block' : 'none'; }
+function fetchT(url, opts, ms){ const c=new AbortController(); const t=setTimeout(()=>c.abort(), ms); return fetch(url, {...opts, signal:c.signal}).finally(()=>clearTimeout(t)); }
+async function post(body, ms=60000){
+  if(!API) return { ok:false, code:'NO_API', error:'הדף עוד לא מחובר לשרת' };
+  for(let i=0;;i++){
+    let js;
+    try{
+      const r = await fetchT(API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ k: KEY, build: BUILD, deviceId: devId(), ...body }) }, ms);
+      js = await r.json();
+    }catch(e){ return { ok:false, code:'NET', error:'אין חיבור לשרת — לנסות שוב' }; }
+    if(!(js && js.code === 'GET_NOT_POST') || i >= 3) return js;
+  }
+}
+function devId(){ let d = lsGet(LS.dev); if(!d || !/^[A-Za-z0-9\-]{16,64}$/.test(d)){ d = uuid(); lsSet(LS.dev, d); } return d; }
+const L = () => (BOOT && BOOT.labels) || { states:{}, actions:{}, cantReasons:{}, cancelReasons:{}, toldMethods:{} };
+function show(id){ ['gate','home'].forEach(x=>$(x).classList.toggle('hide', x!==id)); $('tabs').classList.toggle('hide', id!=='home'); }
+function sheet(id, on){ $(id).classList.toggle('hide', !on); if(on) $(id).scrollTop = 0; }
+
+/* ================= START ================= */
+function takeLinkKey(){
+  const m = /[#&]k=([^&]+)/.exec(location.hash||'');
+  if(m){ lsSet(LS.key, decodeURIComponent(m[1])); history.replaceState(null, '', location.pathname + location.search); }
+}
+async function start(){
+  takeLinkKey();
+  if(MODE!=='live'){ $('env').textContent = MODE==='test' ? 'ניסיון' : 'מקומי'; $('env').classList.remove('hide'); }
+  KEY = lsGet(LS.key) || '';
+  if(!KEY){ show('gate'); return; }
+  busy(true);
+  const r = await post({ action:'boot' });
+  busy(false);
+  if(!r.ok){
+    if(r.code==='BAD_KEY' || r.code==='NO_KEY'){ lsDel(LS.key); KEY=''; show('gate'); gateMsg(r.error); return; }
+    show('home'); $('listMsg').innerHTML = '<div class="banner red">'+esc(r.error||'שגיאה')+' <button type="button" onclick="start()">לנסות שוב</button></div>'; return;
+  }
+  BOOT = r;
+  if(r.env==='TEST' && MODE==='live'){ $('env').textContent='ניסיון'; $('env').classList.remove('hide'); }   // a TEST backend always says so
+  $('me').textContent = r.me.name + (r.me.role==='manager' ? ' · מנהל/ת' : '') + (r.shopPhone ? ' · טלפון החנות' : '');
+  $('supSearchBtn').classList.toggle('hide', !r.supplierSearch);
+  tab = lsGet(LS.tab) || 'today';
+  show('home');
+  loadList();
+  loadCatalog();
+}
+function gateMsg(t){ const g=$('gateMsg'); g.textContent=t||''; g.classList.toggle('hide', !t); }
+$('keySave').onclick = ()=>{ const k=$('keyIn').value.trim(); if(k.length<12) return gateMsg('הקוד קצר מדי'); lsSet(LS.key, k); $('keyIn').value=''; gateMsg(''); start(); };
+
+/* ================= LIST ================= */
+async function loadList(){
+  busy(true);
+  const r = await post({ action:'list' });
+  busy(false);
+  if(!r.ok){ $('listMsg').innerHTML='<div class="banner red">'+esc(r.error)+' <button type="button" onclick="loadList()">לנסות שוב</button></div>'; return; }
+  $('listMsg').innerHTML='';
+  LIST = r;
+  renderTabs(); renderList();
+}
+function renderTabs(){
+  const rows = LIST ? LIST.rows : [];
+  const open = rows.filter(x=>!isClosed(x.state) && !x.triage).length;
+  const closed = rows.filter(x=>isClosed(x.state)).length;
+  const waiting = rows.filter(isWaiting).length;
+  const t = [['today','לטפל היום', LIST ? LIST.todayCount : 0, true], ['order','להזמנה', waiting], ['open','כל הפתוחות', open], ['closed','נסגרו', closed]];
+  if(BOOT && BOOT.me.role==='manager' && LIST && LIST.triageCount) t.push(['triage','מיון', LIST.triageCount, true]);
+  if(!t.some(x=>x[0]===tab)) tab='today';
+  $('tabs').innerHTML = t.map(x=>'<button type="button" class="tab'+(x[0]===tab?' on':'')+'" data-t="'+x[0]+'">'+x[1]+'<span class="n'+(x[3]&&x[2]?' red':'')+'">'+x[2]+'</span></button>').join('');
+  $('tabs').querySelectorAll('.tab').forEach(b=>b.onclick=()=>{ tab=b.dataset.t; lsSet(LS.tab, tab); renderTabs(); renderList(); });
+}
+const CLOSED = { PICKED:1, CANCELLED:1, SHELF:1, CANT_TOLD:1 };
+const isClosed = s => !!CLOSED[s];
+const isWaiting = x => (x.state==='CHECKING' || x.state==='CAN') && !x.triage;
+let orderSup = '';   // the supplier picked on the "להזמנה" tab
+function rowsForTab(){
+  const rows = LIST ? LIST.rows : [];
+  if(tab==='today') return rows.filter(x=>x.today);
+  if(tab==='open') return rows.filter(x=>!isClosed(x.state) && !x.triage);
+  if(tab==='closed') return rows.filter(x=>isClosed(x.state));
+  if(tab==='triage') return rows.filter(x=>x.triage);
+  return rows;
+}
+function matches(x, q){
+  if(!q) return true;
+  const d = q.replace(/\D/g,'');
+  if(d.length===4 && x.phone4 && x.phone4.endsWith(d)) return true;
+  const n = norm(q);
+  return norm(x.item).includes(n) || norm(x.first).includes(n) || norm(x.id).includes(n);
+}
+function card(x){
+  const st = L().states[x.state] || x.state;
+  const why = x.today ? '<div class="why">'+esc(x.today)+'</div>' : '';
+  return '<div class="card" data-id="'+esc(x.id)+'"><div class="l1"><span class="item">'+esc(x.item)+(x.qty>1?' ×'+x.qty:'')+'</span>'
+    +'<span class="chip st-'+esc(x.state)+'">'+esc(st)+'</span></div>'
+    +'<div class="who">'+esc(x.first)+' <bdi dir="ltr">'+esc(x.phone4)+'</bdi> · '+esc(x.id)+' · '+ddmm(x.created)+(x.supplier?' · '+esc(x.supplier):'')+(x.free?' · <span class="chip free">נכתב ביד</span>':'')+'</div>'+why
+    +(x.triage && tab==='triage' ? '<div class="actions"><button type="button" class="green" data-tri="keep">עדיין רלוונטי</button><button type="button" class="red" data-tri="cancel">כבר לא</button></div>' : '')
+    +'</div>';
+}
+function renderList(){
+  if(tab==='order') return renderOrder();
+  let rows = rowsForTab().filter(x=>matches(x, query));
+  const box=$('list');
+  if(!rows.length){ box.innerHTML = '<div class="empty">'+(tab==='today' ? 'אין מה לטפל היום ✓' : 'אין בקשות כאן')+'</div>'; return; }
+  box.innerHTML = rows.map(card).join('');
+  box.querySelectorAll('.card').forEach(c=>c.onclick = e=>{
+    const tri = e.target.closest('[data-tri]');
+    if(tri){ e.stopPropagation(); return triage(c.dataset.id, tri.dataset.tri); }
+    openReq(c.dataset.id);
+  });
+}
+/* the supplier view: whoever orders from a supplier sees its waiting requests and marks them ordered together */
+function renderOrder(){
+  const box=$('list');
+  const rows = (LIST ? LIST.rows : []).filter(isWaiting).filter(x=>matches(x, query));
+  const groups = {};
+  rows.forEach(x=>{ const k = x.supplier || ''; (groups[k] = groups[k] || []).push(x); });
+  const names = Object.keys(groups).sort((a,b)=> (a===''?1:b===''?-1:groups[b].length-groups[a].length));
+  if(!names.length){ box.innerHTML = '<div class="empty">אין בקשות שמחכות להזמנה</div>'; return; }
+  if(orderSup && !groups[orderSup]) orderSup='';
+  let h = '<div class="muted">כשמזמינים מספק — בוחרים אותו כאן, ומסמנים את הבקשות שנכנסו להזמנה.</div><div class="actions" style="margin-top:6px">'
+    + names.map(n=>'<button type="button" class="'+(n===orderSup?'primary':'ghost')+'" data-sup="'+esc(n)+'">'+esc(n||'בלי ספק')+' · '+groups[n].length+'</button>').join('') + '</div>';
+  const show = orderSup ? [orderSup] : names;
+  show.forEach(n=>{
+    h += '<h3 style="margin:14px 0 4px">'+esc(n||'בלי ספק')+'</h3>';
+    if(!n) h += '<div class="muted">פותחים בקשה ובוחרים לה ספק (כפתור "ספק"), או "לקשר לפריט בכספית".</div>';
+    h += groups[n].map(x=>'<div class="card" data-id="'+esc(x.id)+'"><div class="l1">'+(n?'<input type="checkbox" class="osel" data-id="'+esc(x.id)+'" style="width:22px;height:22px;flex:none">':'')
+      +'<span class="item">'+esc(x.item)+(x.qty>1?' ×'+x.qty:'')+'</span><span class="chip st-'+esc(x.state)+'">'+esc(L().states[x.state]||x.state)+'</span></div>'
+      +'<div class="who">'+esc(x.first)+' <bdi dir="ltr">'+esc(x.phone4)+'</bdi> · '+esc(x.id)+' · מחכה '+daysAgo(x.created)+' ימים'+(x.free?' · <span class="chip free">נכתב ביד</span>':'')+'</div>'
+      +(x.today?'<div class="why">'+esc(x.today)+'</div>':'')+'</div>').join('');
+    const listed = (BOOT.suppliers||[]).some(s=>s.name===n);
+    if(n && !listed) h += '<label>"'+esc(n)+'" לא ברשימת הספקים — בוחרים ספק מהרשימה</label><select class="osup" data-sup="'+esc(n)+'"><option value="">בוחרים…</option>'+(BOOT.suppliers||[]).map(s=>'<option>'+esc(s.name)+'</option>').join('')+'</select>';
+    if(n) h += '<label>תאריך צפוי (לא חובה)</label><input type="date" class="oexp" data-sup="'+esc(n)+'">'
+      + '<button type="button" class="primary bigbtn" data-order="'+esc(n)+'">סמן "הוזמן" מ-<bdi>'+esc(n)+'</bdi> (<span class="ocount" data-sup="'+esc(n)+'">0</span>)</button>';
+  });
+  box.innerHTML = h;
+  box.querySelectorAll('[data-sup]').forEach(b=>{ if(b.tagName==='BUTTON') b.onclick=()=>{ orderSup = orderSup===b.dataset.sup ? '' : b.dataset.sup; renderOrder(); }; });
+  const recount = ()=> box.querySelectorAll('.ocount').forEach(c=>{
+    const ids = groups[c.dataset.sup].map(x=>x.id); c.textContent = [...box.querySelectorAll('.osel:checked')].filter(i=>ids.includes(i.dataset.id)).length; });
+  box.querySelectorAll('.osel').forEach(i=>{ i.onclick = e=>e.stopPropagation(); i.onchange = recount; });
+  box.querySelectorAll('.card').forEach(c=>c.onclick = e=>{ if(e.target.classList.contains('osel')) return; openReq(c.dataset.id); });
+  box.querySelectorAll('[data-order]').forEach(b=>b.onclick = ()=>orderMany(b.dataset.order, groups[b.dataset.order]));
+}
+async function orderMany(sup, rows){
+  const box=$('list');
+  const picked = rows.filter(x=>{ const i = box.querySelector('.osel[data-id="'+x.id+'"]'); return i && i.checked; });
+  if(!picked.length) return toast('מסמנים קודם את הבקשות שנכנסו להזמנה','warn');
+  const exp = (box.querySelector('.oexp[data-sup="'+CSS.escape(sup)+'"]')||{}).value || '';
+  const pickedSup = box.querySelector('.osup[data-sup="'+CSS.escape(sup)+'"]');
+  const realSup = pickedSup ? pickedSup.value : sup;
+  if(!realSup) return toast('בוחרים ספק מהרשימה','warn');
+  const body = { action:'orderMany', uuid:uuid(), supplier:realSup, expected:exp, items:picked.map(x=>({ id:x.id, seen:x.seen })), deviceAt:new Date().toISOString() };
+  busy(true); let r = await post(body); if(r.code==='NET') r = await post(body); busy(false);
+  if(!r.ok) return toast(r.error,'warn',5000);
+  const changed = (r.results||[]).filter(x=>!x.ok).length;
+  toast('סומנו '+r.ordered+' כ"הוזמן" מ-'+realSup+(changed?' · '+changed+' השתנו בינתיים — לפתוח ולבדוק':''), changed?'warn':'ok', 5000);
+  loadList();
+}
+let qTimer=null;
+$('q').oninput = ()=>{
+  query = $('q').value.trim();
+  clearTimeout(qTimer);
+  const d = query.replace(/[^\d+]/g,'');
+  if(d.replace('+','').length >= 7){ qTimer=setTimeout(()=>findPhone(query), 500); return; }
+  renderList();
+};
+async function findPhone(p){
+  busy(true); const r = await post({ action:'find', phone:p }); busy(false);
+  if(!r.ok){ toast(r.error,'warn'); return; }
+  const box=$('list');
+  box.innerHTML = r.rows.length ? r.rows.map(card).join('') : '<div class="empty">אין בקשות לטלפון הזה</div>';
+  box.querySelectorAll('.card').forEach(c=>c.onclick=()=>openReq(c.dataset.id));
+}
+
+/* ================= ONE REQUEST ================= */
+let CUR = null;
+async function openReq(id){
+  sheet('reqSheet', true); $('reqTitle').textContent = id; $('reqBody').innerHTML = '<div class="empty">טוען…</div>';
+  busy(true); const r = await post({ action:'get', id }); busy(false);
+  if(!r.ok){ $('reqBody').innerHTML = '<div class="banner red">'+esc(r.error)+'</div>'; return; }
+  CUR = r.request; renderReq();
+}
+function renderReq(){
+  const x = CUR, l = L();
+  const tel = x.phone ? '<a href="tel:'+esc(x.phone)+'" dir="ltr">'+esc(x.phone)+'</a>' : '<span class="muted">אין טלפון תקין</span>';
+  let h = '<div class="kv">'
+    +'<span>מוצר</span><span><b>'+esc(x.item)+'</b>'+(x.qty>1?' ×'+x.qty:'')+(x.code?' <span class="muted">('+esc(x.code)+')</span>':'')+(x.free?' <span class="chip free">נכתב ביד</span>':'')+'</span>'
+    +'<span>לקוח</span><span>'+esc(x.name)+'</span>'
+    +'<span>טלפון</span><span>'+tel+'</span>'
+    +'<span>מצב</span><span><span class="chip st-'+esc(x.state)+'">'+esc(l.states[x.state]||x.state)+'</span> מאז '+ddmm(x.since)+' ('+daysAgo(x.since)+' ימים)</span>'
+    +(x.supplier?'<span>ספק</span><span>'+esc(x.supplier)+'</span>':'')
+    +(x.expected?'<span>צפוי</span><span>'+esc(x.expected)+'</span>':'')
+    +(x.preorder?'<span>הזמנה מוקדמת</span><span>'+esc(x.preorder)+'</span>':'')
+    +(x.note?'<span>הערה</span><span>'+esc(x.note)+'</span>':'')
+    +'<span>נוצר</span><span>'+ddmm(x.created)+' · '+esc(x.createdBy||'')+' · '+esc(x.source)+'</span>'
+    +'</div>';
+  if(x.today) h += '<div class="banner amber">'+esc(x.today)+'</div>';
+  if(x.samePhoneOpen && x.samePhoneOpen.length) h += '<div class="banner info">ללקוח הזה עוד '+x.samePhoneOpen.length+' בקשות פתוחות: '+x.samePhoneOpen.map(esc).join(', ')+'</div>';
+  if(x.triage && BOOT && BOOT.me.role==='manager') h += '<div class="banner info">בקשה ישנה שמחכה למיון. <button type="button" class="green" data-tri2="keep">עדיין רלוונטי</button> <button type="button" class="red" data-tri2="cancel">כבר לא</button></div>';
+  const wa = BOOT && BOOT.shopPhone && BOOT.waEnabled && (x.state==='ARRIVED' || x.state==='TOLD');
+  h += '<div class="actions">';
+  if(wa) h += '<button type="button" class="green" id="waBtn">💬 וואטסאפ ללקוח</button>';
+  (x.actions||[]).filter(a=>a!=='LINK' || !x.code).forEach(a=>{ h += '<button type="button" data-a="'+a+'"'+(a==='CANCEL'?' class="ghost"':a==='ARRIVED'||a==='PICKED'?' class="green"':'')+'>'+esc(l.actions[a]||a)+'</button>'; });
+  h += '</div><div id="actForm"></div>';
+  h += '<div class="log"><b>מה קרה</b>'+(x.log||[]).map(e=>'<div>'+ddmm(e.at)+' · '+esc(l.actions[e.action]||({CREATE:'נוצרה',MIGRATE:'הועתקה מהגיליון הישן'})[e.action]||e.action)
+        +(e.supplier?' · '+esc(e.supplier):'')+(e.method?' · '+esc(l.toldMethods[e.method]||e.method):'')
+        +(e.reason?' · '+esc(l.cantReasons[e.reason]||l.cancelReasons[e.reason]||e.reason):'')+(e.note?' · '+esc(e.note):'')+' · '+esc(e.by||'')+'</div>').join('')+'</div>';
+  $('reqBody').innerHTML = h;
+  $('reqBody').querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>actForm(b.dataset.a));
+  $('reqBody').querySelectorAll('[data-tri2]').forEach(b=>b.onclick=()=>triage(CUR.id, b.dataset.tri2, true));
+  if(wa) $('waBtn').onclick = openWa;
+}
+function opts(obj){ return Object.keys(obj).map(k=>'<option value="'+k+'">'+esc(obj[k])+'</option>').join(''); }
+let actUuid = null;
+function actForm(a){
+  actUuid = uuid();
+  const l=L(), f=$('actForm');
+  let h='<div class="chosen"><b>'+esc(l.actions[a]||a)+'</b>';
+  if(a==='CANT') h+='<label>למה</label><select id="fReason"><option value="">בוחרים…</option>'+opts(l.cantReasons)+'</select>';
+  if(a==='CANCEL') h+='<label>למה</label><select id="fReason"><option value="">בוחרים…</option>'+opts(l.cancelReasons)+'</select>';
+  if(a==='ORDERED'){
+    const sup = (BOOT.suppliers||[]).map(s=>'<option'+(s.name===CUR.supplier?' selected':'')+'>'+esc(s.name)+'</option>').join('');
+    h+='<label>מאיזה ספק</label><select id="fSup"><option value="">בוחרים…</option>'+sup+'</select>';
+    h+='<label>תאריך צפוי (לא חובה; בהזמנה מוקדמת כדאי)</label><input id="fExp" type="date"'+(CUR.preorder?' value="'+esc(CUR.preorder)+'"':'')+'>';
+  }
+  if(a==='SUPPLIER'){
+    const sup = (BOOT.suppliers||[]).map(s=>'<option'+(s.name===CUR.supplier?' selected':'')+'>'+esc(s.name)+'</option>').join('');
+    h+='<label>הספק שממנו מביאים</label><select id="fSup"><option value="">בוחרים…</option>'+sup+'</select>';
+  }
+  if(a==='LINK') h+='<label>הפריט בכספית</label><input id="fLinkQ" placeholder="שם או ברקוד" autocomplete="off"><div id="fLinkPicks"></div><input type="hidden" id="fCode">';
+  if(a==='TOLD') h+='<label>איך הודענו</label><select id="fMethod"><option value="">בוחרים…</option>'+opts(l.toldMethods)+'</select>';
+  h+='<label>הערה'+(a==='NOTE'?'':' (לא חובה)')+'</label><input id="fNote" maxlength="200">';
+  h+='<div class="actions"><button type="button" class="primary" id="fGo">אישור</button><button type="button" class="ghost" id="fNo">ביטול</button></div></div>';
+  f.innerHTML=h;
+  f.querySelectorAll('select,input').forEach(el=>el.addEventListener('input', ()=>{ actUuid = uuid(); }));
+  $('fNo').onclick=()=>f.innerHTML='';
+  if(a==='LINK'){
+    if(!CAT) loadCatalog();
+    $('fLinkQ').value = CUR.item || '';
+    const draw = ()=>{
+      const hits = searchCat($('fLinkQ').value.trim()).slice(0,12);
+      $('fLinkPicks').innerHTML = hits.map((x,i)=>'<div class="pick" data-i="'+i+'">'+esc(x[2])+'<small>'+esc(x[0])+(x[1]?' · '+esc(x[1]):'')+'</small></div>').join('') || '<div class="muted">לא נמצא</div>';
+      $('fLinkPicks').querySelectorAll('.pick').forEach(p=>p.onclick=()=>{ const x=hits[+p.dataset.i]; $('fCode').value=x[0]; actUuid = uuid(); $('fLinkPicks').innerHTML='<div class="chosen">'+esc(x[2])+' <span class="muted">('+esc(x[0])+')</span></div>'; });
+    };
+    $('fLinkQ').oninput = draw; draw();
+  }
+  $('fGo').onclick=()=>doAct(a);
+  if(a==='TOLD' && sessionStorage.getItem('g1_wa_'+CUR.id)) $('fMethod').value='WHATSAPP';
+  f.scrollIntoView({behavior:'smooth', block:'center'});
+}
+async function doAct(a, body0){
+  const v = id => ($(id)||{}).value || '';
+  const body = body0 || { action:'act', step:a, uuid:actUuid || uuid(), id:CUR.id, seen:CUR.seen, reason:v('fReason'), supplier:v('fSup'), expected:v('fExp'), method:v('fMethod'), code:v('fCode'), note:v('fNote'), deviceAt:new Date().toISOString() };
+  pending.set(body.uuid, body);
+  $('fGo') && ($('fGo').disabled = true);
+  busy(true); const r = await post(body); busy(false);
+  if(r.ok){
+    pending.delete(body.uuid);
+    toast(/^(NOTE|SUPPLIER|LINK)$/.test(a) ? 'נשמר' : 'נשמר: '+(L().states[r.state]||''),'ok');
+    sessionStorage.removeItem('g1_wa_'+CUR.id);
+    await openReq(CUR.id); loadList(); return;
+  }
+  $('fGo') && ($('fGo').disabled = false);
+  if(r.code==='NET'){ toast('לא נשמר — אין חיבור. לוחצים שוב "אישור" (אותה פעולה, לא תירשם פעמיים)','warn',6000); return; }
+  pending.delete(body.uuid);
+  if(r.code==='CHANGED'){ toast('מישהו עדכן את הבקשה בינתיים — הנה המצב החדש','warn',5000); await openReq(CUR.id); return; }
+  toast(r.error||'שגיאה','warn',5000);
+}
+async function openWa(){
+  busy(true); const r = await post({ action:'waLink', id:CUR.id }); busy(false);
+  if(!r.ok) return toast(r.error,'warn');
+  sessionStorage.setItem('g1_wa_'+CUR.id, '1');
+  window.open(r.url, '_blank');
+  toast('אחרי ששלחת — לוחצים "הודענו ללקוח"', '', 5000);
+}
+async function triage(id, decision, fromSheet){
+  busy(true); const r = await post({ action:'triage', uuid:uuid(), id, decision, deviceAt:new Date().toISOString() }); busy(false);
+  if(!r.ok) return toast(r.error,'warn');
+  toast(decision==='keep' ? 'נשאר פתוח' : 'בוטל', 'ok');
+  if(fromSheet) await openReq(id);
+  loadList();
+}
+$('reqBack').onclick = ()=>{ sheet('reqSheet', false); CUR=null; };
+
+/* ================= CATALOG + NEW REQUEST ================= */
+let catLoading = null;
+async function loadCatalog(){
+  if(CAT) return CAT;
+  catLoading = catLoading || post({ action:'catalog' }).then(r=>{ if(r.ok && r.catalog) CAT = r.catalog; catLoading = null; return CAT; });
+  return catLoading;
+}
+function searchCat(q){
+  if(!CAT) return [];
+  const d = q.replace(/\D/g,'');
+  if(d.length >= 8){ return CAT.items.filter(x=>x[1]===d).slice(0,10); }
+  const ws = norm(q).split(' ').filter(Boolean);
+  if(!ws.length) return [];
+  const out=[];
+  for(const x of CAT.items){ const n = norm(x[2]); if(ws.every(w=>n.includes(w))){ out.push(x); if(out.length>=30) break; } }
+  return out;
+}
+function renderPicks(list, kind){
+  $('picks').innerHTML = list.length ? list.map((x,i)=> kind==='sup'
+      ? '<div class="pick" data-i="'+i+'">'+esc(x[2])+'<small>'+esc(x[0])+(x[1]?' · '+esc(x[1]):'')+'</small></div>'
+      : '<div class="pick" data-i="'+i+'">'+esc(x[2])+'<small>'+esc(x[0])+(x[1]?' · '+esc(x[1]):'')+(x[3]?' · '+esc(x[3]):'')+'</small></div>').join('')
+    : ($('itemQ').value.trim() ? '<div class="muted">לא נמצא בפריטים של כספית'+(BOOT&&BOOT.supplierSearch?' — אפשר לחפש בקטלוג הספקים':'')+', או לכתוב ביד.</div>' : '');
+  $('picks').querySelectorAll('.pick').forEach(p=>p.onclick=()=>{
+    const x = list[+p.dataset.i];
+    choose(kind==='sup' ? { source:'SUPPLIER', name:x[2], sku:x[1], tab:x[0] } : { source:'CASPIT', code:x[0], barcode:x[1], name:x[2] });
+  });
+}
+let iqT=null;
+$('itemQ').oninput = ()=>{ clearTimeout(iqT); iqT=setTimeout(()=>renderPicks(searchCat($('itemQ').value.trim()), 'cat'), 150); };
+$('supSearchBtn').onclick = async ()=>{
+  const q=$('itemQ').value.trim(); if(q.length<3) return toast('כותבים לפחות 3 אותיות','warn');
+  busy(true); const r = await post({ action:'supplierSearch', q }); busy(false);
+  if(!r.ok) return toast(r.error,'warn');
+  renderPicks(r.hits||[], 'sup');
+};
+$('freeBtn').onclick = ()=>{
+  const q=$('itemQ').value.trim();
+  if(q.length<2) return toast('כותבים את שם המוצר בתיבה ואז לוחצים כאן','warn',4000);
+  choose({ source:'FREE', name:q });
+};
+async function choose(it){
+  chosen = it; newUuid = null; stopScan();   // another item = another request
+  $('pickArea').classList.add('hide');
+  const c=$('chosen'); c.classList.remove('hide');
+  c.innerHTML = '<b>'+esc(it.name)+'</b>'+(it.code?' <span class="muted">('+esc(it.code)+')</span>':'')
+    +(it.source==='FREE'?' <span class="chip free">נכתב ביד — יסומן לבדיקה</span>':it.source==='SUPPLIER'?' <span class="chip">מקטלוג הספקים</span>':'')
+    +'<div id="itemInfo" class="muted"></div><button type="button" class="ghost" id="rechoose" style="margin-top:6px">להחליף מוצר</button>';
+  $('rechoose').onclick = ()=>{ chosen=null; $('chosen').classList.add('hide'); $('pickArea').classList.remove('hide'); };
+  if(it.source==='CASPIT'){
+    const r = await post({ action:'itemInfo', code: it.code });
+    if(r.ok && chosen===it){
+      const parts=[];
+      if(r.stock>0) parts.push('<div class="banner green">יש במלאי עכשיו ('+r.stock+') — לבדוק על המדף לפני שמזמינים</div>');
+      if(r.openForItem) parts.push('עוד '+r.openForItem+' לקוחות מחכים למוצר הזה');
+      if(r.usual) parts.push('ספק רגיל: '+esc(r.usual));
+      $('itemInfo').innerHTML = parts.join(' · ');
+    }
+  }
+}
+function resetNew(keepCustomer){
+  newUuid = null;
+  chosen=null; $('chosen').classList.add('hide'); $('pickArea').classList.remove('hide'); $('itemQ').value=''; $('picks').innerHTML='';
+  $('qty').value='1'; $('cNote').value=''; $('preChk').checked=false; $('preDate').classList.add('hide'); $('preDate').value=''; $('newMsg').innerHTML='';
+  $('saveNew').classList.remove('hide');
+  if(!keepCustomer){ $('cName').value=''; $('cPhone').value=''; }
+}
+$('newBtn').onclick = ()=>{ resetNew(false); sheet('newSheet', true); if(!CAT) loadCatalog(); };
+$('newBack').onclick = ()=>{ stopScan(); sheet('newSheet', false); resetNew(false); };
+$('qMinus').onclick = ()=>{ newUuid = null; $('qty').value = Math.max(1, (+$('qty').value||1)-1); };
+$('qPlus').onclick = ()=>{ newUuid = null; $('qty').value = Math.min(99, (+$('qty').value||1)+1); };
+$('preChk').onchange = ()=>{ newUuid = null; $('preDate').classList.toggle('hide', !$('preChk').checked); };
+let newUuid = null;
+$('newSheet').addEventListener('input', ()=>{ newUuid = null; });   // a changed form is a new request; a plain retry keeps its id
+$('saveNew').onclick = async ()=>{
+  const msg = t => { $('newMsg').innerHTML = '<div class="banner red">'+esc(t)+'</div>'; };
+  if(!chosen) return msg('צריך לבחור מוצר');
+  if(!$('cName').value.trim()) return msg('צריך את שם הלקוח');
+  if(!$('cPhone').value.trim()) return msg('צריך טלפון');
+  if($('preChk').checked && !$('preDate').value) return msg('בהזמנה מוקדמת צריך תאריך צפוי');
+  newUuid = newUuid || uuid();
+  const body = { action:'create', uuid:newUuid, item:chosen, qty:+$('qty').value||1, name:$('cName').value, phone:$('cPhone').value,
+                 preorder: $('preChk').checked ? $('preDate').value : '', note:$('cNote').value, deviceAt:new Date().toISOString() };
+  $('saveNew').disabled = true; busy(true);
+  const r = await post(body);
+  busy(false); $('saveNew').disabled = false;
+  if(r.code==='NET'){ return msg('לא נשמר — אין חיבור. לוחצים שוב "שמירה" (הבקשה לא תירשם פעמיים)'); }
+  newUuid = null;
+  if(!r.ok) return msg(r.error||'שגיאה');
+  $('saveNew').classList.add('hide');   // saved: a second tap must not make a second request
+  const extra = r.inStock ? ' · יש במלאי ('+r.inStock+') — לבדוק על המדף' : '';
+  $('newMsg').innerHTML = '<div class="banner green">נשמר: '+esc(r.id)+extra+'</div><div class="actions"><button type="button" id="another">עוד מוצר לאותו לקוח</button><button type="button" class="primary" id="doneNew">סיום</button></div>';
+  $('another').onclick = ()=>resetNew(true);
+  $('doneNew').onclick = ()=>{ sheet('newSheet', false); resetNew(false); };
+  loadList();
+};
+
+/* ================= CAMERA (the count app's scanner, smaller) ================= */
+let scanner=null, scanning=false, lastHit={code:'',at:0}, cand={code:'',n:0};
+function gtinValid(s){ if(!/^\d{8}$|^\d{12,14}$/.test(s)) return false; const d=s.split('').map(Number), c=d.pop(); let sum=0; d.reverse().forEach((x,i)=>sum+=x*(i%2?1:3)); return (10-sum%10)%10===c; }
+async function startScan(){
+  if(typeof Html5Qrcode==='undefined') return toast('הסורק לא נטען — אפשר להקליד ברקוד','warn');
+  $('reader').classList.remove('hide');
+  const F = Html5QrcodeSupportedFormats;
+  scanner = scanner || new Html5Qrcode('reader', { formatsToSupport:[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.CODE_128], experimentalFeatures:{ useBarCodeDetectorIfSupported:true }, verbose:false });
+  try{
+    await scanner.start({ facingMode:'environment' }, { fps:15, qrbox:(w,h)=>({ width:Math.max(50,Math.min(320,Math.floor(w*0.9))), height:Math.max(50,Math.min(170,Math.floor(h*0.8))) }), aspectRatio:1.777, disableFlip:true }, onScan, ()=>{});
+    scanning=true; $('scanBtn').textContent='⏹ עצירה';
+  }catch(e){ $('reader').classList.add('hide'); toast('המצלמה לא נפתחה — אפשר להקליד ברקוד או שם','warn',5000); }
+}
+async function stopScan(){ try{ if(scanner && scanning) await scanner.stop(); }catch(e){} scanning=false; $('reader').classList.add('hide'); $('scanBtn').textContent='📷 סריקה'; }
+function onScan(t){
+  t=String(t||'').trim(); const now=Date.now();
+  if(t===lastHit.code && now-lastHit.at<1500) return;
+  if(!gtinValid(t)){ if(cand.code===t) cand.n++; else cand={code:t,n:1}; if(cand.n<2) return; }
+  lastHit={code:t,at:now};
+  const hits = CAT ? CAT.items.filter(x=>x[1]===t) : [];
+  stopScan();
+  if(hits.length===1) return choose({ source:'CASPIT', code:hits[0][0], barcode:hits[0][1], name:hits[0][2] });
+  $('itemQ').value=t; renderPicks(hits, 'cat');
+  if(!hits.length) toast('הברקוד לא נמצא בפריטים של כספית','warn',4000);
+}
+$('scanBtn').onclick = ()=> scanning ? stopScan() : startScan();
+
+/* ================= MENU ================= */
+$('menuBtn').onclick = ()=>{
+  const mgr = BOOT && BOOT.me.role==='manager';
+  let h = '<div class="muted">גרסה '+BUILD+(BOOT?' · שרת '+esc(BOOT.version):'')+'</div>';
+  h += '<button type="button" class="bigbtn" onclick="sheet(\'menuSheet\',false);loadList()">🔄 רענון</button>';
+  if(mgr) h += '<button type="button" class="bigbtn" id="shopBtn">'+(BOOT.shopPhone?'הטלפון הזה כבר מסומן כטלפון החנות':'📱 לסמן: הטלפון הזה הוא טלפון החנות')+'</button>';
+  h += '<button type="button" class="bigbtn ghost" id="logoutBtn">יציאה (לשכוח את הקוד בטלפון הזה)</button>';
+  $('menuBody').innerHTML = h; sheet('menuSheet', true);
+  if(mgr) $('shopBtn').onclick = async ()=>{ if(BOOT.shopPhone) return; busy(true); const r=await post({ action:'registerDevice' }); busy(false); if(r.ok){ BOOT.shopPhone=true; toast('סומן כטלפון החנות','ok'); sheet('menuSheet',false); start(); } else toast(r.error,'warn'); };
+  $('logoutBtn').onclick = ()=>{ lsDel(LS.key); KEY=''; BOOT=null; LIST=null; sheet('menuSheet', false); show('gate'); };
+};
+$('menuBack').onclick = ()=>sheet('menuSheet', false);
+window.addEventListener('beforeunload', e=>{ if(pending.size){ e.preventDefault(); e.returnValue=''; } });
+start();
+</script>
+</body>
+</html>
