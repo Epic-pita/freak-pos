@@ -1863,6 +1863,8 @@ function brainBoxHtml(){
   // the sum is the brain's OWN estimate (its cost figure, and for some rows our sale price), not the page's price list: say so,
   // or it reads as a gap against the order's total in מחיר לפני מע״מ right under it
   if (sum) h += '<div class="bs">הסכום הוא ההערכה של המוח לפי עלות, לא לפי המחיר שבדף</div>';
+  // on a page priced in another currency, say it once here rather than on every card: the brain works in shekels
+  if (S.currency.code && S.currency.code !== 'ILS') h += '<div class="bs">המספרים של המוח, וגם המחיר אצל ספק אחר, הם בשקלים — המחיר בדף עצמו ב' + esc(S.currency.code) + '</div>';
   h += '<div class="bs">' + esc(brainWhenHe()) + '</div>';
   if (S.brain.by_price_n) h += '<div class="bs">' + num(S.brain.by_price_n) + ' מהם בלי עלות רשומה אצלנו — הסכום שלהם לפי מחיר המכירה, לא לפי עלות</div>';
   if (rows.length){
