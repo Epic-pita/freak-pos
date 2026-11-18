@@ -779,6 +779,8 @@ function winOf(w){
  * cost, and the shipment and rate they come from; st 'n' = the shipment has no costed customs file yet. A local supplier has no
  * landed line at all (the catalog's block leaves `ld` out). Every number is checked here, the text is capped.
  */
+/** or1.17: a shipment id never breaks across lines: the id after "ממשלוח " goes in a no-wrap span (text already escaped) */
+const nowrapDoc = h => h.replace(/(ממשלוח )([^\s<]+)/g, '$1<bdi dir="ltr" style="white-space:nowrap">$2</bdi>');
 const shekel2 = n => '₪' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function landedOf(x){
   if (!x || typeof x !== 'object') return null;
@@ -1889,12 +1891,12 @@ function brainHtml(r){
   // cost is said in words to be a factor, from which shipment and at which rate, never a number off an invoice.
   if (b.ld && b.ld.st === 'm') h += '<span class="bsrc">מה ששילמנו בחשבונית ' + esc(shekel2(b.ld.pu)) + ' ליחידה</span>'
     + '<span class="bsrc"><b>עלות מלאה</b> ' + esc(shekel2(b.ld.fu)) + ' ליחידה</span>'
-    + '<span class="bfl">מקדם ×' + esc(String(Math.round(b.ld.f * 1000) / 1000)) + ' (לא מספר מחשבונית) ממשלוח <bdi dir="ltr">' + esc(b.ld.doc) + '</bdi>, שער <bdi dir="ltr">' + esc(String(b.ld.rate)) + '</bdi></span>';
+    + '<span class="bfl">מקדם ×' + esc(String(Math.round(b.ld.f * 1000) / 1000)) + ' (לא מספר מחשבונית) ממשלוח <bdi dir="ltr" style="white-space:nowrap">' + esc(b.ld.doc) + '</bdi>, שער <bdi dir="ltr" style="white-space:nowrap">' + esc(String(b.ld.rate)) + '</bdi></span>';
   else if (b.ld && b.ld.st === 'n') h += '<span class="bsrc">עוד אין עלויות למשלוח הזה</span>';
   for (const a of b.alt){
     // or1.17 (B-CAT-2, DL-358): a forward figure with its factor line (a.m), or no number at all when the supplier has no costed shipment (a.nc)
     if (a.nc){ h += '<span class="balt">גם אצל ' + esc(a.s) + ' — ' + esc(a.m || 'עוד אין עלויות למשלוח הזה') + '</span>'; continue; }
-    h += '<span class="balt">גם אצל ' + esc(a.s) + ' — ' + esc(shekel(a.p)) + esc(altGapHe(r, a)) + (a.b ? ' <span class="bfl" style="display:inline">(' + esc(a.b) + ')</span>' : '') + (a.m ? '<span class="bfl">' + esc(a.m) + '</span>' : '') + '</span>';
+    h += '<span class="balt">גם אצל ' + esc(a.s) + ' — ' + esc(shekel(a.p)) + esc(altGapHe(r, a)) + (a.b ? ' <span class="bfl" style="display:inline">(' + esc(a.b) + ')</span>' : '') + (a.m ? '<span class="bfl">' + nowrapDoc(esc(a.m)) + '</span>' : '') + '</span>';
   }
   // the one new button: it says the brain is wrong about THIS item at THIS supplier, and asks why
   if (markOk() && r.our_code) h += '<div class="acts"><button data-mmark="' + esc(String(r.our_code)) + '">המוח טועה — אין צורך להזמין</button></div>';
@@ -2041,7 +2043,7 @@ function cardHtml(r){
   h += '<div class="ttl" dir="auto">'+esc(r.title)+'</div>';
   h += '<div class="typ">'+esc(groupHe(r.group))+(r.sku?' · <span class="sku">'+esc(codeText(r.sku))+'</span>':'')+(r.id !== r.sku ? ' · <span class="sku">'+esc(r.id)+'</span>' : '')+(r.is_new?' · <span style="color:#9fe0b0"'+(S.flags.new_note_he ? ' title="'+esc(S.flags.new_note_he)+'"' : '')+'>'+esc(S.flags.new_he)+'</span>':'')+'</div>';
   const fct = facetText(r); if (fct) h += '<div class="fct">'+fct+'</div>';   // already escaped, value by value
-  if (r.description) h += '<div class="desc'+(expanded.has(r.id)?' open':'')+'" dir="auto">'+esc(r.description)+'</div><button class="morebtn" data-more-desc="1">'+(expanded.has(r.id)?'פחות':'עוד')+'</button>';
+  if (r.description) h += '<div class="desc'+(expanded.has(r.id)?' open':'')+'" dir="auto">'+nowrapDoc(esc(r.description))+'</div><button class="morebtn" data-more-desc="1">'+(expanded.has(r.id)?'פחות':'עוד')+'</button>';
   else if (expanded.has(r.id) && isList() && view === 'catalog') h += '<button class="morebtn" data-more-desc="1">פחות</button>';   // a row without a description still folds back into its row
   h += '<div class="price">' + priceHtml(r, 'd') + (r.price_dealer != null ? '<span class="lbl"'+(S.price.dealer_note_he ? ' title="'+esc(S.price.dealer_note_he)+'"' : '')+'>'+esc(S.price.dealer_he)+'</span>' : '') + (r.price_list!=null?'<span class="site">'+esc(S.price.list_he)+' '+esc(money(r.price_list))+'</span>':'')+'</div>';
   const meta = [];
