@@ -421,7 +421,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.14';
+const BUILD = 'or1.15';
 // or1.4 (B-BRN-8, part 2): every card of an item we carry gets ONE more grey line under its pace block — the brain's in-stock line
 // ("נמכר ~N בחודש כשיש במלאי (קצב להזמנה ~N) · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …", the brain's wording of 03/11), copied verbatim from the rates table (jo_load
 // `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
@@ -545,6 +545,11 @@ let firstLoadDone = false, netDown = false, cachedLines = false;   // this sessi
 let sortSnap = null;             // Set of the item ids drawn "ordered first" at the last explicit draw of the catalog: a poll never re-sorts under the thumb
 let drawn = false, loadMarked = false;   // performance marks for the page test: the first jo_load sent, the first draw with rows
 let ME = '';                     // or1.5 (B-CAT-25): the person this key belongs to, as the backend reports it ('' = a key that names none)
+let UNITS = new Map();           // or1.15: item_id -> how many of OUR units one row of this supplier holds (Kaissa's
+                                 // displays). From settings.units_by_id, which travels like the brain block: the
+                                 // 34-column catalogue head is shared by the backend and all six feeds, so a new
+                                 // column would mean changing every one of them at once (feed.mts says so).
+const unitsOf = id => UNITS.get(String(id)) || 1;
 let CAPS = {};                   // or1.13: what the backend says it does, from jo_load `caps`. {} = not heard, so no
                                  // capability is assumed. `mark_strip` gates the free mark note (see the absorber).
 let MIN = null;                  // or1.5 (B-CAT-25): { has, value, currency, worth, src, as_of } from jo_load `min`, in memory only; null = not asked yet
@@ -819,6 +824,14 @@ function setSettings(raw){
     ur: Number.isFinite(Number(r.ur)) && Number(r.ur) > 1 ? Math.round(Number(r.ur)) : 0,
     qu: Number.isFinite(Number(r.qu)) && Number(r.qu) > 0 ? Math.round(Number(r.qu)) : 0,
       ils: Number.isFinite(Number(r.ils)) && r.ils !== '' && r.ils !== null ? Number(r.ils) : null, alt });
+  }
+  // or1.15: the unit factors, for every row that has one - cheap (7 entries today) and independent of the brain
+  UNITS = new Map();
+  const ub = raw && typeof raw === 'object' ? raw.units_by_id : null;
+  if (ub && typeof ub === 'object') for (const id of Object.keys(ub).slice(0, 2000)){
+    if (!ID_RE.test(String(id))) continue;
+    const u = Number(ub[id]);
+    if (Number.isFinite(u) && u > 1 && u <= 1000) UNITS.set(String(id), Math.round(u));
   }
   brainGate();   // a phone that already knows it is not the manager never draws the block, not even for the moment until the next reply
   for (const g of S.groups) GH[g.id] = g.he;
@@ -1927,7 +1940,8 @@ function brainTakenHtml(all){
   const qOf = r => (all ? totalOf(r.id) : myQty(r.id));
   const rows = brainRows().filter(r => qOf(r) > 0);
   if (!rows.length) return '';
-  const units = rows.reduce((s, r) => s + qOf(r), 0), asked = rows.reduce((s, r) => s + BR.get(r.id).q, 0);
+  // or1.15: both sides in OUR units, so "M of N proposed" compares like with like on a page whose quantities are rows
+  const units = rows.reduce((s, r) => s + qOf(r) * unitsOf(r.id), 0), asked = rows.reduce((s, r) => s + BR.get(r.id).q * unitsOf(r.id), 0);
   return '<span class="btaken"> · מתוך ' + esc(S.brain.label_he) + ': <b>' + num(rows.length) + '</b> שורות · <b>' + num(units) + '</b> יח׳ מתוך ' + num(asked) + ' שהוצעו</span>';
 }
 /** the "הוזמן" chip's count after a poll (the list itself is not redrawn) */
@@ -2079,7 +2093,9 @@ function exportBtns(){
 /** "N פריטים בלי מחיר" for a total box, when an ordered line has no dealer price */
 function noPriceNote(rs){ const n = rs.filter(r => !r.orphan && r.price_dealer == null).length; return n ? ' · <b>'+num(n)+'</b> פריטים בלי מחיר' : ''; }
 function renderMine(){
-  const ls = myLines(), units = ls.reduce((s, x) => s + x.qty, 0), total = round2(ls.reduce((s, x) => s + (x.sum || 0), 0));
+  // or1.15: a quantity on a row that holds several of our units is a count of ROWS, so the unit total multiplies it
+  // back out. Before this the page added 8 displays to 3 singles and called the 11 "יחידות", which is neither.
+  const ls = myLines(), units = ls.reduce((s, x) => s + x.qty * unitsOf(x.r.id), 0), total = round2(ls.reduce((s, x) => s + (x.sum || 0), 0));
   // or1.5: every line of mine the manager changed, in one amber box with one "ראיתי את כל השינויים"
   const chg = person ? [...lines.keys()].filter(k => k.split('\u0001')[0] === person).map(k => ({ v: k.split('\u0001')[1], n: mgrNote(k.split('\u0001')[1]) })).filter(x => x.n) : [];
   const mg = chg.length ? '<div class="banner amber"><b>המנהל שינה '+(chg.length === 1 ? 'שורה אחת' : chg.length + ' שורות')+' שלך:</b>' + chg.map(x => { const r = cat && cat.byId.get(x.v);
@@ -2109,13 +2125,13 @@ function summary(confirmedOnly){
     if (hasMin && r.moq && total < r.moq) short.push({ r, total });
     for (const x of qs){
       const pp = perPerson.get(x.name) || { name: x.name, shop: shopOf(x.name) || (lines.get(kOf(x.name, r.id)) || {}).shop || '', lines: 0, units: 0, sum: 0 };
-      pp.lines++; pp.units += x.qty; pp.sum = round2(pp.sum + (r.price_dealer != null ? x.qty * r.price_dealer : 0)); perPerson.set(x.name, pp);
+      pp.lines++; pp.units += x.qty * unitsOf(r.id); pp.sum = round2(pp.sum + (r.price_dealer != null ? x.qty * r.price_dealer : 0)); perPerson.set(x.name, pp);
     }
   };
   for (const r of (cat ? cat.rows : [])) add(r);
   for (const r of orphans()) add(r);                         // pairs on items that left the catalog: counted as the sheet's סיכום counts them
   for (const pp of perPerson.values()){ const s = perShop.get(pp.shop || '—') || { shop: pp.shop || '—', lines: 0, units: 0, sum: 0 }; s.lines += pp.lines; s.units += pp.units; s.sum = round2(s.sum + pp.sum); perShop.set(pp.shop || '—', s); }
-  const grand = { lines: items.length, units: items.reduce((s, x) => s + x.total, 0), sum: round2(items.reduce((s, x) => s + (x.lineSum || 0), 0)) };
+  const grand = { lines: items.length, units: items.reduce((s, x) => s + x.total * unitsOf(x.r.id), 0), sum: round2(items.reduce((s, x) => s + (x.lineSum || 0), 0)) };
   return { items, names, perPerson: [...perPerson.values()].sort((a, b) => names.indexOf(a.name) - names.indexOf(b.name)), perShop: [...perShop.values()], grand, short, pending };
 }
 function renderSummary(){
