@@ -2198,7 +2198,7 @@ function supplierText(){
   const sum = round2(go.reduce((s, x) => s + (x.lineSum || 0), 0)), units = go.reduce((s, x) => s + x.total, 0), noPrice = go.filter(x => x.lineSum == null).length;
   const out = [(S.name_he || S.title_he) + ' — הזמנה ' + ddmmyyyy(new Date()), ''];
   for (const x of go) out.push(line(x));
-  out.push('', 'סה״כ ' + S.price.dealer_he.replace(/^מחיר\s+/, '').replace(/^הספק$/, 'במחיר הספק') + ': ' + money(sum) + ' · ' + go.length + ' פריטים · ' + units + ' יח׳' + (noPrice ? ' (' + noPrice + ' בלי מחיר)' : ''));
+  out.push('', 'סה״כ ' + S.price.dealer_he.replace(/^מחיר\s+/, '') + ': ' + money(sum) + ' · ' + go.length + ' פריטים · ' + units + ' יח׳' + (noPrice ? ' (' + noPrice + ' בלי מחיר)' : ''));
   if (off.length){ out.push('', 'לא נכלל בסה״כ:'); for (const x of off) out.push(line(x) + (x.r.orphan ? '' : ' · ' + S.availability.out_he)); }   // an orphan's line already starts '(לא בקטלוג)'
   return out.join('\n');
 }
