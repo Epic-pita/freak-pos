@@ -421,7 +421,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.9';
+const BUILD = 'or1.10';
 // or1.4 (B-BRN-8, part 2): every card of an item we carry gets ONE more grey line under its pace block — the brain's in-stock line
 // ("נמכר ~N בחודש כשיש במלאי (קצב להזמנה ~N) · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …", the brain's wording of 03/11), copied verbatim from the rates table (jo_load
 // `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
@@ -1478,8 +1478,16 @@ let MNOW = new Map();
 const refreshMarks = () => { MNOW = who === 'admin' ? marksNow() : new Map(); };
 const markOf = r => (who === 'admin' && r && r.our_code ? MNOW.get(String(r.our_code)) : null) || null;
 const reasonHe = id => (MARK_REASONS.find(x => x.id === id) || {}).he || '';
-/** may this page mark at all: the manager only, on a live order it can write to (the server refuses a buyer key as well) */
-const markOk = () => who === 'admin' && !!S.brain && state.open && !!person && ready();
+/**
+ * May this page mark at all: the manager only, once the page has data to write with (the server refuses a buyer key
+ * as well). Deliberately NOT tied to the order being open. or1.9 was, and Chris found it the same evening: he closed
+ * the ICO order at 20:28, opened the page the card pointed him at, saw the brain's 44 proposals still drawn on it and
+ * no button under any of them ("אני לא רואה שום כפתור כזה", 23:37; "תקן שיעבוד גם בהזמנה סגורה", 18/11 02:06).
+ * A mark is his word to the brain about an item, not a line of an order, so a closed order has nothing to say about
+ * it — and a closed order is exactly when he looks back at what was proposed and he did not buy. What the closed
+ * state still stops is every QUANTITY: the steppers, the fill button, mgrOk() and ackMgr() all keep state.open.
+ */
+const markOk = () => who === 'admin' && !!S.brain && !!person && ready();
 /**
  * A mark rides the ordinary save path, so it retries and survives a reload like any other write — but under an item id
  * no catalogue row can carry and with qty 0, so nothing that reads a quantity can ever see it.
