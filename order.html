@@ -421,7 +421,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.12';
+const BUILD = 'or1.13';
 // or1.4 (B-BRN-8, part 2): every card of an item we carry gets ONE more grey line under its pace block — the brain's in-stock line
 // ("נמכר ~N בחודש כשיש במלאי (קצב להזמנה ~N) · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …", the brain's wording of 03/11), copied verbatim from the rates table (jo_load
 // `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
@@ -545,6 +545,8 @@ let firstLoadDone = false, netDown = false, cachedLines = false;   // this sessi
 let sortSnap = null;             // Set of the item ids drawn "ordered first" at the last explicit draw of the catalog: a poll never re-sorts under the thumb
 let drawn = false, loadMarked = false;   // performance marks for the page test: the first jo_load sent, the first draw with rows
 let ME = '';                     // or1.5 (B-CAT-25): the person this key belongs to, as the backend reports it ('' = a key that names none)
+let CAPS = {};                   // or1.13: what the backend says it does, from jo_load `caps`. {} = not heard, so no
+                                 // capability is assumed. `mark_strip` gates the free mark note (see the absorber).
 let MIN = null;                  // or1.5 (B-CAT-25): { has, value, currency, worth, src, as_of } from jo_load `min`, in memory only; null = not asked yet
 const MIN_TAB_HE = 'מינימום';    // the name of the tab Chris types it on (the backend's JO_MIN)
 let RATES = null;                // or1.4: { stamp, as_of, byId: Map(item_id → the in-stock line), codeOf: Map(item_id → its our code) } from jo_load `rates`, in memory only; null = none (nothing drawn)
@@ -1355,6 +1357,11 @@ async function load(full){
         const c = { stamp: js.catalog.stamp, data_date: js.catalog.data_date, head: js.catalog.head, rows: js.catalog.rows, settings: js.settings !== undefined ? js.settings : (js.catalog.settings || null) };
         if (setCatalog(c)) saveLS(LS.cat, c); structural = true;
       }
+      // or1.13: what this backend says it DOES. `mark_strip` = it empties a mark row for every key but the manager's
+      // (joMarkStrip_). The free note is offered only when we have heard it, so neither side has to be rolled back in
+      // a remembered order and a half-finished deploy cannot put a note on the wire. undefined = a backend that does
+      // not know the field, so the answer is no (the or1.4 `rates` reading).
+      CAPS = (js.caps && typeof js.caps === 'object') ? { mark_strip: js.caps.mark_strip === true } : {};
       // or1.4: undefined = a backend without rates (drop any cached); null = ours is current; a block = new rates (an empty one: none)
       if (js.rates === undefined){ if (RATES){ RATES = null; ratesChanged = true; } }
       else if (js.rates){ setRates(js.rates); ratesChanged = true; }   // in memory only (review 02/11): never saveLS
@@ -1514,12 +1521,15 @@ function markSheetHtml(){
   h += '<div class="bs">המוח יפסיק להציע את הפריט הזה אצל הספק הזה. אפשר להחזיר בכל רגע.</div>';
   // The note goes ABOVE the reasons, not below them: two of the six say "(אכתוב בהערה)", and a tap on any reason
   // writes the mark and closes the sheet at once - a field he only meets after that is a field he never fills.
-  h += '<input id="mnote" type="text" maxlength="' + MARK_NOTE_MAX + '" autocomplete="off" placeholder="אפשר להוסיף הערה במילים שלך (לא חובה)">';
+  // or1.13: ONLY when the backend has told us it empties a mark row for every other key (`caps.mark_strip`). A backend
+  // that does not say so hands mark rows out whole, and then a note in his own words would be read by a partner's
+  // page - which is why or1.9 and or1.10 left this field out. The page no longer trusts a version number or a
+  // remembered undo order: it asks, every poll, and believes the answer.
+  if (CAPS.mark_strip) h += '<input id="mnote" type="text" maxlength="' + MARK_NOTE_MAX + '" autocomplete="off" placeholder="אפשר להוסיף הערה במילים שלך (לא חובה)">';
   for (const x of MARK_REASONS) h += '<button class="mreason" data-mreason="' + esc(x.id) + '">' + esc(x.he) + '</button>';
-  // or1.11: the free note, back now that the server empties a mark row for anybody but the manager (joMarkStrip_ in
-  // JointOrder.js, version 33). THE PAIRING IS NOT CHECKED HERE, so it has to be remembered: this field trusts the
-  // backend to be @33 or newer. Roll the backend back on its own and the notes travel again - undo the page FIRST.
-  // The fix that would end the remembering is a capability in the jo_load reply, which this version does not have. It was deliberately left out of or1.9/or1.10: mark rows travel to every key inside
+  // or1.11 brought the free note back once the server began emptying a mark row for anybody but the manager
+  // (joMarkStrip_ in JointOrder.js). or1.13 ended the remembering: THE PAIRING IS CHECKED, above, against `caps`
+  // from every jo_load, so either side can be rolled back alone, in any order. It was deliberately left out of or1.9/or1.10: mark rows travel to every key inside
   // jo_load, so a sentence he typed would have sat in the raw data a Kingdom buyer's browser receives. A reason id is
   // a fixed word from our own list and could live with that for a day; his own sentences could not.
   h += '<div class="acts"><button data-act="mcancel">ביטול</button></div>';
