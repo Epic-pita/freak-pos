@@ -124,6 +124,12 @@
   .bbox .bh{font-weight:700; color:#c9e6f2}
   .bbox .bs{font-size:12.5px; color:var(--dim); margin-top:2px}
   .bbox .acts{margin-top:8px}
+  /* or1.20 (D1): the pre-order box and the lines on its cards (admin only, like the brain's) */
+  .pbox{border-color:#e0b25a}
+  .pbox .bh{color:#ffd479}
+  .pbox .acts button{min-height:44px}
+  .pre{margin-top:6px; border-inline-start:3px solid #e0b25a; padding-inline-start:8px}
+  .pre .pq{display:inline-block; font-weight:700; color:#ffd479; font-size:13px}
   .bmiss{font-size:12.5px; color:var(--dim); margin-top:6px}
   .bmiss .chip{display:inline-block; min-height:40px; line-height:20px}   /* a 40 px tap target; inline-BLOCK, not flex: a flex chip eats the spaces between its words */
   .bmiss .mrow{margin-top:3px; color:var(--ink)}
@@ -429,7 +435,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.19';
+const BUILD = 'or1.20';
 // or1.4 (B-BRN-8, part 2): every card of an item we carry gets ONE more grey line under its pace block — the brain's in-stock line
 // ("נמכר ~N בחודש כשיש במלאי (קצב להזמנה ~N) · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …", the brain's wording of 03/11), copied verbatim from the rates table (jo_load
 // `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
@@ -508,6 +514,8 @@ let S = DEF_SETTINGS;            // the supplier's settings (labels, currency, g
 let GH = {}, FV = {}, FR = {};   // group id → Hebrew; facet id → { value id → Hebrew }; facet id → { value id → {lo, hi} } for a facet whose values are numeric bands (players)
 let OP = { on:false, by:new Map(), self:new Map(), day:'', age:14 };   // or1.19 (L17): the other suppliers' prices (settings.brain.op), admin only like BR
 const opOpen = new Set();         // or1.19: card ids whose other-prices line is opened
+let PRE = null;                  // or1.20 (D1): the pre-order block of a new set (settings.brain.pre, admin only): { set, deadline, note, by: id -> { q, lo, hi, u, why, fl, ref, cg }, order }
+let preOpened = false;           // or1.20: ?pre=1 opens on the pre-order chip once
 let BR = new Map();              // or1.8 (L17): item_id → { q, why, fl, bs, by_price, ils, alt } — what the ordering brain proposes for this supplier
 let people = [];                 // [{name, shop}] active, sheet order
 let state = { open: true, closed_at: '', closed_by: '' };
@@ -854,6 +862,21 @@ function setSettings(raw){
     ur: Number.isFinite(Number(r.ur)) && Number(r.ur) > 1 ? Math.round(Number(r.ur)) : 0,
     qu: Number.isFinite(Number(r.qu)) && Number(r.qu) > 0 ? Math.round(Number(r.qu)) : 0,
       ils: Number.isFinite(Number(r.ils)) && r.ils !== '' && r.ils !== null ? Number(r.ils) : null, alt, ld: landedOf(r.ld) });
+  }
+  // or1.20 (D1): the pre-order block (brain.pre, v 1), only inside a brain block the backend gave this key. Every id, number and text is checked and capped here.
+  PRE = null;
+  const pb = bb && typeof bb === 'object' ? bb.pre : null;
+  if (S.brain && pb && typeof pb === 'object' && pb.v === 1 && Array.isArray(pb.order) && pb.by_id && typeof pb.by_id === 'object'){
+    const by = new Map(), order = [], price = v => (v !== null && v !== '' && Number.isFinite(Number(v)) && Number(v) > 0 && Number(v) < 1e5) ? Number(v) : null, day = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? String(v) : '';
+    for (const id of pb.order.slice(0, 60)){
+      if (!ID_RE.test(String(id)) || by.has(String(id))) continue;
+      const r = pb.by_id[id]; if (!r || typeof r !== 'object') continue;
+      const q = Math.floor(Number(r.q)), lo = Math.floor(Number(r.lo)), hi = Math.floor(Number(r.hi));
+      if (!Number.isFinite(q) || q < 0 || q > MAX_QTY || !Number.isFinite(lo) || !Number.isFinite(hi)) continue;
+      by.set(String(id), { q, lo, hi, u: txt(r.u, '', 20), why: txt(r.why, '', 70), fl: txt(r.fl, '', 120), ref: price(r.ref), cg: price(r.cg) }); order.push(String(id));
+    }
+    if (by.size) PRE = { set: txt(pb.set_he, '', 40), deadline: day(pb.deadline), note: txt(pb.note_he, '', 160), refHe: txt(pb.ref_he, '', 80), priceNote: txt(pb.price_note_he, '', 100),
+      altHe: txt(pb.alt_he, '', 80), altDeadline: day(pb.alt_deadline), by, order };
   }
   // or1.19 (L17): the other suppliers' prices (brain.op, v 1). Every id, number and text is capped here; anything else = the page draws as or1.18
   OP = { on:false, by:new Map(), self:new Map(), day:'', age:14 };
@@ -1647,6 +1670,7 @@ function inGroup(r){
   if (chip === 'new') return r.is_new;
   if (chip === 'ordered') return totalOf(r.id) > 0;
   if (chip === 'ours') return isOurs(r);
+  if (chip === 'pre') return !!PRE && PRE.by.has(r.id);   // or1.20 (D1)
   if (chip === 'brain') return BR.has(r.id);   // or1.8 (L17): only what the ordering brain proposes from this supplier
   return chip === 'all' || groupOf(r) === chip;
 }
@@ -1675,10 +1699,11 @@ function loadF(){
 function validateF(){
   if (!cat) return;
   const hasOther = cat.rows.some(r => groupOf(r) === 'other');
-  if (!(chip === 'all' || chip === 'new' || chip === 'ordered' || chip === 'ours' || (chip === 'brain' && BR.size > 0) || (chip === 'other' && hasOther) || GH[chip])) chip = 'all';
+  if (!(chip === 'all' || chip === 'new' || chip === 'ordered' || chip === 'ours' || (chip === 'brain' && BR.size > 0) || (chip === 'pre' && !!PRE) || (chip === 'other' && hasOther) || GH[chip])) chip = 'all';
   const fac = {};
   for (const f of S.facets){ const sel = (F.fac[f.id] || []).filter(v => FV[f.id] && FV[f.id][v] !== undefined); if (sel.length) fac[f.id] = f.multi ? sel : sel.slice(0, 1); }
   F.fac = fac;
+  if (!preOpened && PRE && QS.get('pre') === '1' && preRows().length){ preOpened = true; chip = 'pre'; }   // or1.20: ?pre=1 opens on the pre-order chip, once
 }
 const byTitle = (a, b) => a.title.localeCompare(b.title, 'en');
 function catRows(){
@@ -1738,7 +1763,8 @@ function renderCatalog(){
   if (cat) for (const r of cat.rows){ const g = groupOf(r); counts[g] = (counts[g]||0) + 1; if (r.is_new) newN++; if (totalOf(r.id) > 0) ordN++; if (isOurs(r)) oursN++; }
   // הכל, then the supplier's groups (the first filter promised), then the flags at the end
   const brainN = cat ? cat.rows.reduce((s, r) => s + (BR.has(r.id) ? 1 : 0), 0) : 0;   // or1.8 (L17): how many of this catalog's rows the brain proposes
-  const chips = [['all','הכל', cat ? cat.rows.length : 0, ''], ...(brainN ? [['brain', S.brain ? S.brain.label_he : 'המוח מציע', brainN, 'מה שמוח ההזמנות מציע להזמין מהספק הזה']] : []), ...S.groups.filter(g => counts[g.id] || chip === g.id).map(g => [g.id, g.he, counts[g.id]||0, '']), ...(counts.other && !GH.other ? [['other','אחר', counts.other, '']] : []),   // "אחר" = rows whose group is not in settings.groups; when the settings list `other` themselves, that chip is the one
+  const preN = cat && PRE ? preRows().length : 0;   // or1.20 (D1)
+  const chips = [['all','הכל', cat ? cat.rows.length : 0, ''], ...(preN ? [['pre', 'הזמנה מוקדמת', preN, 'ההזמנה המוקדמת של ' + PRE.set]] : []), ...(brainN ? [['brain', S.brain ? S.brain.label_he : 'המוח מציע', brainN, 'מה שמוח ההזמנות מציע להזמין מהספק הזה']] : []), ...S.groups.filter(g => (counts[g.id] || chip === g.id) && !(preN && g.id === 'preorder')).map(g => [g.id, g.he, counts[g.id]||0, '']), ...(counts.other && !GH.other ? [['other','אחר', counts.other, '']] : []),   // "אחר" = rows whose group is not in settings.groups; when the settings list `other` themselves, that chip is the one
     ['new', S.flags.new_he, newN, S.flags.new_note_he], ['ordered','הוזמן', ordN, ''], ['ours', S.flags.ours_he, oursN, '']];
   const rows = catRows();
   let facets = '';
@@ -1757,7 +1783,7 @@ function renderCatalog(){
   const listTog = '<span class="chip tog-list" data-tog="list">'+(list ? 'תצוגת כרטיסים' : 'תצוגת רשימה')+'</span>';
   // or1.8 (L17): on the phone above the list, on a desktop at the top of the sidebar, so the list keeps its density.
   // or1.9: his own marks ride in the same place, under the brain's box - one place, not a second screen.
-  const bbox = brainBoxHtml() + marksListHtml() + markSheetHtml();
+  const bbox = preBoxHtml() + brainBoxHtml() + marksListHtml() + markSheetHtml();
   const listHtml = '<div id="list"'+(list ? ' class="listmode"' : '')+'>' + (rows.length ? rows.slice(0, shown).map(list ? rowHtml : cardHtml).join('') + (rows.length > shown ? '<button class="more" data-more="1">עוד '+(rows.length - shown)+'</button>' : '') : '<div class="empty">' + (cat ? 'לא נמצא כלום' : 'טוען את הקטלוג…') + '</div>') + '</div>';
   const oldSide = $('side'), sideTop = oldSide ? oldSide.scrollTop : 0;
   if (desk){
@@ -1779,7 +1805,7 @@ function renderCatalog(){
     const panel = '<div id="fpanel"'+(F.open ? '' : ' class="hide"')+'>' + facets + range + '<button class="showbtn" data-show="1">הצג '+num(rows.length)+' פריטים</button></div>';
     // the group row: הכל, the most common groups, the active one and the flags, then "עוד N קבוצות ▾" that wraps every group in (never a chip
     // scrolled off-screen); the chips keep their order in the row, a folded one is only not drawn
-    const fixed = new Set(['all', 'brain', 'new', 'ordered', 'ours', chip]);   // or1.8: the brain chip is never folded away
+    const fixed = new Set(['all', 'pre', 'brain', 'new', 'ordered', 'ours', chip]);   // or1.8: the brain chip is never folded away
     const top = new Set(chips.filter(c => !fixed.has(c[0])).sort((a, b) => b[2] - a[2]).slice(0, G_TOP).map(c => c[0]));
     const folded = gAll ? [] : chips.filter(c => !fixed.has(c[0]) && !top.has(c[0]));
     const fold = folded.length > 1 ? new Set(folded.map(c => c[0])) : new Set();
@@ -1819,7 +1845,7 @@ function rowHtml(r){
   h += '<img class="thumb'+(im ? '' : ' ph')+'" loading="lazy" decoding="async" src="'+esc(im || PLACEHOLDER)+'" alt="">';
   h += '<div class="rb" data-open="'+esc(r.id)+'"><div class="rt" dir="auto">'+esc(r.title)+'</div>' + (meta ? '<div class="rm2">'+meta+'</div>' : '') + '<div class="rs">' + priceHtml(r, 'd') + (r.price_dealer != null ? '<span>'+esc(S.price.dealer_short_he)+'</span>' : '') +
     (r.pace && r.pace !== 'none' ? '<span class="pace '+esc(r.pace)+'">'+esc(badgeText(r))+'</span>' : '') +   // a row shows a pace only for an item we carried ("חדש אצלנו" on most of a long list is noise; the card still says it)
-    brainMark(r) +   // or1.8 (L17)
+    brainMark(r) + preMark(r) +   // or1.8 (L17), or1.20 (D1)
     '<span class="qchip tot" data-tot'+(total>0?'':' style="display:none"')+'>סה״כ <b>'+num(total)+'</b></span>' + (r.available ? '' : '<span class="outlbl" style="margin-top:0">אזל</span>') + '</div></div>';
   h += stepperHtml(r) + '</div>';
   return h;
@@ -1834,7 +1860,7 @@ function drowHtml(r){
   h += '<img class="thumb'+(im ? '' : ' ph')+'" loading="eager" decoding="async" src="'+esc(im || PLACEHOLDER)+'" alt="">';
   h += '<div class="rb" data-open="'+esc(r.id)+'"><div class="rt" dir="auto" title="'+esc(r.title)+'">'+esc(r.title)+'</div>' + (meta ? '<div class="rm2">'+meta+'</div>' : '') + '</div>';
   h += '<div class="rp">' + priceHtml(r, 'd') + (r.price_dealer != null ? '<span>'+esc(S.price.dealer_short_he)+'</span>' : '') + '</div>';
-  h += '<div class="rq">' + (r.pace && r.pace !== 'none' ? '<span class="pace '+esc(r.pace)+'">'+esc(badgeText(r))+'</span>' : '') + brainMark(r) + (r.available ? '' : '<span class="outlbl" style="margin-top:0">אזל</span>') + '</div>';
+  h += '<div class="rq">' + (r.pace && r.pace !== 'none' ? '<span class="pace '+esc(r.pace)+'">'+esc(badgeText(r))+'</span>' : '') + brainMark(r) + preMark(r) + (r.available ? '' : '<span class="outlbl" style="margin-top:0">אזל</span>') + '</div>';
   h += '<div class="chips">'+chipsHtml(r)+'</div>';
   h += (stepperHtml(r) || '<span></span>') + '</div>';
   return h;
@@ -1876,7 +1902,7 @@ const shekel = n => n == null || n === '' || isNaN(Number(n)) ? '' : '₪' + num
  */
 function brainGate(){
   if (!who || who === 'admin' || !S.brain) return;
-  S = { ...S, brain: null }; BR = new Map(); OP = { on:false, by:new Map(), self:new Map(), day:'', age:14 };   // or1.19: the other suppliers' prices go with it
+  S = { ...S, brain: null }; BR = new Map(); PRE = null; OP = { on:false, by:new Map(), self:new Map(), day:'', age:14 };   // or1.19: the other suppliers' prices go with it
   const c = loadLS(LS.cat, null);                                   // and out of the stored catalog, so a reload does not bring it back
   if (c && c.settings && typeof c.settings === 'object' && 'brain' in c.settings){ const s = { ...c.settings }; delete s.brain; saveLS(LS.cat, { ...c, settings: s }); }
 }
@@ -1992,6 +2018,84 @@ function otherHtml(r){
 }
 /** the compact mark on a list row */
 function brainMark(r){ const b = brainOfRow(r); return b ? '<span class="bmark">' + esc(S.brain.label_he) + ' ' + num(b.q) + '</span>' : ''; }
+/* ---------- or1.20 (D1): the pre-order box of a new set (admin only: the block rides inside settings.brain) ----------
+ * The numbers come from the block, frozen by the feed; the page holds no set, supplier, price or date of its own. A quantity typed or filled
+ * here is the normal path (change() -> jo_set -> the ledger), so it is saved, shown in ההזמנה שלי and the summary and closed like any line. */
+const preRows = () => (cat && PRE ? PRE.order.map(id => cat.byId.get(id)).filter(Boolean) : []);
+const todayIso = () => new Date().toLocaleDateString('en-CA', { timeZone: TZ });
+const preLate = () => !!(PRE && PRE.deadline && todayIso() > PRE.deadline);
+const curSym = () => S.currency.symbol || '€';
+const eurWhole = n => curSym() + Math.round(n).toLocaleString('en-US');
+const eurCents = n => curSym() + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const inSup = n => (/^[A-Za-z0-9]/.test(n) ? 'ב-' : 'ב') + n;
+/** the rows a fill would touch: the supplier has them, I have no line on them (never a typed one, never a 0 I removed), and the brain does not already propose them */
+const preFillable = () => preRows().filter(r => r.available && PRE.by.get(r.id).q > 0 && !BR.has(r.id) && myQty(r.id) === 0 && !mine[r.id] && !(person && lines.has(kOf(person, r.id))));
+const preFillLabel = n => 'מלא את הכמויות המוצעות (' + num(n) + ')';
+/** S1: after a quantity changed, refresh the box's typed euro figure and the fill count without a full redraw */
+function preBoxRefresh(){
+  if (!PRE || !cat) return;
+  const box = document.querySelector('.pbox'); if (!box) return;
+  let typed = 0; for (const r of preRows()){ const b = PRE.by.get(r.id); if (b.ref != null) typed += myQty(r.id) * b.ref; }
+  const t = box.querySelector('.pre-typed'); if (t) t.textContent = eurWhole(typed);
+  const btn = box.querySelector('[data-act="prefill"]'), n = preFillable().length;
+  if (btn){ btn.textContent = preFillLabel(n); btn.disabled = !n; }
+}
+function preBoxHtml(){
+  if (!PRE || !cat) return '';
+  const rows = preRows(); if (!rows.length) return '';
+  const sup = S.name_he || 'הספק', late = preLate(), dd = PRE.deadline ? ddmm(PRE.deadline) : '';
+  let rec = 0, typed = 0, anyRef = false;
+  for (const r of rows){ const b = PRE.by.get(r.id); if (b.ref != null){ anyRef = true; rec += b.q * b.ref; typed += myQty(r.id) * b.ref; } }
+  const can = preFillable(), open = state.open && person && ready();
+  let h = '<div class="bbox pbox"><div class="bh">הזמנה מוקדמת: <bdi>' + esc(PRE.set) + '</bdi>' +
+    (dd ? (late ? ' · המועד אצל <bdi>' + esc(sup) + '</bdi> עבר ב-<bdi dir="ltr">' + esc(dd) + '</bdi>' : ' · להזמין עד <bdi dir="ltr">' + esc(dd) + '</bdi> אצל <bdi>' + esc(sup) + '</bdi>') : '') + '</div>';
+  if (PRE.note) h += '<div class="bs">' + bidiNums(PRE.note) + '</div>';
+  if (anyRef){
+    h += '<div class="bs">לפי ההמלצה: בערך <bdi dir="ltr">' + esc(eurWhole(rec)) + '</bdi> · לפי מה שהזנת: <bdi dir="ltr" class="pre-typed">' + esc(eurWhole(typed)) + '</bdi></div>';
+    if (PRE.priceNote) h += '<div class="bs">' + bidiNums(PRE.priceNote) + '</div>';
+  }
+  h += '<div class="acts">' + (open && !late ? '<button data-act="prefill"' + (can.length ? '' : ' disabled') + '>' + preFillLabel(can.length) + '</button>' : '') +
+    (chip === 'pre' ? '<button data-chip="all">הצג את כל הקטלוג</button>' : '<button data-chip="pre">הצג רק אותם</button>') +
+    '<button data-act="precopy">העתק את ההזמנה המוקדמת</button></div>';
+  if (open && !late) h += '<div class="bs">הכמויות ייכנסו על השם <b>' + esc(person) + '</b>. הכפתור ממלא רק פריטים שאין בהם שורה שלך. אפשר לשנות כל מספר אחר כך. שום דבר לא נשלח לספק.</div>';
+  return h + '</div>';
+}
+/** the lines under a card's price: what is proposed, the range, why, and the cost of the same product (cost only, never a sale price) */
+function preHtml(r){
+  const b = PRE && !r.orphan ? PRE.by.get(r.id) : null; if (!b) return '';
+  let h = '<div class="pre"><span class="pq">מוצע ' + num(b.q) + (b.u ? ' ' + esc(b.u) : '') + ' · טווח ' + bidiNums(b.lo + '–' + b.hi) + '</span>';
+  if (b.why) h += ' <span class="bwhy">' + bidiNums(b.why) + '</span>';
+  if (b.fl) h += '<span class="bfl">' + bidiNums(b.fl) + '</span>';
+  const parts = [];
+  if (b.ref != null) parts.push(esc(PRE.refHe) + ' <bdi dir="ltr">' + esc(eurCents(b.ref)) + '</bdi>'); else parts.push('אין מחיר קודם ' + esc(inSup(S.name_he || 'הספק')));
+  if (b.cg != null && PRE.altHe) parts.push('<bdi>' + esc(PRE.altHe) + '</bdi> <bdi dir="ltr">' + esc(eurCents(b.cg)) + '</bdi>' + (PRE.altDeadline ? ' עד <bdi dir="ltr">' + esc(ddmm(PRE.altDeadline)) + '</bdi>' : ''));
+  return h + '<span class="bsrc">' + parts.join(' · ') + '</span></div>';
+}
+function preMark(r){ const b = PRE && !r.orphan ? PRE.by.get(r.id) : null; return b ? '<span class="bmark">הזמנה מוקדמת ' + num(b.q) + '</span>' : ''; }
+/** fill the proposed quantities into the rows that have none of mine: each goes through change(), exactly as if it had been typed */
+function preFill(){
+  if (preLate()) return;
+  const can = preFillable(); if (!can.length) return;
+  let n = 0;
+  for (const r of can){ const b = PRE.by.get(r.id); if (!b) continue; change(r.id, Math.min(MAX_QTY, b.q), true); n++; }
+  toast('מולאו ' + num(n) + ' פריטים. אפשר לשנות כל מספר.', '', 4000);
+  renderCatalog();
+}
+/** the text of MY saved pre-order lines (the ledger only), in the supplier text's format, under a header with the set and the last day */
+function preText(){
+  const its = preRows().filter(r => myConfirmed(r.id) > 0), skuHe = x => isNoCode(x) ? noCodeHe() : S.code_he + ' ' + x;
+  const out = [(S.name_he || S.title_he) + ' — הזמנה מוקדמת ' + PRE.set + (PRE.deadline ? ' · להזמין עד ' + ddmm(PRE.deadline) : '') + ' — ' + ddmmyyyy(new Date()), ''];
+  for (const r of its) out.push(r.title + ' · ' + skuHe(r.sku) + ' · כמות ' + myConfirmed(r.id));
+  out.push('', 'סה״כ ' + its.length + ' פריטים · ' + its.reduce((s, r) => s + myConfirmed(r.id), 0) + ' יח׳');
+  return out.join('\n');
+}
+async function copyPre(){
+  if (!PRE) return;
+  if (!preRows().some(r => myConfirmed(r.id) > 0)){ toast('אין עדיין כמויות שנשמרו בהזמנה המוקדמת', 'warn'); return; }
+  const pend = Object.keys(mine).length > 0 || queue.length > 0;
+  const ok = await clip(preText());
+  toast(ok ? 'הועתק' + (pend ? ' · רק מה שכבר נשמר' : '') : 'לא הצלחתי להעתיק', ok ? (pend ? 'warn' : '') : 'err', pend ? 5000 : 2600);
+}
 /** every catalog row the brain proposes */
 const brainRows = () => (cat ? cat.rows.filter(r => BR.has(r.id)) : []);
 /** the rows a fill would touch: the supplier has them and I have no quantity on them yet (rule 3: a quantity of mine is never overwritten) */
@@ -2140,6 +2244,7 @@ function cardHtml(r){
   if (meta.length) h += '<div class="meta">' + meta.map(m => '<span>'+m+'</span>').join('') + '</div>';
   h += paceHtml(r);
   h += brainHtml(r);   // or1.8 (L17): what the brain proposes on this item, right under its stock and pace
+  h += preHtml(r);     // or1.20 (D1): the pre-order lines of this item (admin only)
   h += otherHtml(r);   // or1.19 (L17): the same product at the other suppliers (admin, switch on)
   if (!r.available) h += '<span class="outlbl">'+esc(S.availability.out_he)+'</span>';
   h += '</div></div>';
@@ -2152,6 +2257,7 @@ function cardHtml(r){
 function paintCard(v){
   const r = cat && cat.byId.get(String(v)); if (!r) return;
   const total = totalOf(r.id), my = myQty(r.id);
+  if (PRE && PRE.by.has(r.id)) preBoxRefresh();
   // the same item may be drawn as a catalog card or row, a line of my order and a summary row, each with its chips and my stepper
   for (const el of document.querySelectorAll('[data-v="' + CSS.escape(String(v)) + '"]')){
     if (el.classList.contains('card')) el.classList.toggle('has', total > 0);
@@ -2400,6 +2506,8 @@ document.addEventListener('click', ev => {
   if (t.dataset.optog){ const box = t.closest('.oth'), card = t.closest('[data-v]'); if (box && card){ const v = card.dataset.v; if (opOpen.has(v)) opOpen.delete(v); else opOpen.add(v); box.classList.toggle('open', opOpen.has(v)); t.textContent = t.textContent.replace(/[▴▾]$/, opOpen.has(v) ? '▴' : '▾'); } return; }   // or1.19: open / fold the other suppliers' prices
   if (t.dataset.moreDesc){ const card = t.closest('.card'); const v = card.dataset.v; if (expanded.has(v)) expanded.delete(v); else expanded.add(v); if (isList() && view === 'catalog'){ renderCatalog(); return; } const d = card.querySelector('.desc'); if (d) d.classList.toggle('open', expanded.has(v)); card.classList.toggle('big', expanded.has(v)); t.textContent = expanded.has(v) ? 'פחות' : 'עוד'; return; }   // open = the picture grows; in the list view "פחות" folds the card back into its row
   if (t.dataset.step){ const host = t.closest('[data-v]'); if (!host) return; const v = host.dataset.v, inp = host.querySelector('input[data-qin]'); const cur = deb[v] ? deb[v].qty : (parseInt(inp && inp.value, 10) || 0); change(v, Math.max(0, cur + Number(t.dataset.step)), false); return; }   // a card, a row, a line of my order or a summary row
+  if (t.dataset.act === 'prefill') return preFill();   // or1.20 (D1)
+  if (t.dataset.act === 'precopy') return copyPre();
   if (t.dataset.act === 'brainfill') return brainFill();   // or1.8 (L17): fill the proposed quantities into rows with none of mine
   if (t.dataset.act === 'copy') return copyText();
   if (t.dataset.act === 'csv') return downloadCsv();
