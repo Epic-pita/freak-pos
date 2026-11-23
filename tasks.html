@@ -168,7 +168,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 't1.1';   // S-SUP step 2 (16/11/2026): ONE tasks screen for all suppliers, reading and answering through the same backend as suppliers.html; t1.1 (18/11): a manager signed in to the app FREAK צוות answers with a pass (no personal link, no key)
+const BUILD = 't1.2p';   // S-SUP step 2 (16/11/2026): ONE tasks screen for all suppliers, reading and answering through the same backend as suppliers.html; t1.1 (18/11): a manager signed in to the app FREAK צוות answers with a pass (no personal link, no key); t1.2 (19/11): new answers on out and no-price tasks (gone, handled, wait until a date) and a free note on every task
 // the backend is the catalog's script, the same deployments as suppliers.html: LIVE reads the live list; ?api=test writes only the TEST copies;
 // ?preview=1 = REAL rows, but every answer is only TRIED (dryRun: the server says what it would write and writes nothing). Never a URL from the address bar.
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbyCy0D7QPJNjpVIPP7NkNC38rkACV0t-O1C_m-SDsBUTFysG-Q0QUjtDPjI3Go8iYUZfw/exec';
@@ -225,7 +225,8 @@ let loading = false, lastOk = 0, db = null, syncing = false, loadAgain = false, 
 const cancelled = new Set();
 // PASSMODE: only what the reply's allow-list names is ever offered (no list = nothing); key mode as before
 const ALLOW = () => PASSMODE ? new Set(data && Array.isArray(data.allow) ? data.allow : []) : (data && data.role === 'answerer' && Array.isArray(data.allow)) ? new Set(data.allow) : null;
-const can = (kind, ans) => { const a = ALLOW(); return !a || a.has(kind + '/' + ans); };
+// t1.2 fix round: every id, new verbs included, is offered only when the reply's allow-list names it (kind/answer); giving the manager the new verbs is a server pass-list change
+const can = (kind, ans) => { const a = ALLOW(); if (!a) return true; return a.has(kind + '/' + ans); };
 // a signed-in app session whose list reply does not say role 'answerer' (or before the first list arrived): nothing real is sent
 const roleBad = () => PASSMODE && !(data && data.role === 'answerer');
 
@@ -300,6 +301,11 @@ async function post(body, ms=45000){
 function safeUrl(u){ const s = String(u == null ? '' : u); if (!/^https?:\/\/[^\s"'<>]+$/i.test(s)) return ''; try{ const p = new URL(s).protocol; return p === 'https:' || p === 'http:' ? s : ''; }catch(e){ return ''; } }
 const TEXT_RULE = 'הטקסט לא יכול להתחיל ב-= או להכיל < > ועד 300 תווים';
 const typedNote = key => (openEditor === key && $('edNote')) ? ($('edNote').value || '').trim() : '';
+/* t1.2: dates in Israel time, as 'YYYY-MM-DD' */
+const UNTIL_RULE = 'התאריך צריך להיות מחר או אחר כך ולא יותר משנה מהיום';
+const todayYmd = () => new Date().toLocaleDateString('en-CA', { timeZone: TZ });
+const addDays = (s, n) => { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+const untilOk = v => { if (!/^\d{4}-\d{2}-\d{2}$/.test(v || '')) return false; const [y, m, d] = v.split('-').map(Number); if (new Date(Date.UTC(y, m - 1, d)).toISOString().slice(0, 10) !== v) return false; const t = todayYmd(); return v >= addDays(t, 1) && v <= addDays(t, 365); };
 const textOk = t => t === '' || (t.length <= 300 && !/^=|[<>\u0000-\u001f]/.test(t));
 
 /* ================= ORDER PAGES (the link from a supplier's cards) ================= */
@@ -368,10 +374,13 @@ function qDel(id){ return new Promise((res,rej)=>{ const tx=db.transaction('q','
 async function badge(){ const n = db ? (await qAll()).filter(j=>j.mode===MODE && mine(j) && !j.body.dryRun).length : 0; const b=$('queueBadge'); b.textContent=n; b.classList.toggle('hide', !n); }
 
 /* answers: shown at once on this phone, sent from the queue; a hiding answer waits 5 s so "בטל" can take it back */
+const WAITING = 'ממתין לשליחה';   // the answer is queued for a retry (soft failure)
+const SAVING = 'שומר…';   // t1.2: what a second tap on a card shows while its first answer is still on its way (toast, and a grey line on a card that stays)
+const clearSaving = key => document.querySelectorAll('[data-saving]').forEach(el => { if (el.dataset.saving === key) el.remove(); });   // in place: a re-render would wipe a note the person is typing
 async function answer(r, ans, value, note, label, hides){
   if (!textOk(String(note || ''))){ toast(TEXT_RULE, 'err', 4000); return; }   // every answer, whichever button it came from: the server's rule (no leading =, no < >, one line, 300 characters) is checked here first
   if (!PREVIEW && roleBad()){ toast(T_NOTALLOWED + ' לא נשמר כלום.', 'err', 6000); return; }
-  if (pend[r.key] && pend[r.key].uuid) return;   // a second tap while the first answer is on its way is ignored (it would be a second job with another uuid)
+  if (pend[r.key] && pend[r.key].uuid){ toast(pend[r.key].queued ? WAITING : SAVING, '', 2500); return; }   // a second tap while the first answer is on its way is ignored (it would be a second job with another uuid)
   const job = { uuid: uuid(), ts: Date.now(), mode: MODE, via: VIA, att: 0, soft: 0, notBefore: hides ? Date.now() + UNDO_MS : 0,
     body: { action:'answer', kind: r.kind, key: r.key, code: r.code || '', sup: r.sup || '', answer: ans, value: value || {}, note: note || '', ...(PREVIEW ? { dryRun: true } : {}) } };
   pend[r.key] = { ans, at: Date.now(), uuid: job.uuid, label }; openEditor = '';
@@ -405,7 +414,7 @@ function afterOk(job, js){
   if (js.result === 'partial') notSaved(job, 'נשמר רק חלק: בגיליון כבר היה כתוב משהו אחר באחד התאים', true);
   else if (PASSMODE && !PREVIEW && js.result !== 'dry') toast(T_SAVED);
   if (js.result === 'gone'){ notSaved(job, 'הפריט כבר לא בלשונית — לא נכתב', true); return; }
-  if (!hidingAns(job.body.answer)) delete pend[job.body.key];   // a note hides nothing: the task stays and the pending mark goes
+  if (!hidingAns(job.body.answer)){ delete pend[job.body.key]; clearSaving(job.body.key); }   // a note hides nothing: the task stays and the pending mark and the saving line go
   if (!PREVIEW) setTimeout(()=>load(false), 600);
 }
 async function sendNow(job, label){
@@ -417,8 +426,15 @@ async function sendNow(job, label){
     notSaved(job, js && js.error); }
   catch(e){ notSaved(job, 'אין חיבור'); }
 }
+function markQueued(key){   // the card's pending answer waits for a later send: the line and the second-tap toast say WAITING
+  if (pend[key]) pend[key].queued = true;
+  document.querySelectorAll('[data-saving]').forEach(el => { if (el.dataset.saving === key) el.textContent = WAITING; });
+}
 async function sync(){
-  if (syncing || !navigator.onLine || !API || !db) return;
+  if (syncing || !API || !db) return;
+  if (!navigator.onLine){   // offline: a job that is due waits for the phone to be online, the line says WAITING
+    try{ for (const job of await qAll()) if (job.mode === MODE && mine(job) && !cancelled.has(job.uuid) && !(job.notBefore && job.notBefore > Date.now())) markQueued(job.body.key); }catch(e){}
+    return; }
   if (!PREVIEW && roleBad()) return;   // a real job waits in the queue until the list has said role 'answerer' (it is sent on the next 5 s tick)
   syncing = true;
   try{
@@ -429,7 +445,7 @@ async function sync(){
       if (cancelled.has(job.uuid)){ await qDel(job.uuid); continue; }
       if (job.notBefore && job.notBefore > Date.now()) continue;
       let js;
-      try{ js = await post({ ...bodyOf(job), uuid: job.uuid }, 60000); }catch(e){ break; }
+      try{ js = await post({ ...bodyOf(job), uuid: job.uuid }, 60000); }catch(e){ markQueued(job.body.key); break; }
       if (js && js.ok && !PREVIEW && js.result === 'dry'){ await qDel(job.uuid); notSaved(job, 'השרת ענה בריצת ניסיון'); }
       else if (js && js.ok){ await qDel(job.uuid); afterOk(job, js); }
       else if (js && (js.error === 'NO_PASS' || (PASSMODE && js.error === 'BAD_PASS'))) break;   // the job waits in the queue (no pass yet, or the pass was refused twice)
@@ -437,6 +453,7 @@ async function sync(){
       else if (js && HARD.test(String(js.error||''))){ await qDel(job.uuid); notSaved(job, js.error); }
       else {
         // the catalog is refreshing, Google is slow, the sheet was busy: try again later — 1, 2, 4 … up to 15 minutes apart, for a day
+        markQueued(job.body.key);   // queued for a later retry: the line says WAITING, the one-job-per-card mark stays
         job.soft = (job.soft||0)+1; job.notBefore = Date.now() + Math.min(15, Math.pow(2, Math.min(job.soft-1, 4))) * 60000;
         if (Date.now() - job.ts > 24*3600000){ await qDel(job.uuid); notSaved(job, (js && js.error) || '?'); } else await qPut(job);
       }
@@ -546,7 +563,8 @@ function render(){
   renderBanners(); renderList();
   $('foot').textContent = 'גרסה ' + BUILD + (MODE !== 'live' ? ' · שרת ניסיון' : '') + (PREVIEW ? ' · תצוגה' : '') + ' · ' + (data.who || '');
 }
-const ED_IDS = ['edSup', 'edNote', 'edPrice', 'edCur', 'edSrc'];
+const ED_IDS = ['edSup', 'edNote', 'edPrice', 'edCur', 'edSrc', 'edUntil'];
+let lastOwner = '';   // the editor (card key + kind) that the last redraw drew: saved values go back only into that same editor
 function renderList(){
   const owner = openEditor + '|' + editorKind;
   const keep = ED_IDS.map(id => [id, $(id) ? $(id).value : null]).filter(x => x[1] !== null), focus = document.activeElement && document.activeElement.id;
@@ -555,7 +573,8 @@ function renderList(){
     ((F.sup || F.kind || !F.open || query) ? '<button data-fclear="1">נקה סינון</button>' : '');
   $('list').innerHTML = all.slice(0, n).map(cardHtml).join('') + (all.length > n ? '<button class="more" data-more="1">עוד ' + Math.min(PAGE, all.length - n) + ' (נשארו ' + (all.length - n) + ')</button>' : '') ||
     '<div class="empty">אין משימות לפי הסינון הזה.' + (F.open ? ' <br><button data-fo="1" style="margin-top:10px">להראות גם משימות בלי שורת הזמנה</button>' : '') + '</div>';
-  if (owner === openEditor + '|' + editorKind){   // what he typed survives every redraw (poll, filter tap, a returning tab), but only back into the SAME editor
+  const same = owner === lastOwner; lastOwner = owner;
+  if (same){   // what he typed survives every redraw (poll, filter tap, a returning tab), but only back into the SAME editor
     for (const [id, v] of keep) if ($(id)) $(id).value = v;
     if (focus && ED_IDS.includes(focus) && $(focus)) $(focus).focus();
   }
@@ -601,6 +620,23 @@ function cardHtml(t){
   if (t.kind === 'out') return cOut(t);
   return cTransit(t);
 }
+/* t1.2: the new answers row (gone / handled / wait until / note) and its two editors; the note button is on every nosup, noprice and out card */
+function moreActs(t){
+  const r = t.r, k = r.kind, out = k === 'out', np = k === 'noprice', b = [];
+  if ((out || np) && can(k, 'gone')) b.push('<button class="no" data-act="gone">'+(pend['gone?'+r.key] ? 'בטוח? לא יחזור' : 'לא יחזור')+'</button>');
+  if ((out || np) && can(k, 'handled')) b.push('<button class="alt" data-act="handled">כבר טופל</button>');
+  if (out && can(k, 'wait_until')) b.push('<button class="alt" data-act="untilopen">לחכות עד</button>');
+  if (can(k, 'note')) b.push('<button class="alt" data-act="rnote">הערה</button>');
+  let ed = '';
+  if (out && can(k, 'wait_until') && openEditor === r.key && editorKind === 'until'){
+    const t0 = todayYmd();
+    ed = '<div class="editor"><label>לחכות עד תאריך</label><input id="edUntil" type="date" min="'+addDays(t0, 1)+'" max="'+addDays(t0, 365)+'" value="'+addDays(t0, 14)+'"><label>הערה (לא חובה)</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-act="untilsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>';
+  } else if (can(k, 'note') && openEditor === r.key && editorKind === 'rnote'){
+    ed = '<div class="editor"><label>הערה (עד 300 תווים)</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-act="rnotesave">שמור הערה</button><button class="no" data-act="edclose">סגור</button></div></div>';
+  }
+  const sv = pend[r.key] && pend[r.key].uuid && !hidingAns(pend[r.key].ans) ? '<div class="why" data-saving="'+esc(r.key)+'">'+(pend[r.key].queued ? WAITING : SAVING)+'</div>' : '';   // a card that stays (a note) says it is saving until the answer is done
+  return (b.length ? '<div class="acts">' + b.join('') + '</div>' : '') + sv + ed;
+}
 function cNosup(t){
   const r = t.r, d = r.d, ro = ((data.overlay && data.overlay.real) || {})[r.code] || {};
   const hint = [d.guess ? 'במערכת: '+d.guess+' (ניחוש)' : '', d.study && d.study !== 'לא ידוע' ? 'הבדיקה: '+d.study+(d.studyConf?' ('+d.studyConf+')':'') : ''].filter(Boolean).join(' · ');
@@ -611,7 +647,7 @@ function cNosup(t){
     (supOk ? '<div class="chipline">' + quick.map(s => '<button class="chip" data-act="nsquick" data-sup="'+esc(s)+'">'+esc(s)+'</button>').join('') + '<button class="chip" data-act="nsother">אחר…</button></div>' : '') +
     (can('nosup', 'unknown') ? '<div class="acts"><button class="no" data-act="nsunknown">לא יודע</button></div>' : '') +
     (!supOk && !can('nosup', 'unknown') ? '<div class="why">כאן לצפייה בלבד.</div>' : '') +
-    (supOk && openEditor === r.key && editorKind === 'sup' ? '<div class="editor"><label>מאיפה קונים את זה</label>'+supSelect('edSup', d.guess, [d.guess])+'<label>הערה (לא חובה)</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-act="nssave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + '</div>';
+    (supOk && openEditor === r.key && editorKind === 'sup' ? '<div class="editor"><label>מאיפה קונים את זה</label>'+supSelect('edSup', d.guess, [d.guess])+'<label>הערה (לא חובה)</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-act="nssave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + moreActs(t) + '</div>';
 }
 function cNoprice(t){
   const r = t.r, d = r.d;
@@ -622,7 +658,7 @@ function cNoprice(t){
         '<label>לפי מה</label><select id="edSrc"><option>חשבונית</option><option>מחירון</option><option>הצעת מחיר</option><option>הערכה שלי</option></select>' +
         '<label>הערה (לא חובה)</label><input id="edNote" maxlength="300" placeholder="למשל: קופסה של 24 ב-€74, אז 3.1 לחבילה"><div class="acts"><button class="go" data-act="npsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>'
       : (!can('noprice', 'price') && !can('noprice', 'skip') ? '<div class="why">כאן לצפייה בלבד: את המחיר מקליד מי שמזמין.</div>'
-        : '<div class="acts">' + (can('noprice', 'price') ? '<button class="go" data-act="npedit">להקליד מחיר</button>' : '') + (can('noprice', 'skip') ? '<button class="no" data-act="npskip">דלג</button>' : '') + '</div>')) + '</div>';
+        : '<div class="acts">' + (can('noprice', 'price') ? '<button class="go" data-act="npedit">להקליד מחיר</button>' : '') + (can('noprice', 'skip') ? '<button class="no" data-act="npskip">דלג</button>' : '') + '</div>')) + moreActs(t) + '</div>';
 }
 function cOut(t){
   const r = t.r, d = r.d, alts = (d.offers||[]).filter(o => o.s !== d.out);
@@ -632,7 +668,7 @@ function cOut(t){
         ? '<button class="opt" data-act="outswitch" data-sup="'+esc(o.s)+'">להזמין מ-<b>'+esc(o.s)+'</b> · '+ils(o.ils)+(ni(o.lead)!==''?' · '+ni(o.lead)+' ימים':'')+'<div class="s">'+esc(o.stock || 'מלאי לא ידוע')+'</div></button>'
         : '<div class="why">'+esc(o.s)+' · '+ils(o.ils)+(ni(o.lead)!==''?' · '+ni(o.lead)+' ימים':'')+' · '+esc(o.stock || 'מלאי לא ידוע')+'</div>').join('') : '<div class="why">אין ספק אחר עם מחיר בקטלוג.</div>') +
     ((can('out', 'switch') || can('out', 'wait') || can('out', 'drop')) ? '<div class="acts">' + (can('out', 'switch') ? '<button class="alt" data-act="outother">ספק אחר…</button>' : '') + (can('out', 'wait') ? '<button class="alt" data-act="outwait">לחכות שיחזור</button>' : '') + (can('out', 'drop') ? '<button class="no" data-act="outdrop">'+(pend['drop?'+r.key] ? 'בטוח? ללא הבאה נוספת' : 'לא להביא יותר')+'</button>' : '') + '</div>' : '<div class="why">כאן לצפייה בלבד.</div>') +
-    (can('out', 'switch') && openEditor === r.key && editorKind === 'out' ? '<div class="editor"><label>מאיזה ספק להזמין</label>'+supSelect('edSup', '', [])+'<div class="acts"><button class="go" data-act="outsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + '</div>';
+    (can('out', 'switch') && openEditor === r.key && editorKind === 'out' ? '<div class="editor"><label>מאיזה ספק להזמין</label>'+supSelect('edSup', '', [])+'<label>הערה (לא חובה)</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-act="outsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + moreActs(t) + '</div>';
 }
 function cTransit(t){
   const o = t.o, exp = ni(o.lead)!=='' && o.at && !isNaN(new Date(o.at)) ? new Date(new Date(o.at).getTime() + Number(o.lead)*86400000) : null;
@@ -679,7 +715,7 @@ document.addEventListener('click', ev => {
   if (act === 'nsquick') return answer(r, 'supplier', { sup: d.sup, ...wasOther() }, typedNote(r.key), 'ספק: '+d.sup, true);
   if (act === 'nsother'){ openEditor = r.key; editorKind = 'sup'; renderList(); const f = $('edSup'); if (f) f.focus(); return; }
   if (act === 'nssave'){ const s = $('edSup').value, n = $('edNote').value.trim(); if (!s){ toast('לבחור ספק', 'err'); return; } if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; } return answer(r, 'supplier', { sup: s, ...wasOther() }, n, 'ספק: '+s, true); }
-  if (act === 'nsunknown') return answer(r, 'unknown', {}, '', 'לא ידוע — יחזור בעוד חודש', true);
+  if (act === 'nsunknown') return answer(r, 'unknown', {}, typedNote(r.key), 'לא ידוע — יחזור בעוד חודש', true);
   if (act === 'npedit'){ openEditor = r.key; editorKind = 'price'; renderList(); const f = $('edPrice'); if (f) f.focus(); return; }
   if (act === 'npsave'){
     const p = Number($('edPrice').value), c = $('edCur').value, s = $('edSrc').value, n = $('edNote').value.trim();
@@ -690,13 +726,29 @@ document.addEventListener('click', ev => {
   if (act === 'npskip') return answer(r, 'skip', {}, typedNote(r.key), 'דילגתי — יחזור בעוד שבועיים', true);
   if (act === 'outswitch') return answer(r, 'switch', { sup: d.sup, wasPick: o.pick || '' }, typedNote(r.key), 'יוזמן מ-'+d.sup, true);
   if (act === 'outother'){ openEditor = r.key; editorKind = 'out'; renderList(); const f = $('edSup'); if (f) f.focus(); return; }
-  if (act === 'outsave'){ const s = $('edSup').value; if (!s){ toast('לבחור ספק', 'err'); return; } return answer(r, 'switch', { sup: s, wasPick: o.pick || '' }, '', 'יוזמן מ-'+s, true); }
+  if (act === 'outsave'){ const s = $('edSup').value, n = ($('edNote').value || '').trim(); if (!s){ toast('לבחור ספק', 'err'); return; } if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; } return answer(r, 'switch', { sup: s, wasPick: o.pick || '' }, n, 'יוזמן מ-'+s, true); }
   if (act === 'outwait') return answer(r, 'wait', {}, typedNote(r.key), 'מחכים שיחזור — שבועיים', true);
+  if (act === 'gone'){   // t1.2: like 'drop', the first tap asks, the second (within 4 s) does it
+    const k = 'gone?' + r.key;
+    if (pend[k] && Date.now() - pend[k].at < 500) return;
+    if (!pend[k]){ pend[k] = { ans: 'note', at: Date.now() }; renderList(); setTimeout(()=>{ if (pend[k]){ delete pend[k]; renderList(); } }, 4000); return; }
+    delete pend[k]; return answer(r, 'gone', { sup: taskSup(r) }, typedNote(r.key), 'לא יחזור — לא נציע אותו מהספק', true);
+  }
+  if (act === 'handled') return answer(r, 'handled', {}, typedNote(r.key), 'סומן כטופל', true);
+  if (act === 'untilopen'){ openEditor = r.key; editorKind = 'until'; renderList(); const f = $('edUntil'); if (f) f.focus(); return; }
+  if (act === 'untilsave'){
+    const u = ($('edUntil').value || '').trim(), n = ($('edNote').value || '').trim();
+    if (!untilOk(u)){ toast(UNTIL_RULE, 'err', 4000); return; }
+    if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; }
+    return answer(r, 'wait_until', { until: u }, n, 'מחכים עד ' + u.split('-').reverse().slice(0, 2).join('/'), true);
+  }
+  if (act === 'rnote'){ openEditor = r.key; editorKind = 'rnote'; renderList(); const f = $('edNote'); if (f) f.focus(); return; }
+  if (act === 'rnotesave'){ const n = ($('edNote').value || '').trim(); if (!n) return; if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; } return answer(r, 'note', {}, n, 'ההערה נשמרה', false); }
   if (act === 'outdrop'){   // no popup: the first tap asks, the second (within 4 s) does it
     const k = 'drop?' + r.key;
     if (pend[k] && Date.now() - pend[k].at < 500) return;
     if (!pend[k]){ pend[k] = { ans: 'note', at: Date.now() }; renderList(); setTimeout(()=>{ if (pend[k]){ delete pend[k]; renderList(); } }, 4000); return; }
-    delete pend[k]; return answer(r, 'drop', {}, '', 'לא מביאים יותר', true);
+    delete pend[k]; return answer(r, 'drop', {}, typedNote(r.key), 'לא מביאים יותר', true);
   }
 });
 $('refreshBtn').onclick = () => load(true);
@@ -730,7 +782,7 @@ async function start(){
   loadOrderSups();
   try{ db = await idb(); }catch(e){ toast('אין אחסון בטלפון — התשובות יישלחו רק עם קליטה', 'warn', 5000); }
   // answers still in the queue count as answered on this phone (a reopened app must not offer the same task again)
-  if (db && !PREVIEW){ try{ for (const j of await qAll()) if (j.mode === MODE && mine(j) && !j.body.dryRun) pend[j.body.key] = { ans: j.body.answer, at: j.ts, uuid: j.uuid, label: '' }; }catch(e){} }
+  if (db && !PREVIEW){ try{ for (const j of await qAll()) if (j.mode === MODE && mine(j) && !j.body.dryRun) pend[j.body.key] = { ans: j.body.answer, at: j.ts, uuid: j.uuid, label: '', queued: (j.soft || 0) > 0 }; }catch(e){} }
   badge(); sync(); load(!data);
   setInterval(() => { if (!document.hidden) load(false); }, POLL_MS);
 }
