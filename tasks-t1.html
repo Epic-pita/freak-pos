@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1a20">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="./icon-192.png">
+<title>FREAK — משימות ספקים</title>
+<style>
+  :root{
+    --bg:#0f1a20; --surface:#16262e; --surface2:#1d323c; --line:#2a4450;
+    --teal:#3d7a94; --teal-hi:#5aa3c2; --green:#2E7D32; --green-hi:#43a047; --amber:#c77f14;
+    --red:#c0392b; --red-soft:#3a1512; --ink:#e8eef1; --dim:#8fa6b0; --mono:'Roboto Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0; background:var(--bg); color:var(--ink)}
+  body{font-family:-apple-system,'Segoe UI',Roboto,'Heebo',Arial,sans-serif; font-size:16px; line-height:1.4; padding-bottom:40px}
+  button{font-family:inherit; font-size:15px; border:none; border-radius:10px; cursor:pointer; color:var(--ink); background:var(--surface2); padding:10px 12px; min-height:40px}
+  button:disabled{opacity:.45; cursor:default}
+  input,select{font-family:inherit; font-size:16px; color:var(--ink); background:var(--surface2); border:1px solid var(--line); border-radius:10px; padding:10px; width:100%}
+  input:focus,select:focus{outline:2px solid var(--teal)}
+  a{color:var(--teal-hi)}
+  .hide{display:none !important}
+
+  #top{position:sticky; top:0; z-index:50; background:var(--surface); border-bottom:1px solid var(--line)}
+  #topline{display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; padding:9px 12px; max-width:1180px; margin:0 auto}
+  #topline > *{min-width:0}
+  #dot{width:10px; height:10px; border-radius:50%; background:var(--red); flex:none}
+  #dot.on{background:var(--green-hi)}
+  #title{font-weight:700; font-size:16px}
+  #ver{font-size:11px; color:var(--dim)}
+  #topcnt{font-family:var(--mono); font-size:14px; background:var(--surface2); border:1px solid var(--line); border-radius:12px; padding:2px 10px}
+  #upd{margin-inline-start:auto; font-size:12px; color:var(--dim); text-align:end}
+  #upd.stale{color:#ffd479}
+  #upd .sep{display:none}
+  #queueBadge{background:var(--amber); color:#000; font-size:12px; font-weight:700; border-radius:9px; padding:2px 8px}
+  #refreshBtn{padding:7px 11px; font-size:15px; min-height:36px}
+  .olink{display:inline-flex; align-items:center; justify-content:center; min-height:36px; padding:0 12px; border:1px solid var(--teal); border-radius:10px; color:#c9e6f2; text-decoration:none; font-size:14px; font-weight:600; white-space:nowrap}
+
+  #layout{max-width:640px; margin:0 auto; padding:0 12px}
+  .banner{border-radius:12px; padding:10px 12px; font-size:14px; margin:10px 0}
+  .banner.red{background:var(--red-soft); color:#f0b4ac; border:1px solid var(--red)}
+  .banner.amber{background:#3a2c10; color:#ffd479; border:1px solid #5a4418}
+  .banner.info{background:#10303a; color:#9fd8ea; border:1px solid #1f5a6a}
+  .banner b{color:var(--ink)}
+  .banner .row{margin-top:8px}
+
+  /* filters: the kind chips always; the rest behind one "סינון" toggle on a phone, always open on a wide screen (as the order pages) */
+  #kinds{display:flex; gap:6px; overflow-x:auto; padding:10px 0 4px; scrollbar-width:none}
+  #kinds::-webkit-scrollbar{display:none}
+  .chip{flex:none; background:var(--surface2); border:1px solid var(--line); border-radius:18px; padding:8px 13px; font-size:14px; white-space:nowrap; min-height:40px}
+  .chip.on{background:var(--teal); border-color:var(--teal)}
+  .chip .n{font-family:var(--mono); font-size:12px; margin-inline-start:6px; opacity:.85}
+  .chip.tog{border-color:var(--teal-hi)}
+  .chip.act{background:#2a4450; border-color:var(--teal-hi)}
+  .chip.act .x{margin-inline-start:6px; opacity:.85; font-weight:700}
+  #fbar{display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:6px 0 2px}
+  #fpanel{border:1px solid var(--line); border-radius:12px; padding:6px 10px 10px; margin:6px 0; background:var(--surface)}
+  #fpanel .flbl{font-size:13px; font-weight:600; color:#c9d6dc; margin:8px 0 4px}
+  #fpanel .chips{display:flex; flex-wrap:wrap; gap:6px}
+  #q{padding:8px 10px; font-size:15px}
+  #cnt{font-size:13px; color:var(--dim); margin:8px 2px 2px; display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+  #cnt button{background:none; border:1px solid var(--line); color:#ffd479; padding:6px 10px; font-size:13px; min-height:36px}
+
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px; margin:8px 0}
+  .card.pend{opacity:.6}
+  .card.urgent{border-inline-start:4px solid var(--red)}
+  .card .kind{display:inline-block; font-size:11px; color:#c9e6f2; border:1px solid var(--line); border-radius:10px; padding:1px 8px; margin-bottom:6px}
+  .card .nm{font-size:16px; font-weight:700}
+  .card .cd{font-family:var(--mono); font-size:12px; color:var(--dim); margin-inline-start:6px; font-weight:400}
+  .meta{display:flex; flex-wrap:wrap; gap:4px 14px; color:var(--dim); font-size:13px; margin-top:4px}
+  .meta b{color:var(--ink); font-family:var(--mono); font-weight:600}
+  .rec{margin-top:8px; font-size:14px}
+  .rec b{color:var(--teal-hi)}
+  .warn{color:#ffb4a8; font-size:13px; margin-top:6px}
+  .why{color:var(--dim); font-size:12px; margin-top:4px}
+  .offers{width:100%; border-collapse:collapse; margin-top:8px; font-size:13px}
+  .offers td{padding:4px 2px; border-top:1px solid var(--line)}
+  .offers td.p{font-family:var(--mono); text-align:end}
+  .acts{display:flex; gap:6px; margin-top:10px; flex-wrap:wrap}
+  .acts button{flex:1; min-width:92px; padding:10px 8px; font-size:14px}
+  .acts .go{background:var(--green); font-weight:700}
+  .acts .alt{background:var(--surface2); border:1px solid var(--teal)}
+  .acts .no{background:none; border:1px solid var(--line); color:var(--dim)}
+  .chipline{display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 2px}
+  .pendline{margin-top:8px; font-size:13px; color:#ffd479}
+  .editor{margin-top:10px; background:var(--surface2); border-radius:12px; padding:10px}
+  .editor label{display:block; font-size:12px; color:var(--dim); margin:8px 0 4px}
+  .editor .row{display:flex; gap:8px}
+  .editor .row > *{flex:1}
+  .opt{display:block; width:100%; text-align:start; margin-top:6px; background:var(--surface2); border:1px solid var(--line); padding:10px}
+  .opt .s{font-size:12px; color:var(--dim)}
+  .more{display:block; width:100%; margin:8px 0; background:none; border:1px dashed var(--line); color:var(--dim)}
+  .empty{color:var(--dim); text-align:center; padding:30px 10px; font-size:15px}
+  .cardlink{font-size:13px; margin-inline-start:8px}
+
+  #toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--green); color:#fff; padding:12px 18px; border-radius:12px; font-size:15px; font-weight:700;
+         z-index:200; display:none; box-shadow:0 4px 20px rgba(0,0,0,.5); max-width:92vw; text-align:center; align-items:center; gap:12px}
+  #toast.err{background:var(--red)} #toast.warn{background:var(--amber); color:#000}
+  #toast button{background:rgba(0,0,0,.25); padding:6px 12px; font-size:14px; color:inherit}
+  #gate{max-width:480px; margin:60px auto; padding:0 20px}
+  #gate h1{color:var(--teal-hi); font-size:24px}
+  #gate p{color:var(--dim); line-height:1.6}
+  .bigbtn{width:100%; padding:14px; font-size:17px; font-weight:700; margin-top:10px}
+  .bigbtn.go{background:var(--green)}
+  #failedBox{background:var(--red-soft); border:1px solid var(--red); border-radius:10px; padding:10px; font-size:13px; margin:10px 0; color:#f0b4ac}
+  #foot{color:var(--dim); font-size:12px; text-align:center; margin-top:24px}
+
+  /* a phone: nothing in the top bar may be wider than the screen (a wider bar makes the whole page zoom out) */
+  @media (max-width:600px){
+    #ver,#upd br{display:none}
+    #upd .sep{display:inline}
+    #upd{font-size:11px}
+    #ordersLink .lbl{display:none}
+    #ordersLink{padding:0 10px}
+  }
+  /* a wide screen (his PC): the filters always open at the side, the cards in two columns */
+  @media (min-width:1000px){
+    #layout{max-width:1180px; display:grid; grid-template-columns:300px 1fr; gap:0 18px; align-items:start}
+    #side{position:sticky; top:58px}
+    #fbtn{display:none}
+    #fpanel{display:block !important}
+    #kinds{flex-wrap:wrap; overflow:visible}
+    #list{display:grid; grid-template-columns:1fr 1fr; gap:0 12px; align-items:start}
+    #list .more,#list .empty{grid-column:1 / -1}
+  }
+</style>
+</head>
+<body>
+<div id="t1banner" style="background:#f5a623; color:#1a1200; text-align:center; font-weight:700; padding:8px 12px; font-size:14px">עותק ניסיון של שאלות הספקים. מה שעונים כאן לא מגיע לחנות.</div>
+<div id="gate" class="hide">
+  <h1>משימות ספקים</h1>
+  <p id="gateSign" class="hide"></p>
+  <p>כדי להיכנס צריך את המפתח האישי שלך. הוא נשמר בטלפון הזה בלבד. אם כבר נכנסת לדף הספקים בטלפון הזה, אין צורך בכלום: המפתח שם.</p>
+  <input id="keyIn" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="מפתח">
+  <button id="keyBtn" class="bigbtn go">שמור והמשך</button>
+  <p id="gateMsg"></p>
+  <p id="gateLine">מנהלים נכנסים דרך <a id="gateApp" href="#">FREAK צוות</a>.</p>
+</div>
+
+<div id="app" class="hide">
+  <div id="top">
+    <div id="topline">
+      <span id="dot"></span><span id="title">משימות ספקים</span><span id="topcnt">0</span><span id="ver"></span>
+      <span id="queueBadge" class="hide">0</span>
+      <span id="upd"></span>
+      <a id="ordersLink" class="olink" href="order.html" title="הזמנות מספקים">🛒<span class="lbl"> הזמנות מספקים</span></a>
+      <button id="refreshBtn" title="רענון">⟳</button>
+    </div>
+  </div>
+  <div id="layout">
+    <div id="side">
+      <div id="kinds"></div>
+      <div id="fbar"></div>
+      <div id="fpanel" class="hide"></div>
+    </div>
+    <div id="main">
+      <div id="passMsg" class="hide"></div>
+      <div id="banners"></div>
+      <div id="failedBox" class="hide"></div>
+      <div id="cnt"></div>
+      <div id="list"></div>
+      <div id="foot"></div>
+    </div>
+  </div>
+</div>
+<div id="toast"><span id="toastMsg"></span><button id="toastUndo" class="hide">בטל</button></div>
+
+<script>
+'use strict';
+/* ================= CONFIG ================= */
+const BUILD = 't1.2p';   // S-SUP step 2 (16/11/2026): ONE tasks screen for all suppliers, reading and answering through the same backend as suppliers.html; t1.1 (18/11): a manager signed in to the app FREAK צוות answers with a pass (no personal link, no key); t1.2 (19/11): new answers on out and no-price tasks (gone, handled, wait until a date) and a free note on every task
+// the backend is the catalog's script, the same deployments as suppliers.html: LIVE reads the live list; ?api=test writes only the TEST copies;
+// ?preview=1 = REAL rows, but every answer is only TRIED (dryRun: the server says what it would write and writes nothing). Never a URL from the address bar.
+const TEST_API = 'https://script.google.com/macros/s/AKfycbyzPhJi5UxWBqaJ7hlorCI-iiT_qprXfK8XHE3BHXWVGmNVrD7JWmMiiG5BldURbjPl8A/exec';
+const QS = new URLSearchParams(location.search);
+const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+const MODE = (()=>{ const a = QS.get('api'); return a==='local' && LOCAL ? 'local' : 'test'; })();   // t1 copy: always TEST whatever the query says ('local' only on a localhost address, for the gate's stub)
+// t0.x: the LIVE page is ALWAYS preview. Real answers (the path that writes his typing, root rule 3) work only on the TEST deployment (?api=test&real=1, which writes only the
+// private TEST copies) until the reviewer's open items, the TEST run and a second look are done; then the live flip is one reviewed commit.
+// t1.1 (18/11/2026): PASSMODE = no saved key in this browser AND the app FREAK צוות is signed in here (its session id sits in localStorage). The page then asks the app's
+// service for a short pass (5 min, audience freak-suppliers) and sends it as `p` instead of a key. The page never trusts that alone: real answers go out only while the
+// backend's own list reply says role 'answerer' (roleBad() below), and the backend refuses everything outside the reply's allow-list.
+// Chris's own key (a saved fs_key always wins) stays exactly as before: the LIVE page is preview, real answers only on TEST with &real=1.
+// The session id and the pass are never written, removed, logged, put in a URL or kept in the queue.
+const SID_RE = /^[A-Za-z0-9_-]{40,64}$/;
+const APP_SID = 'freak_app_session', APP_MS = 30000;
+const appSid = () => { try{ const s = JSON.parse(localStorage.getItem(APP_SID) || 'null'); return typeof s === 'string' && SID_RE.test(s) ? s : ''; }catch(e){ return ''; } };
+const hasKey = () => { try{ return !!localStorage.getItem('fs_key_t1') || /[#&]k=[\w\-]{20,100}/.test(location.hash); }catch(e){ return /[#&]k=[\w\-]{20,100}/.test(location.hash); } };
+const SID = hasKey() ? '' : appSid();     // read once per load
+const VIA = SID ? 'pass' : 'key';         // whose jobs this page sends: a job queued under a pass is never sent under a key, and the reverse
+const PASSMODE = !!SID;
+const PREVIEW = PASSMODE ? false : !(MODE === 'test' && QS.get('real') === '1');
+const API = MODE==='local' ? location.origin + '/api' : TEST_API;
+// the app FREAK צוות (public addresses, the same as board-page.js): its service per copy and the page to sign in on
+const APP_API = MODE==='local' ? location.origin + '/app' : 'https://script.google.com/macros/s/AKfycbxs0ebx-l1Z-kjWriJb8itLkUvTz1cbmhiqkxdEKMUe9cOTls_RAe-veNmB0QtWINl-Dw/exec';
+const APP_PAGE = 'https://epic-pita.github.io/freak-app/t1/';
+const ENV = 'test';
+const TZ = 'Asia/Jerusalem';
+const LS = { key: 'fs_key_t1', data: 'fst_data_'+MODE+'_t1', filters: 'fst_filters_t1', os: 'fs_order_sups_t1' };   // fs_key: the one key suppliers.html already keeps on this phone (same site)
+const POLL_MS = 20000, UNDO_MS = 5000, PAGE = 10;
+const KINDS = [['', 'הכול'], ['nosup', 'בלי ספק'], ['noprice', 'בלי מחיר'], ['out', 'אזל אצל הספק'], ['transit', 'בדרך']];
+const KIND_HE = { nosup: 'בלי ספק', noprice: 'בלי מחיר', out: 'אזל אצל הספק', transit: 'בדרך' };
+const COMMON_SUPS = ['Kaissa', 'ICO', 'Glassstaff', 'הקובייה', 'ACD', 'School market', 'VFI', 'PSI', 'Asmodee', 'סינאפסה', 'Breaking Games'];
+const OS_URL = './order-suppliers.json';
+// the role the backend reports for this key (in the list reply): 'answerer' = a limited key, with the exact list of answers it may give ('kind/answer').
+// A key without a role (Chris's) may do everything the page offers. The page only HIDES what the key may not do; the backend is what refuses it.
+const T_NOTACTIVE = 'המשתמש שלך ב-FREAK צוות לא פעיל. אם זו טעות יש לפנות למנהל.';
+const T_SIGNIN = 'כדי לענות על שאלות הספקים נכנסים ל-FREAK צוות עם חשבון הגוגל ואז חוזרים לכאן.';
+const T_NOTALLOWED = 'שאלות הספקים פתוחות למנהלים בלבד.';
+const T_RETRY = 'אין תשובה מ-FREAK צוות. לנסות שוב בעוד דקה.';
+const T_BADPASS = 'הכניסה דרך FREAK צוות לא התקבלה. לסגור את הדף ולפתוח אותו שוב מהאפליקציה.';
+const T_TOP = 'נכנסת דרך FREAK צוות. אפשר לענות על ספק, מוצר שאזל ומשלוחים.';
+const ERR_HE = { ALREADY_ANSWERED: 'מישהו כבר ענה על זה. התשובה שלו נשמרה ושלך לא נשלחה.', NOT_ALLOWED: 'התשובה הזאת לא מותרת לך. אפשר לענות על: ספק, מוצר שאזל, משלוחים והערות', BAD_PASS: T_BADPASS };
+const T_CHANGED = 'בגיליון כבר כתוב משהו אחר. לא דרסתי.';
+const T_SAVED = 'נשמר';
+const T_NONET = 'אין חיבור לשרת. לנסות שוב בעוד דקה.';
+const GATE_BAD = 'המפתח לא מתאים. לפתוח שוב את הקישור האישי.';
+
+/* ================= STATE ================= */
+let KEY = '', data = null, query = '', shown = PAGE, openEditor = '', editorKind = '', panelOpen = false;
+let F = { kind: '', sup: '', open: true };   // the filters, kept on this device
+let pend = {};              // key → { ans, at } — answered on this phone, not yet seen in the list (kept in memory: a reload re-reads the truth)
+let loading = false, lastOk = 0, db = null, syncing = false, loadAgain = false, orderSups = [];
+const cancelled = new Set();
+// PASSMODE: only what the reply's allow-list names is ever offered (no list = nothing); key mode as before
+const ALLOW = () => PASSMODE ? new Set(data && Array.isArray(data.allow) ? data.allow : []) : (data && data.role === 'answerer' && Array.isArray(data.allow)) ? new Set(data.allow) : null;
+// t1.2 fix round: every id, new verbs included, is offered only when the reply's allow-list names it (kind/answer); giving the manager the new verbs is a server pass-list change
+const can = (kind, ans) => { const a = ALLOW(); if (!a) return true; return a.has(kind + '/' + ans); };
+// a signed-in app session whose list reply does not say role 'answerer' (or before the first list arrived): nothing real is sent
+const roleBad = () => PASSMODE && !(data && data.role === 'answerer');
+
+/* ================= UTIL ================= */
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&3|8)).toString(16)}));
+const ils = n => n==null||n==='' ? '' : '₪' + Number(n).toLocaleString('he-IL', {maximumFractionDigits: Number(n) < 100 ? 2 : 0});
+const num = n => n==null||n==='' ? '—' : Number(n).toLocaleString('he-IL', {maximumFractionDigits:1});
+// a number from the backend that goes into HTML: forced to a finite number first ('' when it is not one), never raw text (security review 16/11)
+const ni = n => { const x = Number(n); return n == null || n === '' || !Number.isFinite(x) ? '' : String(Math.round(x * 10) / 10); };
+const hhmm = iso => { const d=new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString('he-IL',{timeZone:TZ,hour:'2-digit',minute:'2-digit'}); };
+const ddmm = iso => { const d=new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('he-IL',{timeZone:TZ,day:'2-digit',month:'2-digit'}); };
+function saveLS(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function loadLS(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
+function toast(msg, cls='', ms=2600, undo=null){
+  const t=$('toast'); $('toastMsg').textContent=msg; t.className=cls; t.style.display='flex';
+  const u=$('toastUndo'); u.classList.toggle('hide', !undo); u.onclick = undo ? ()=>{ undo(); t.style.display='none'; } : null;
+  clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', ms);
+}
+function fetchT(url, opts, ms){ const c=new AbortController(); const t=setTimeout(()=>c.abort(), ms); return fetch(url, {...opts, signal:c.signal}).finally(()=>clearTimeout(t)); }
+async function postOnce(auth, body, ms){
+  // Google sometimes turns the POST into a bare GET (doPost never runs; the backend answers GET_NOT_POST): the same request again
+  for (let i = 0; ; i++){
+    const r = await fetchT(API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ ...auth, env: ENV || undefined, build: BUILD, ...body }) }, ms);
+    const js = await r.json();
+    if (!(js && js.error === 'GET_NOT_POST') || i >= 3) return js;
+  }
+}
+/* the pass (PASSMODE): kept in memory only, reused while more than 60 s are left (it lives 5 min, so about one ask per 4 minutes) */
+let PASS = '', PASS_EXP = 0, passAsk = null, passFailAt = 0, passFail = null, passDead = false, passStop = false;
+const dropPass = () => { PASS = ''; PASS_EXP = 0; };
+async function askApp(){
+  for (let i = 0; ; i++){
+    let js = null;
+    try{ const r = await fetchT(APP_API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ a:'pass', sid: SID, aud:'freak-suppliers' }) }, APP_MS); js = await r.json(); }catch(e){ return null; }
+    if (!(js && (js.error === 'GET_NOT_POST' || js.code === 'GET_NOT_POST')) || i >= 2) return js;
+  }
+}
+/** a usable pass { ok:true, pass } or { ok:false, code } (signed_out, not_active, not_allowed or retry) */
+function getPass(fresh){
+  if (!fresh && PASS && PASS_EXP - Date.now() > 60000) return Promise.resolve({ ok: true, pass: PASS });
+  if (passStop) return Promise.resolve({ ok: false, code: 'not_allowed' });                            // the app said this person has no role: nothing more is asked
+  if (passAsk) return passAsk;
+  if (!fresh && passFail && Date.now() - passFailAt < 20000) return Promise.resolve(passFail);          // a failed ask is not repeated every few seconds
+  passAsk = askApp().then(ans => {
+    passAsk = null;
+    if (ans && ans.ok === true && typeof ans.pass === 'string' && ans.pass){ PASS = ans.pass; PASS_EXP = Number(ans.exp) || 0; passFail = null; return { ok: true, pass: PASS }; }
+    const c = ans && typeof ans.code === 'string' ? ans.code : '';
+    if (c === 'not_allowed') passStop = true;
+    passFail = { ok: false, code: /^(signed_out|not_active|not_allowed)$/.test(c) ? c : 'retry' }; passFailAt = Date.now();
+    return passFail;
+  });
+  return passAsk;
+}
+async function post(body, ms=45000){
+  if (!PASSMODE) return postOnce({ k: KEY }, body, ms);
+  if (passDead) return { ok: false, error: 'BAD_PASS' };
+  // a backend that does not know passes answers BAD_KEY: that is a refused pass here, never "the saved key"
+  const send = async p => { const js = await postOnce({ p }, body, ms); return js && js.error === 'BAD_KEY' ? { ok: false, error: 'BAD_PASS' } : js; };
+  let a = await getPass(false);
+  if (!a.ok) return { ok: false, error: 'NO_PASS', code: a.code };
+  let js = await send(a.pass);
+  if (js && js.error === 'BAD_PASS'){            // one fresh pass, the same request once
+    dropPass(); a = await getPass(true);
+    if (!a.ok) return { ok: false, error: 'NO_PASS', code: a.code };
+    js = await send(a.pass);
+    if (js && js.error === 'BAD_PASS'){ passDead = true; dropPass(); }
+  }
+  return js;
+}
+function safeUrl(u){ const s = String(u == null ? '' : u); if (!/^https?:\/\/[^\s"'<>]+$/i.test(s)) return ''; try{ const p = new URL(s).protocol; return p === 'https:' || p === 'http:' ? s : ''; }catch(e){ return ''; } }
+const TEXT_RULE = 'הטקסט לא יכול להתחיל ב-= או להכיל < > ועד 300 תווים';
+const typedNote = key => (openEditor === key && $('edNote')) ? ($('edNote').value || '').trim() : '';
+/* t1.2: dates in Israel time, as 'YYYY-MM-DD' */
+const UNTIL_RULE = 'התאריך צריך להיות מחר או אחר כך ולא יותר משנה מהיום';
+const todayYmd = () => new Date().toLocaleDateString('en-CA', { timeZone: TZ });
+const addDays = (s, n) => { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+const untilOk = v => { if (!/^\d{4}-\d{2}-\d{2}$/.test(v || '')) return false; const [y, m, d] = v.split('-').map(Number); if (new Date(Date.UTC(y, m - 1, d)).toISOString().slice(0, 10) !== v) return false; const t = todayYmd(); return v >= addDays(t, 1) && v <= addDays(t, 365); };
+const textOk = t => t === '' || (t.length <= 300 && !/^=|[<>\u0000-\u001f]/.test(t));
+
+/* ================= ORDER PAGES (the link from a supplier's cards) ================= */
+function cleanOS(x){
+  if (!Array.isArray(x)) return null;
+  const out = [];
+  for (const e of x.slice(0, 40)){
+    if (!e || typeof e !== 'object' || !/^[a-z0-9_]{1,20}$/.test(String(e.id || '')) || out.some(o => o.id === e.id)) continue;
+    const href = typeof e.href === 'string' && /^[\w\-]{1,40}\.html$/.test(e.href) ? e.href : '';
+    out.push({ id: String(e.id), href, names: Array.isArray(e.names) ? e.names.filter(n => typeof n === 'string').map(n => n.trim().slice(0, 60)).filter(Boolean) : [] });
+  }
+  return out;
+}
+async function loadOrderSups(){
+  orderSups = cleanOS(loadLS(LS.os, null)) || [];
+  try{ const r = await fetchT(OS_URL, { cache: 'no-cache' }, 8000); if (!r.ok) return; const l = cleanOS(await r.json()); if (!l) return;
+    const was = JSON.stringify(orderSups); orderSups = l; saveLS(LS.os, l); if (data && JSON.stringify(l) !== was) render(); }catch(e){}
+}
+function orderHref(e){ const q = new URLSearchParams(); if (e && e.id && !e.href) q.set('s', e.id); if (MODE !== 'live') q.set('api', MODE); const s = q.toString(); return ((e && e.href) || 'order.html') + (s ? '?' + s : ''); }
+const supNorm = s => String(s || '').trim().toLowerCase();
+function orderLinkOf(sup){ const n = supNorm(sup), e = orderSups.find(x => x.names.some(y => supNorm(y) === n)); return e ? orderHref(e) : ''; }
+
+/* ================= KEY ================= */
+function takeKeyFromHash(){
+  const m = /[#&]k=([\w\-]{20,100})/.exec(location.hash);
+  if (m){ try{ localStorage.setItem(LS.key, m[1]); }catch(e){} history.replaceState(null, '', location.pathname + location.search); }
+}
+async function checkKey(k){ KEY = k; try{ return await post({ action:'ping' }, 30000); }catch(e){ return { ok:false, error:'NET' }; } }
+function showGate(msg, signIn){
+  $('app').classList.add('hide'); $('gate').classList.remove('hide'); $('gateMsg').textContent = msg || '';
+  // no key and no app session: the sign-in sentence and the link come first (a manager has no personal key); the key text and box stay below for Chris
+  const g = $('gateSign'); g.textContent = ''; g.classList.toggle('hide', !signIn); $('gateLine').classList.toggle('hide', !!signIn);
+  if (signIn){ g.appendChild(document.createTextNode(T_SIGNIN + ' ')); const a = document.createElement('a'); a.href = APP_PAGE; a.textContent = 'ל-FREAK צוות'; g.appendChild(a); }
+}
+/* PASSMODE messages: a sentence on top of the screen (the list stays) or, with block(), instead of the list */
+let blocked = false;
+function passNote(text, withLink){
+  const m = $('passMsg'); m.textContent = '';
+  if (!text){ m.className = 'hide'; return; }
+  m.className = 'banner amber'; m.appendChild(document.createTextNode(text + (withLink ? ' ' : '')));
+  if (withLink){ const a = document.createElement('a'); a.href = APP_PAGE; a.textContent = 'ל-FREAK צוות'; m.appendChild(a); }
+}
+function block(text, withLink){
+  blocked = true; data = null; passNote(text, withLink);
+  $('list').innerHTML = ''; $('cnt').innerHTML = ''; $('banners').innerHTML = ''; $('kinds').innerHTML = ''; $('fbar').innerHTML = ''; $('fpanel').classList.add('hide'); $('topcnt').textContent = '';
+}
+// why a PASSMODE request did not go out: the app's own code, or a refused pass
+function passProblem(js){
+  if (!js) return false;
+  if (js.error === 'NO_PASS'){
+    if (js.code === 'signed_out') block(T_SIGNIN, true);
+    else if (js.code === 'not_active') block(T_NOTACTIVE);
+    else if (js.code === 'not_allowed') block(T_NOTALLOWED);
+    else if (data) passNote(T_RETRY); else block(T_RETRY);
+    return true;
+  }
+  if (js.error === 'BAD_PASS'){ block(T_BADPASS); return true; }
+  return false;
+}
+
+/* ================= QUEUE (IndexedDB, survives a closed app; repeat-safe by uuid) ================= */
+function idb(){ return new Promise((res,rej)=>{ const r=indexedDB.open('freak-tasks-v2_t1',1); r.onupgradeneeded=()=>r.result.createObjectStore('q',{keyPath:'uuid'}); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+function qPut(j){ return new Promise((res,rej)=>{ const tx=db.transaction('q','readwrite'); tx.objectStore('q').put(j); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); tx.onabort=()=>rej(tx.error || new Error('abort')); }); }
+function qAll(){ return new Promise((res,rej)=>{ const r=db.transaction('q').objectStore('q').getAll(); r.onsuccess=()=>res(r.result.sort((a,b)=>a.ts-b.ts)); r.onerror=()=>rej(r.error); }); }
+function qDel(id){ return new Promise((res,rej)=>{ const tx=db.transaction('q','readwrite'); tx.objectStore('q').delete(id); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }
+async function badge(){ const n = db ? (await qAll()).filter(j=>j.mode===MODE && mine(j) && !j.body.dryRun).length : 0; const b=$('queueBadge'); b.textContent=n; b.classList.toggle('hide', !n); }
+
+/* answers: shown at once on this phone, sent from the queue; a hiding answer waits 5 s so "בטל" can take it back */
+const WAITING = 'ממתין לשליחה';   // the answer is queued for a retry (soft failure)
+const SAVING = 'שומר…';   // t1.2: what a second tap on a card shows while its first answer is still on its way (toast, and a grey line on a card that stays)
+const clearSaving = key => document.querySelectorAll('[data-saving]').forEach(el => { if (el.dataset.saving === key) el.remove(); });   // in place: a re-render would wipe a note the person is typing
+async function answer(r, ans, value, note, label, hides){
+  if (!textOk(String(note || ''))){ toast(TEXT_RULE, 'err', 4000); return; }   // every answer, whichever button it came from: the server's rule (no leading =, no < >, one line, 300 characters) is checked here first
+  if (!PREVIEW && roleBad()){ toast(T_NOTALLOWED + ' לא נשמר כלום.', 'err', 6000); return; }
+  if (pend[r.key] && pend[r.key].uuid){ toast(pend[r.key].queued ? WAITING : SAVING, '', 2500); return; }   // a second tap while the first answer is on its way is ignored (it would be a second job with another uuid)
+  const job = { uuid: uuid(), ts: Date.now(), mode: MODE, via: VIA, att: 0, soft: 0, notBefore: hides ? Date.now() + UNDO_MS : 0,
+    body: { action:'answer', kind: r.kind, key: r.key, code: r.code || '', sup: r.sup || '', answer: ans, value: value || {}, note: note || '', ...(PREVIEW ? { dryRun: true } : {}) } };
+  pend[r.key] = { ans, at: Date.now(), uuid: job.uuid, label }; openEditor = '';
+  if (!db || PREVIEW){ render(); toast(label + (PREVIEW ? ' (תצוגה: לא נשמר)' : ''), '', UNDO_MS, hides ? ()=>{ cancelled.add(job.uuid); delete pend[r.key]; render(); } : null);
+    setTimeout(()=>{ if (!cancelled.has(job.uuid)) sendNow(job, label); }, hides ? UNDO_MS + 100 : 0); return; }
+  try{ await qPut(job); }catch(e){ return sendNow(job, label); }   // the phone refused the queue write: send it directly, never lose it
+  badge(); render();
+  if (hides) toast(label, '', UNDO_MS, async ()=>{ cancelled.add(job.uuid); await qDel(job.uuid); delete pend[r.key]; badge(); render(); });
+  else toast(label);
+  setTimeout(sync, hides ? UNDO_MS + 200 : 50);
+}
+const mine = j => (j.via || 'key') === VIA;
+const HARD = /^(bad |missing uuid|unknown action|nothing to write|BAD_KEY|ALREADY_ANSWERED|NOT_ALLOWED)/;
+// every outgoing answer follows PREVIEW, whatever a stored job says (a job stored in preview carries dryRun:true; a real one never does)
+const bodyOf = job => { const b = { ...job.body }; if (PREVIEW) b.dryRun = true; else delete b.dryRun; return b; };
+const whatOf = job => { const b = job.body, l = pend[b.key] && pend[b.key].label; return (l || (KIND_HE[b.kind] || b.kind) + ': ' + b.answer) + (b.code ? ' · ' + b.code : '') + (b.value && b.value.sup ? ' · ' + b.value.sup : ''); };
+function notSaved(job, err, noretry, plain){
+  const raw = err;
+  if (ERR_HE[raw]){ err = ERR_HE[raw]; noretry = true; }   // a refusal by the key's rules, or a task someone else answered first: retrying changes nothing
+  const f = loadLS('fst_failed2_'+MODE+'_t1', []);
+  f.push({ key: job.body.key, uuid: job.uuid, what: whatOf(job), err: err || '?', noretry: !!noretry, body: job.body, at: Date.now() });
+  saveLS('fst_failed2_'+MODE+'_t1', f.slice(-40)); delete pend[job.body.key]; renderFailed(); render();
+  // a task someone else answered first and a cell that already holds something are said in one plain sentence, without the "not saved" prefix
+  toast(plain || raw === 'ALREADY_ANSWERED' ? err : 'תשובה לא נשמרה: ' + (err || '?'), 'err', 6000);
+  if (raw === 'ALREADY_ANSWERED' || plain) setTimeout(()=>load(true), 300);   // the list shows who-less "answered" state at once
+}
+function afterOk(job, js){
+  if (pend[job.body.key]) pend[job.body.key].sent = true;
+  if (js.result === 'changed' && PASSMODE){ notSaved(job, T_CHANGED, true, true); return; }
+  if (js.result === 'changed'){ const now = js.results && js.results[0] ? js.results[0].now : ''; notSaved(job, 'בגיליון כבר כתוב משהו אחר' + (now!=='' ? ' ('+now+')' : '') + ' — לא דרסתי', true); return; }
+  if (js.result === 'partial') notSaved(job, 'נשמר רק חלק: בגיליון כבר היה כתוב משהו אחר באחד התאים', true);
+  else if (PASSMODE && !PREVIEW && js.result !== 'dry') toast(T_SAVED);
+  if (js.result === 'gone'){ notSaved(job, 'הפריט כבר לא בלשונית — לא נכתב', true); return; }
+  if (!hidingAns(job.body.answer)){ delete pend[job.body.key]; clearSaving(job.body.key); }   // a note hides nothing: the task stays and the pending mark and the saving line go
+  if (!PREVIEW) setTimeout(()=>load(false), 600);
+}
+async function sendNow(job, label){
+  if (!PREVIEW && roleBad()){ notSaved(job, T_NOTALLOWED); return; }
+  try{ const js = await post({ ...bodyOf(job), uuid: job.uuid }, 60000);
+    if (js && js.error === 'NO_PASS'){ notSaved(job, 'אין תשובה מ-FREAK צוות'); return; }
+    if (js && js.ok && !PREVIEW && js.result === 'dry'){ notSaved(job, 'השרת ענה בריצת ניסיון'); return; }
+    if (js && js.ok){ if (PREVIEW){ console.log('preview answer tried:', job.body.kind, job.body.answer, js.result, js.plan); return; } return afterOk(job, js); }
+    notSaved(job, js && js.error); }
+  catch(e){ notSaved(job, 'אין חיבור'); }
+}
+function markQueued(key){   // the card's pending answer waits for a later send: the line and the second-tap toast say WAITING
+  if (pend[key]) pend[key].queued = true;
+  document.querySelectorAll('[data-saving]').forEach(el => { if (el.dataset.saving === key) el.textContent = WAITING; });
+}
+async function sync(){
+  if (syncing || !API || !db) return;
+  if (!navigator.onLine){   // offline: a job that is due waits for the phone to be online, the line says WAITING
+    try{ for (const job of await qAll()) if (job.mode === MODE && mine(job) && !cancelled.has(job.uuid) && !(job.notBefore && job.notBefore > Date.now())) markQueued(job.body.key); }catch(e){}
+    return; }
+  if (!PREVIEW && roleBad()) return;   // a real job waits in the queue until the list has said role 'answerer' (it is sent on the next 5 s tick)
+  syncing = true;
+  try{
+    for (const job of await qAll()){
+      if (job.mode !== MODE || !mine(job)) continue;
+      if (PREVIEW && !job.body.dryRun) continue;                            // a real job is never sent by a preview page
+      if (!PREVIEW && job.body.dryRun){ await qDel(job.uuid); continue; }   // a preview-era job never becomes real
+      if (cancelled.has(job.uuid)){ await qDel(job.uuid); continue; }
+      if (job.notBefore && job.notBefore > Date.now()) continue;
+      let js;
+      try{ js = await post({ ...bodyOf(job), uuid: job.uuid }, 60000); }catch(e){ markQueued(job.body.key); break; }
+      if (js && js.ok && !PREVIEW && js.result === 'dry'){ await qDel(job.uuid); notSaved(job, 'השרת ענה בריצת ניסיון'); }
+      else if (js && js.ok){ await qDel(job.uuid); afterOk(job, js); }
+      else if (js && (js.error === 'NO_PASS' || (PASSMODE && js.error === 'BAD_PASS'))) break;   // the job waits in the queue (no pass yet, or the pass was refused twice)
+      else if (js && js.error === 'BAD_KEY'){ showGate('המפתח לא מתאים יותר. לפתוח שוב את הקישור האישי.'); break; }
+      else if (js && HARD.test(String(js.error||''))){ await qDel(job.uuid); notSaved(job, js.error); }
+      else {
+        // the catalog is refreshing, Google is slow, the sheet was busy: try again later — 1, 2, 4 … up to 15 minutes apart, for a day
+        markQueued(job.body.key);   // queued for a later retry: the line says WAITING, the one-job-per-card mark stays
+        job.soft = (job.soft||0)+1; job.notBefore = Date.now() + Math.min(15, Math.pow(2, Math.min(job.soft-1, 4))) * 60000;
+        if (Date.now() - job.ts > 24*3600000){ await qDel(job.uuid); notSaved(job, (js && js.error) || '?'); } else await qPut(job);
+      }
+    }
+  } finally { syncing = false; badge(); }
+}
+function renderFailed(){
+  let f = loadLS('fst_failed2_'+MODE+'_t1', []); const b = $('failedBox');
+  if (!PREVIEW){ const g = f.filter(x => !(x.body && x.body.dryRun)); if (g.length !== f.length){ f = g; saveLS('fst_failed2_'+MODE+'_t1', f); } }   // an entry made in preview never becomes real
+  b.classList.toggle('hide', !f.length);
+  b.innerHTML = f.length ? '<b>תשובות שלא נשמרו ('+f.length+'):</b>' + f.map((x,i)=>'<div>'+esc(x.what)+(x.body&&x.body.note?' · "'+esc(x.body.note)+'"':'')+(x.body&&x.body.value&&x.body.value.price?' · '+esc(x.body.value.price)+' '+esc(x.body.value.cur):'')+' · '+esc(x.err)+(x.noretry ? '' : ' <button data-retry="'+i+'">לשלוח שוב</button>')+' <button data-drop="'+i+'">'+(x.noretry ? 'סגור' : 'למחוק')+'</button></div>').join('') : '';
+  b.querySelectorAll('[data-retry]').forEach(el => el.onclick = async ()=>{ const f2 = loadLS('fst_failed2_'+MODE+'_t1', []), x = f2[Number(el.dataset.retry)]; if (!x || !x.body) return;
+    f2.splice(Number(el.dataset.retry), 1); saveLS('fst_failed2_'+MODE+'_t1', f2); renderFailed();
+    const job = { uuid: x.uuid || uuid(), ts: Date.now(), mode: MODE, via: VIA, att: 0, soft: 0, notBefore: 0, body: x.body };   // the same uuid: the server answers it once
+    pend[x.key] = { ans: x.body.answer, at: Date.now(), uuid: job.uuid, label: x.what };
+    if (db){ await qPut(job); badge(); sync(); } else sendNow(job, x.what); render(); });
+  b.querySelectorAll('[data-drop]').forEach(el => el.onclick = ()=>{ const f2 = loadLS('fst_failed2_'+MODE+'_t1', []); f2.splice(Number(el.dataset.drop), 1); saveLS('fst_failed2_'+MODE+'_t1', f2); renderFailed(); });
+}
+
+/* ================= LOAD ================= */
+async function load(full){
+  if (!API) return;
+  if (loading){ loadAgain = true; return; }
+  loading = true; $('refreshBtn').disabled = true;
+  try{
+    const js = await post({ action:'tasks', stamp: !full && data && data.rows ? data.stamp : '' }, 60000);
+    if (PASSMODE && passProblem(js)) return;
+    if (PASSMODE && js && (js.error === 'NOT_ALLOWED' || (js.ok && js.role !== 'answerer'))){ block(T_NOTALLOWED); return; }   // a reply that does not say role 'answerer': no list, nothing real is sent
+    if (js && js.ok){
+      blocked = false; passNote('');
+      const rows = js.rows || (data && data.stamp === js.stamp ? data.rows : null);
+      if (!rows){ loading = false; return load(true); }
+      data = { ...js, rows };
+      if (MODE === 'live' && !PREVIEW && !PASSMODE) saveLS(LS.data, data);
+      lastOk = Date.now();
+      // an answer the list now shows (the newest answer of the task is it, or newer) is no longer "pending" on this phone
+      for (const k of Object.keys(pend)){ const p = pend[k]; if (!p.sent) continue;   // an answer still on its way keeps its mark, however old an earlier answer of the task is
+        const a = latest(k); if (a && new Date(a.at).getTime() >= p.at - 120000) delete pend[k]; else if (Date.now() - p.at > 6*3600000) delete pend[k]; }
+      $('dot').classList.add('on');
+    } else if (js && js.error === 'BAD_KEY') showGate(GATE_BAD);
+    else toast('לא הצלחתי לקרוא את הרשימה: ' + (js && js.error || '?'), 'err', 4000);
+  } catch(e){ $('dot').classList.remove('on'); if (PASSMODE && !data) passNote(T_NONET); }
+  finally { loading = false; $('refreshBtn').disabled = false; render(); if (loadAgain){ loadAgain = false; setTimeout(()=>load(false), 300); } }
+}
+
+/* ================= TASKS: one list, filtered ================= */
+function latest(key){ return (data && data.answers && data.answers[key]) || null; }
+const FINAL_OK = { 'נכתב': true, 'כבר': true, 'נרשם': true };
+function snoozed(key){ const a = latest(key); return !!(a && a.until && new Date(a.until) > new Date() && FINAL_OK[a.res]); }
+const SETTLES = { 'switch': true, supplier: true, price: true, snack: true };
+function done(r){ const a = latest(r.key); if (!a || !SETTLES[a.ans]) return false; return a.res === 'נכתב' || a.res === 'כבר'; }
+const hidingAns = (ans) => ans !== 'note';
+const taskSup = r => r.kind === 'nosup' ? '' : r.kind === 'noprice' ? (r.d.eff || r.sup || '') : (r.d.out || r.sup || '');
+function baseTasks(){
+  const out = [];
+  for (const r of (data && data.rows) || []) if (r.kind === 'nosup' || r.kind === 'noprice' || r.kind === 'out') out.push({ kind: r.kind, key: r.key, r, sup: taskSup(r), rank: Number(r.rank) || 0, vel: Number(r.d.vel) || 0 });
+  for (const o of (data && data.transit) || []) out.push({ kind: 'transit', key: o.key, o, sup: o.sup || '', rank: -1, vel: o.late ? 1 : 0 });
+  return out;
+}
+function isLive(t){
+  if (t.kind === 'transit') return !snoozed(t.key) && !(pend[t.key] && hidingAns(pend[t.key].ans));
+  return !snoozed(t.key) && !(pend[t.key] && hidingAns(pend[t.key].ans)) && !done(t.r);
+}
+function textOf(t){ return t.kind === 'transit' ? (t.o.sup + ' ' + (t.o.no||'') + ' ' + (t.o.lines||[]).map(l => l.name + ' ' + l.code).join(' ')) : (t.r.name + ' ' + t.r.code + ' ' + t.sup); }
+function filtered(skipKind){
+  const q = query.toLowerCase();
+  return baseTasks().filter(isLive).filter(t =>
+    (skipKind || !F.kind || t.kind === F.kind) &&
+    (!F.sup || (F.sup === '__none__' ? !t.sup : t.sup === F.sup)) &&
+    (!F.open || t.kind === 'transit' || t.rank === 0) &&
+    (!q || textOf(t).toLowerCase().includes(q)))
+    .sort((a, b) => lane(a) - lane(b) || a.rank - b.rank || b.vel - a.vel);
+}
+// a late order first, then the tasks that block an order, then orders that are only on their way
+const lane = t => t.kind === 'transit' ? (t.o.late ? 0 : 2) : 1;
+function supOptions(){
+  const m = new Map();
+  for (const t of baseTasks().filter(isLive).filter(t => t.kind === 'transit' || !F.open || t.rank === 0)) { const k = t.sup || '__none__'; m.set(k, (m.get(k) || 0) + 1); }
+  return [...m.entries()].sort((a, b) => b[1] - a[1]);
+}
+const supLabel = k => k === '__none__' ? 'ללא ספק' : k;
+function setF(patch){ F = { ...F, ...patch }; saveLS(LS.filters, F); shown = PAGE; render(); }
+
+/* ================= RENDER ================= */
+function render(){
+  if (blocked) return;
+  if (!data){ $('list').innerHTML = '<div class="empty">' + (PASSMODE ? 'טוען את שאלות הספקים…' : 'טוען…') + '</div>'; return; }
+  const age = Date.now() - (lastOk || new Date(data.at).getTime());
+  $('upd').innerHTML = 'עודכן ' + esc(hhmm(data.at)) + (data.built ? '<span class="sep"> · </span><br>הרשימה נבנתה ' + esc(hhmm(data.built)) : '');
+  $('upd').classList.toggle('stale', age > 10*60000);
+  const all = filtered(false), forKinds = filtered(true);
+  $('topcnt').textContent = all.length;
+  // kind chips
+  const kc = {}; for (const t of forKinds) kc[t.kind] = (kc[t.kind] || 0) + 1;
+  $('kinds').innerHTML = KINDS.map(([k, t]) => '<button class="chip'+(F.kind===k?' on':'')+'" data-fk="'+k+'">'+esc(t)+'<span class="n">'+(k ? (kc[k]||0) : forKinds.length)+'</span></button>').join('');
+  // the bar: the toggle + the active chips; the panel: supplier chips, the open-line switch, search
+  const act = [];
+  if (F.sup) act.push('<button class="chip act" data-fs="">'+esc(supLabel(F.sup))+'<span class="x">✕</span></button>');
+  if (!F.open) act.push('<button class="chip act" data-fo="1">כולל משימות בלי שורת הזמנה<span class="x">✕</span></button>');
+  $('fbar').innerHTML = '<button id="fbtn" class="chip tog'+(panelOpen?' on':'')+'" data-ftoggle="1">סינון'+(act.length?' ('+act.length+')':'')+'</button>' + act.join('');
+  const fp = $('fpanel'); fp.classList.toggle('hide', !panelOpen);
+  fp.innerHTML = '<div class="flbl">ספק</div><div class="chips"><button class="chip'+(!F.sup?' on':'')+'" data-fs="">כל הספקים</button>' +
+    supOptions().map(([k, n]) => '<button class="chip'+(F.sup===k?' on':'')+'" data-fs="'+esc(k)+'">'+esc(supLabel(k))+'<span class="n">'+n+'</span></button>').join('') + '</div>' +
+    '<div class="flbl">מה להראות</div><div class="chips"><button class="chip'+(F.open?' on':'')+'" data-fo="1">רק משימות על שורת הזמנה פתוחה</button></div>' +
+    '<div class="flbl">חיפוש</div><input id="q" type="search" placeholder="שם, קוד או ספק" value="'+esc(query)+'">';
+  $('q').addEventListener('input', e => { clearTimeout(window._qT); window._qT = setTimeout(()=>{ query = e.target.value.trim(); shown = PAGE; renderList(); }, 200); });
+  renderBanners(); renderList();
+  $('foot').textContent = 'גרסה ' + BUILD + (MODE !== 'live' ? ' · שרת ניסיון' : '') + (PREVIEW ? ' · תצוגה' : '') + ' · ' + (data.who || '');
+}
+const ED_IDS = ['edSup', 'edNote', 'edPrice', 'edCur', 'edSrc', 'edUntil'];
+let lastOwner = '';   // the editor (card key + kind) that the last redraw drew: saved values go back only into that same editor
+function renderList(){
+  const owner = openEditor + '|' + editorKind;
+  const keep = ED_IDS.map(id => [id, $(id) ? $(id).value : null]).filter(x => x[1] !== null), focus = document.activeElement && document.activeElement.id;
+  const all = filtered(false), n = shown;
+  $('cnt').innerHTML = '<span><b>' + all.length + '</b> משימות' + (all.length > n ? ' · מוצגות ' + n : '') + '</span>' +
+    ((F.sup || F.kind || !F.open || query) ? '<button data-fclear="1">נקה סינון</button>' : '');
+  $('list').innerHTML = all.slice(0, n).map(cardHtml).join('') + (all.length > n ? '<button class="more" data-more="1">עוד ' + Math.min(PAGE, all.length - n) + ' (נשארו ' + (all.length - n) + ')</button>' : '') ||
+    '<div class="empty">אין משימות לפי הסינון הזה.' + (F.open ? ' <br><button data-fo="1" style="margin-top:10px">להראות גם משימות בלי שורת הזמנה</button>' : '') + '</div>';
+  const same = owner === lastOwner; lastOwner = owner;
+  if (same){   // what he typed survives every redraw (poll, filter tap, a returning tab), but only back into the SAME editor
+    for (const [id, v] of keep) if ($(id)) $(id).value = v;
+    if (focus && ED_IDS.includes(focus) && $(focus)) $(focus).focus();
+  }
+}
+function renderBanners(){
+  const b = [];
+  for (const r of ((data.rows || []).filter(x => x.kind === 'login'))){
+    const d = r.d;
+    b.push('<div class="banner red"><b>הכניסה לאתר של ' + esc(d.site) + (d.state === 'expired' ? ' פגה' : '') + '.</b> ' + (d.state === 'expired' ? 'המחירים והמלאי שלהם לא מתעדכנים מאז ' + esc(d.since) + '. ' : '') + 'צריך להתחבר שוב פעם אחת במחשב בחנות.</div>');
+  }
+  for (const l of (ALLOW() ? [] : (data.lost || []))){   // an answerer has no "write mine again" button (the lost-answer answers are not his)
+    const ack = 'lost|'+l.key+'|'+l.at; if (snoozed(ack) || pend[ack] || pend[l.key]) continue;
+    const r = (data.rows || []).find(x => x.key === l.key) || { name: l.code };
+    b.push('<div class="banner red">ענית ב-' + esc(ddmm(l.at)) + ' על <b>' + esc(r.name) + '</b>: ' + esc(l.val) + ' ובגיליון כתוב עכשיו ' + (l.now === '' ? 'כלום' : '"' + esc(l.now) + '"') + '.<div class="row"><button data-lost="'+esc(l.key)+'" data-act2="again">לכתוב שוב את שלי</button> <button data-lost="'+esc(l.key)+'" data-act2="keep">להשאיר מה שבגיליון</button></div></div>');
+  }
+  if (data.busy && data.busy.refresh) b.push('<div class="banner amber">הקטלוג מתעדכן עכשיו (מאז ' + esc(data.busy.refresh) + '). התשובות נשמרות בטלפון ונשלחות לבד כשהעדכון נגמר.</div>');
+  if (PASSMODE) b.push('<div class="banner info">' + esc(T_TOP) + '</div>');
+  if (PREVIEW) b.push('<div class="banner info"><b>תצוגה לניסיון.</b> זו הרשימה האמיתית, אבל שום תשובה לא נשמרת: אפשר ללחוץ בחופשיות. מה שלחצת יחזור אחרי רענון.</div>');
+  $('banners').innerHTML = b.join('');
+}
+function metaLine(d){
+  return '<div class="meta"><span>מלאי <b>'+num(d.stock)+'</b></span><span>נמכר בשבוע <b>'+num(d.vel)+'</b></span>' +
+    (d.cover!=null ? '<span>ימי כיסוי <b>'+(d.cover<=0?'0':num(d.cover))+'</b></span>' : '') + (d.shelf ? '<span>מדף <b>'+ils(d.shelf)+'</b></span>' : '') + '</div>';
+}
+function leadOf(s){ return data && data.lead ? data.lead[s] : null; }
+function offersTable(offers, best){
+  if (!offers || !offers.length) return '';
+  return '<table class="offers">' + offers.map(o => '<tr class="'+(o.out?'out':o.s===best?'best':'')+'"><td>'+esc(o.s)+'</td><td class="p">'+ils(o.ils)+'</td><td>'+(ni(o.lead)!==''?ni(o.lead)+' ימים':'')+'</td><td>'+esc(o.stock||'')+'</td></tr>').join('') + '</table>';
+}
+const knownSups = () => ((data && data.suppliers) || []);
+// only a supplier the server knows is offered: the server refuses any other ('bad supplier') after the phone has already said it was saved
+const offered = list => { const k = knownSups(); return k.length ? list.filter(s => k.includes(s)) : list; };
+function supSelect(id, current, extra){
+  const all = [...new Set(offered([...(extra||[]), ...COMMON_SUPS, ...knownSups()]))].filter(Boolean);
+  return '<select id="'+id+'">' + (all.includes(current) ? '' : '<option value="" selected>בחר ספק…</option>') + all.map(s => '<option'+(s===current?' selected':'')+'>'+esc(s)+'</option>').join('') + '</select>';
+}
+const linkFor = sup => { const h = PASSMODE ? '' : orderLinkOf(sup); return h ? '<a class="cardlink" href="'+esc(h)+'">להזמנה</a>' : ''; };
+function head(t, name, code){ return '<span class="kind">'+esc(KIND_HE[t.kind])+'</span> '+(t.sup ? '<span class="kind">'+esc(t.sup)+'</span>' : '')+linkFor(t.sup)+'<div class="nm">'+esc(name)+(code?'<span class="cd">'+esc(code)+'</span>':'')+'</div>'; }
+function cardHtml(t){
+  const key = t.key;
+  if (t.kind === 'nosup') return cNosup(t);
+  if (t.kind === 'noprice') return cNoprice(t);
+  if (t.kind === 'out') return cOut(t);
+  return cTransit(t);
+}
+/* t1.2: the new answers row (gone / handled / wait until / note) and its two editors; the note button is on every nosup, noprice and out card */
+function moreActs(t){
+  const r = t.r, k = r.kind, out = k === 'out', np = k === 'noprice', b = [];
+  if ((out || np) && can(k, 'gone')) b.push('<button class="no" data-act="gone">'+(pend['gone?'+r.key] ? 'בטוח? לא יחזור' : 'לא יחזור')+'</button>');
+  if ((out || np) && can(k, 'handled')) b.push('<button class="alt" data-act="handled">כבר טופל</button>');
+  if (out && can(k, 'wait_until')) b.push('<button class="alt" data-act="untilopen">לחכות עד</button>');
+  if (can(k, 'note')) b.push('<button class="alt" data-act="rnote">הערה</button>');
+  let ed = '';
+  if (out && can(k, 'wait_until') && openEditor === r.key && editorKind === 'until'){
+    const t0 = todayYmd();
+    ed = '<div class="editor"><label>לחכות עד תאריך</label><input id="edUntil" type="date" min="'+addDays(t0, 1)+'" max="'+addDays(t0, 365)+'" value="'+addDays(t0, 14)+'"><label>הערה (לא חובה)</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-act="untilsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>';
+  } else if (can(k, 'note') && openEditor === r.key && editorKind === 'rnote'){
+    ed = '<div class="editor"><label>הערה (עד 300 תווים)</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-act="rnotesave">שמור הערה</button><button class="no" data-act="edclose">סגור</button></div></div>';
+  }
+  const sv = pend[r.key] && pend[r.key].uuid && !hidingAns(pend[r.key].ans) ? '<div class="why" data-saving="'+esc(r.key)+'">'+(pend[r.key].queued ? WAITING : SAVING)+'</div>' : '';   // a card that stays (a note) says it is saving until the answer is done
+  return (b.length ? '<div class="acts">' + b.join('') + '</div>' : '') + sv + ed;
+}
+function cNosup(t){
+  const r = t.r, d = r.d, ro = ((data.overlay && data.overlay.real) || {})[r.code] || {};
+  const hint = [d.guess ? 'במערכת: '+d.guess+' (ניחוש)' : '', d.study && d.study !== 'לא ידוע' ? 'הבדיקה: '+d.study+(d.studyConf?' ('+d.studyConf+')':'') : ''].filter(Boolean).join(' · ');
+  const quick = [...new Set(offered([d.guess, d.study, ...COMMON_SUPS.slice(0,6)]).filter(s => s && s !== 'לא ידוע'))].slice(0, 6);
+  const supOk = can('nosup', 'supplier') && !(PASSMODE && ro.other);   // a manager never replaces a filled cell: what is written is shown as text
+  return '<div class="card'+(d.sug?' urgent':'')+'" data-key="'+esc(r.key)+'">' + head(t, r.name, r.code) + metaLine(d) +
+    (d.sug ? '<div class="rec">המוח רוצה להזמין <b>'+num(d.sug)+'</b></div>' : '') + (hint ? '<div class="why">'+esc(hint)+'</div>' : '') + (ro.other ? '<div class="why">כבר כתוב: '+esc(ro.other)+'</div>' : '') +
+    (supOk ? '<div class="chipline">' + quick.map(s => '<button class="chip" data-act="nsquick" data-sup="'+esc(s)+'">'+esc(s)+'</button>').join('') + '<button class="chip" data-act="nsother">אחר…</button></div>' : '') +
+    (can('nosup', 'unknown') ? '<div class="acts"><button class="no" data-act="nsunknown">לא יודע</button></div>' : '') +
+    (!supOk && !can('nosup', 'unknown') ? '<div class="why">כאן לצפייה בלבד.</div>' : '') +
+    (supOk && openEditor === r.key && editorKind === 'sup' ? '<div class="editor"><label>מאיפה קונים את זה</label>'+supSelect('edSup', d.guess, [d.guess])+'<label>הערה (לא חובה)</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-act="nssave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + moreActs(t) + '</div>';
+}
+function cNoprice(t){
+  const r = t.r, d = r.d;
+  return '<div class="card'+(d.sug?' urgent':'')+'" data-key="'+esc(r.key)+'">' + head(t, r.name, r.code) + metaLine(d) +
+    '<div class="rec">ספק: <b>'+esc(d.eff)+'</b>' + (d.sug ? ' · המוח מציע <b>'+num(d.sug)+'</b>' + (d.est ? ' (מוערך '+ils(d.est)+' לפי מחיר המדף)' : '') : '') + '</div>' + (d.why ? '<div class="why">'+esc(d.why)+'</div>' : '') +
+    (can('noprice', 'price') && openEditor === r.key && editorKind === 'price'
+      ? '<div class="editor"><div class="row"><div><label>מחיר ליחידה שלנו</label><input id="edPrice" type="number" inputmode="decimal" step="0.01" min="0"></div><div><label>מטבע</label><select id="edCur"><option>₪</option><option>€</option><option>$</option><option>£</option></select></div></div>' +
+        '<label>לפי מה</label><select id="edSrc"><option>חשבונית</option><option>מחירון</option><option>הצעת מחיר</option><option>הערכה שלי</option></select>' +
+        '<label>הערה (לא חובה)</label><input id="edNote" maxlength="300" placeholder="למשל: קופסה של 24 ב-€74, אז 3.1 לחבילה"><div class="acts"><button class="go" data-act="npsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>'
+      : (!can('noprice', 'price') && !can('noprice', 'skip') ? '<div class="why">כאן לצפייה בלבד: את המחיר מקליד מי שמזמין.</div>'
+        : '<div class="acts">' + (can('noprice', 'price') ? '<button class="go" data-act="npedit">להקליד מחיר</button>' : '') + (can('noprice', 'skip') ? '<button class="no" data-act="npskip">דלג</button>' : '') + '</div>')) + moreActs(t) + '</div>';
+}
+function cOut(t){
+  const r = t.r, d = r.d, alts = (d.offers||[]).filter(o => o.s !== d.out);
+  return '<div class="card'+((d.stock||0)<=0?' urgent':'')+'" data-key="'+esc(r.key)+'">' + head(t, r.name, r.code) + metaLine(d) +
+    '<div class="warn">⚠ '+esc(d.outLabel)+'</div>' + (d.sug ? '<div class="rec">המוח מציע להזמין <b>'+num(d.sug)+'</b></div>' : '') +
+    (alts.length ? '<div class="why">אפשר במקום:</div>' + alts.map(o => can('out', 'switch')
+        ? '<button class="opt" data-act="outswitch" data-sup="'+esc(o.s)+'">להזמין מ-<b>'+esc(o.s)+'</b> · '+ils(o.ils)+(ni(o.lead)!==''?' · '+ni(o.lead)+' ימים':'')+'<div class="s">'+esc(o.stock || 'מלאי לא ידוע')+'</div></button>'
+        : '<div class="why">'+esc(o.s)+' · '+ils(o.ils)+(ni(o.lead)!==''?' · '+ni(o.lead)+' ימים':'')+' · '+esc(o.stock || 'מלאי לא ידוע')+'</div>').join('') : '<div class="why">אין ספק אחר עם מחיר בקטלוג.</div>') +
+    ((can('out', 'switch') || can('out', 'wait') || can('out', 'drop')) ? '<div class="acts">' + (can('out', 'switch') ? '<button class="alt" data-act="outother">ספק אחר…</button>' : '') + (can('out', 'wait') ? '<button class="alt" data-act="outwait">לחכות שיחזור</button>' : '') + (can('out', 'drop') ? '<button class="no" data-act="outdrop">'+(pend['drop?'+r.key] ? 'בטוח? ללא הבאה נוספת' : 'לא להביא יותר')+'</button>' : '') + '</div>' : '<div class="why">כאן לצפייה בלבד.</div>') +
+    (can('out', 'switch') && openEditor === r.key && editorKind === 'out' ? '<div class="editor"><label>מאיזה ספק להזמין</label>'+supSelect('edSup', '', [])+'<label>הערה (לא חובה)</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-act="outsave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + moreActs(t) + '</div>';
+}
+function cTransit(t){
+  const o = t.o, exp = ni(o.lead)!=='' && o.at && !isNaN(new Date(o.at)) ? new Date(new Date(o.at).getTime() + Number(o.lead)*86400000) : null;
+  return '<div class="card'+(o.late?' urgent':'')+'" data-tkey="'+esc(o.key)+'"><span class="kind">בדרך</span>'+linkFor(o.sup)+'<div class="nm">'+esc(o.sup)+'<span class="cd">'+esc(o.no || 'לא מהקטלוג')+'</span></div>' +
+    '<div class="meta"><span>נשלח <b>'+esc(ddmm(o.at))+'</b></span>'+(ni(o.days)!==''?'<span>לפני <b>'+ni(o.days)+'</b> ימים</span>':'')+(exp?'<span>צפוי <b>'+esc(ddmm(exp))+'</b></span>':'')+(o.total?'<span><b>'+ils(o.total)+'</b></span>':'')+'</div>' +
+    (o.late ? '<div class="warn">⚠ מאחר: עברו '+ni(o.days)+' ימים ובדרך כלל לוקח '+ni(o.lead)+'</div>' : '') +
+    '<div class="why">'+(o.lines||[]).slice(0,3).map(l => esc(l.name)+' ×'+esc(l.qty)+(l.state?' · '+esc(l.state):'')).join('<br>')+((o.lines||[]).length>3?'<br>ועוד '+((o.lines||[]).length-3)+' שורות':'')+'</div>' +
+    (safeUrl(o.doc) ? '<div class="why"><a href="'+esc(safeUrl(o.doc))+'" target="_blank" rel="noopener">מסמך ההזמנה</a></div>' : '') +
+    ((latest(o.key)||{}).note ? '<div class="why">הערה: '+esc(latest(o.key).note)+'</div>' : '') +
+    ((can('transit', 'arrived') || can('transit', 'checked') || can('transit', 'note')) ? '<div class="acts">' + (can('transit', 'arrived') ? '<button class="go" data-tact="arrived">הגיע</button>' : '') + (can('transit', 'checked') ? '<button class="alt" data-tact="checked">בדקתי, עדיין בדרך</button>' : '') + (can('transit', 'note') ? '<button class="no" data-tact="note">הערה</button>' : '') + '</div>' : '<div class="why">כאן לצפייה בלבד.</div>') +
+    (can('transit', 'note') && openEditor === o.key && editorKind === 'note' ? '<div class="editor"><label>הערה על ההזמנה</label><input id="edNote" maxlength="300"><div class="acts"><button class="go" data-tact="notesave">שמור</button><button class="no" data-act="edclose">סגור</button></div></div>' : '') + '</div>';
+}
+
+/* ================= EVENTS ================= */
+document.addEventListener('click', ev => {
+  const t = ev.target.closest('button, .chip, a'); if (!t || t.tagName === 'A') return;
+  const d = t.dataset;
+  if (d.fk !== undefined){ setF({ kind: d.fk }); return; }
+  if (d.fs !== undefined){ setF({ sup: d.fs }); return; }
+  if (d.fo){ setF({ open: !F.open }); return; }
+  if (d.ftoggle){ panelOpen = !panelOpen; render(); return; }
+  if (d.fclear){ query = ''; setF({ kind: '', sup: '', open: true }); return; }
+  if (d.more){ shown += PAGE; renderList(); return; }
+  if (d.lost){
+    const l = ((data && data.lost) || []).find(x => x.key === d.lost); if (!l) return;
+    const r = ((data.rows) || []).find(x => x.key === l.key) || { kind: l.kind, key: l.key, code: l.code, sup: '' };
+    if (d.act2 === 'keep') return answer({ ...r, kind: 'lost', key: 'lost|'+l.key+'|'+l.at }, 'ack', {}, '', 'נשאר מה שבגיליון', true);
+    if (l.ans === 'pick' || l.ans === 'switch') return answer(r, 'switch', { sup: l.val, wasPick: l.now }, '', 'נכתב שוב: '+l.val, false);
+    if (l.ans === 'supplier') return answer(r, 'supplier', { sup: l.val, ...(PASSMODE ? {} : { wasOther: l.now }) }, '', 'נכתב שוב: '+l.val, false);
+    return;
+  }
+  if (d.tact){
+    const card = t.closest('[data-tkey]'), o = ((data && data.transit) || []).find(x => x.key === card.dataset.tkey); if (!o) return;
+    const r = { kind: 'transit', key: o.key, code: '', sup: o.sup };
+    if (d.tact === 'note'){ openEditor = o.key; editorKind = 'note'; renderList(); const f = $('edNote'); if (f) f.focus(); return; }
+    if (d.tact === 'notesave'){ const n = ($('edNote').value || '').trim(); if (!n) return; if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; } return answer(r, 'note', {}, n, 'ההערה נשמרה', false); }
+    return answer(r, d.tact, {}, typedNote(o.key), d.tact === 'arrived' ? 'סומן שהגיע' : 'נבדק — יחזור בעוד שבוע', true);
+  }
+  const card = t.closest('[data-key]'); if (!card || !d.act) return;
+  const r = ((data && data.rows) || []).find(x => x.key === card.dataset.key); if (!r) return;
+  const o = ((data.overlay && data.overlay.p) || {})[r.code] || {}, dd = r.d, act = d.act;
+  const wasOther = () => PASSMODE ? {} : { wasOther: (((data.overlay && data.overlay.real) || {})[r.code] || {}).other || '' };   // under a pass the backend takes 'was' as empty: the page never sends it
+  if (act === 'edclose'){ openEditor = ''; renderList(); return; }
+  if (act === 'nsquick') return answer(r, 'supplier', { sup: d.sup, ...wasOther() }, typedNote(r.key), 'ספק: '+d.sup, true);
+  if (act === 'nsother'){ openEditor = r.key; editorKind = 'sup'; renderList(); const f = $('edSup'); if (f) f.focus(); return; }
+  if (act === 'nssave'){ const s = $('edSup').value, n = $('edNote').value.trim(); if (!s){ toast('לבחור ספק', 'err'); return; } if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; } return answer(r, 'supplier', { sup: s, ...wasOther() }, n, 'ספק: '+s, true); }
+  if (act === 'nsunknown') return answer(r, 'unknown', {}, typedNote(r.key), 'לא ידוע — יחזור בעוד חודש', true);
+  if (act === 'npedit'){ openEditor = r.key; editorKind = 'price'; renderList(); const f = $('edPrice'); if (f) f.focus(); return; }
+  if (act === 'npsave'){
+    const p = Number($('edPrice').value), c = $('edCur').value, s = $('edSrc').value, n = $('edNote').value.trim();
+    if (!(p > 0 && p < 100000)){ toast('מחיר לא תקין', 'err'); return; }
+    if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; }
+    return answer(r, 'price', { price: p, cur: c, src: s, sup: dd.eff, name: r.name }, n, 'נשמר: '+p+' '+c, true);
+  }
+  if (act === 'npskip') return answer(r, 'skip', {}, typedNote(r.key), 'דילגתי — יחזור בעוד שבועיים', true);
+  if (act === 'outswitch') return answer(r, 'switch', { sup: d.sup, wasPick: o.pick || '' }, typedNote(r.key), 'יוזמן מ-'+d.sup, true);
+  if (act === 'outother'){ openEditor = r.key; editorKind = 'out'; renderList(); const f = $('edSup'); if (f) f.focus(); return; }
+  if (act === 'outsave'){ const s = $('edSup').value, n = ($('edNote').value || '').trim(); if (!s){ toast('לבחור ספק', 'err'); return; } if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; } return answer(r, 'switch', { sup: s, wasPick: o.pick || '' }, n, 'יוזמן מ-'+s, true); }
+  if (act === 'outwait') return answer(r, 'wait', {}, typedNote(r.key), 'מחכים שיחזור — שבועיים', true);
+  if (act === 'gone'){   // t1.2: like 'drop', the first tap asks, the second (within 4 s) does it
+    const k = 'gone?' + r.key;
+    if (pend[k] && Date.now() - pend[k].at < 500) return;
+    if (!pend[k]){ pend[k] = { ans: 'note', at: Date.now() }; renderList(); setTimeout(()=>{ if (pend[k]){ delete pend[k]; renderList(); } }, 4000); return; }
+    delete pend[k]; return answer(r, 'gone', { sup: taskSup(r) }, typedNote(r.key), 'לא יחזור — לא נציע אותו מהספק', true);
+  }
+  if (act === 'handled') return answer(r, 'handled', {}, typedNote(r.key), 'סומן כטופל', true);
+  if (act === 'untilopen'){ openEditor = r.key; editorKind = 'until'; renderList(); const f = $('edUntil'); if (f) f.focus(); return; }
+  if (act === 'untilsave'){
+    const u = ($('edUntil').value || '').trim(), n = ($('edNote').value || '').trim();
+    if (!untilOk(u)){ toast(UNTIL_RULE, 'err', 4000); return; }
+    if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; }
+    return answer(r, 'wait_until', { until: u }, n, 'מחכים עד ' + u.split('-').reverse().slice(0, 2).join('/'), true);
+  }
+  if (act === 'rnote'){ openEditor = r.key; editorKind = 'rnote'; renderList(); const f = $('edNote'); if (f) f.focus(); return; }
+  if (act === 'rnotesave'){ const n = ($('edNote').value || '').trim(); if (!n) return; if (!textOk(n)){ toast(TEXT_RULE, 'err', 4000); return; } return answer(r, 'note', {}, n, 'ההערה נשמרה', false); }
+  if (act === 'outdrop'){   // no popup: the first tap asks, the second (within 4 s) does it
+    const k = 'drop?' + r.key;
+    if (pend[k] && Date.now() - pend[k].at < 500) return;
+    if (!pend[k]){ pend[k] = { ans: 'note', at: Date.now() }; renderList(); setTimeout(()=>{ if (pend[k]){ delete pend[k]; renderList(); } }, 4000); return; }
+    delete pend[k]; return answer(r, 'drop', {}, typedNote(r.key), 'לא מביאים יותר', true);
+  }
+});
+$('refreshBtn').onclick = () => load(true);
+document.addEventListener('visibilitychange', () => { if (!document.hidden){
+  if (!PASSMODE && !hasKey() && appSid()){ location.reload(); return; }   // signed in to the app in the meantime: the page starts again (the session id is read once per load)
+  if (PASSMODE && appSid() && appSid() !== SID){ location.reload(); return; }   // another app session id: the page starts again
+  if (PASSMODE && appSid() !== SID){ dropPass(); passFail = null; }   // signed out (or another session) in the app while the tab was away: the next request asks the app again
+  load(false); sync(); } });
+$('keyBtn').onclick = async ()=>{
+  const k = $('keyIn').value.trim(); if (!/^[\w\-]{20,100}$/.test(k)){ $('gateMsg').textContent = 'המפתח לא נראה תקין.'; return; }
+  $('gateMsg').textContent = 'בודק…';
+  const js = await checkKey(k);
+  if (js && js.ok){ try{ localStorage.setItem(LS.key, k); }catch(e){} $('keyIn').value = ''; start(); }
+  else $('gateMsg').textContent = js && js.error === 'BAD_KEY' ? 'המפתח לא מתאים.' : 'אין חיבור לשרת. לנסות שוב.';
+};
+window.addEventListener('online', ()=>{ $('dot').classList.add('on'); sync(); load(false); });
+window.addEventListener('offline', ()=> $('dot').classList.remove('on'));
+setInterval(sync, 5000);
+
+/* ================= START ================= */
+async function start(){
+  KEY = PASSMODE ? '' : (()=>{ try{ return localStorage.getItem(LS.key) || ''; }catch(e){ return ''; } })();
+  if (!KEY && !PASSMODE){ showGate('', true); return; }
+  $('gate').classList.add('hide'); $('app').classList.remove('hide');
+  $('ver').textContent = BUILD + (MODE !== 'live' ? ' · ' + MODE : '') + (PREVIEW ? ' · תצוגה' : '');
+  F = { ...F, ...loadLS(LS.filters, {}) };
+  if (PASSMODE) $('ordersLink').classList.add('hide');
+  if (MODE === 'live' && !PREVIEW && !PASSMODE){ const dd = loadLS(LS.data, null); if (dd && dd.rows) data = dd; }
+  if (!PASSMODE) $('ordersLink').href = orderHref(null);
+  renderFailed(); render();
+  loadOrderSups();
+  try{ db = await idb(); }catch(e){ toast('אין אחסון בטלפון — התשובות יישלחו רק עם קליטה', 'warn', 5000); }
+  // answers still in the queue count as answered on this phone (a reopened app must not offer the same task again)
+  if (db && !PREVIEW){ try{ for (const j of await qAll()) if (j.mode === MODE && mine(j) && !j.body.dryRun) pend[j.body.key] = { ans: j.body.answer, at: j.ts, uuid: j.uuid, label: '', queued: (j.soft || 0) > 0 }; }catch(e){} }
+  badge(); sync(); load(!data);
+  setInterval(() => { if (!document.hidden) load(false); }, POLL_MS);
+}
+$('gateApp').href = APP_PAGE;
+takeKeyFromHash();
+if (navigator.onLine) $('dot').classList.add('on');
+start();
+</script>
+</body>
+</html>
