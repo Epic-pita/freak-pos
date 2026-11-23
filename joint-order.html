@@ -254,7 +254,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'jo1.6';
+const BUILD = 'jo1.7';   // jo1.7 (23/11/2026): a manager signed in to the app FREAK צוות opens this page with the app's pass (no key on the phone); see PASSMODE below
 // the two backends (JOINT deployments of the catalog's script); ?api=test is the TEST one (it writes only the TEST sheet),
 // ?api=local only on this PC (the mock server of the page test). Never a URL from the address bar. The page holds no key and no sheet id.
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbyNg6AVes7vWeIfTqCnkpoFIayLxdx4EoI7cVvIN2c_LgFEIfedMyhnFc00Z3-s-sPQUA/exec';
@@ -338,16 +338,18 @@ function toast(msg, cls='', ms=2600){
   clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', ms);
 }
 function fetchT(url, opts, ms){ const c=new AbortController(); const t=setTimeout(()=>c.abort(), ms); return fetch(url, {...opts, signal:c.signal}).finally(()=>clearTimeout(t)); }
-async function post(body, ms=45000){
+async function postOnce(auth, body, ms){
   // Google sometimes turns the POST into a bare GET (doPost never runs; the backend answers GET_NOT_POST): the same request again
   for (let i = 0; ; i++){
     const r = await fetchT(API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({ k: KEY, ak: AK || undefined, env: ENV || undefined, build: BUILD, ...body }) }, ms);
+      body: JSON.stringify({ ...auth, env: ENV || undefined, build: BUILD, ...body }) }, ms);
     const js = await r.json();
     if (js && js.who) who = js.who;
     if (!(js && js.error === 'GET_NOT_POST') || i >= 3) return js;
   }
 }
+/** this page has something to send: its joint key, or (jo1.7) the app's pass; an admin key alone has never opened this page and still does not */
+const keyed = () => !!(KEY || PASSMODE);
 function saveLS(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 function loadLS(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
 function rawLS(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
@@ -438,6 +440,70 @@ function mergeLines(from, rows){
   nLines = from + rows.length; return changed;
 }
 
+async function post(body, ms=45000){
+  if (!PASSMODE) return postOnce({ k: KEY, ak: AK || undefined }, body, ms);
+  if (passDead) return { ok: false, error: 'BAD_PASS' };
+  // a backend that does not know passes answers BAD_KEY: that is a refused pass here, never "the saved key"
+  const send = async p => { const js = await postOnce({ p }, body, ms); return js && js.error === 'BAD_KEY' ? { ok: false, error: 'BAD_PASS' } : js; };
+  let a = await getPass(false);
+  if (!a.ok) return { ok: false, error: 'NO_PASS', code: a.code };
+  let js = await send(a.pass);
+  if (js && js.error === 'BAD_PASS'){            // one fresh pass, the same request once
+    dropPass(); a = await getPass(true);
+    if (!a.ok) return { ok: false, error: 'NO_PASS', code: a.code };
+    js = await send(a.pass);
+    if (js && js.error === 'BAD_PASS'){ passDead = true; dropPass(); }
+  }
+  return js;
+}
+/* ================= THE APP'S PASS (jo1.7) =================
+ * PASSMODE = no key of any kind on this phone for this page AND the app FREAK צוות is signed in here (its session id sits in localStorage
+ * under the same name tasks.html reads). The page then asks the app's service for a short pass (5 min, audience freak-suppliers) and sends it as
+ * `p` instead of a key; the backend makes a pass with the manager mark an admin and records the pass's EMP code. A saved key always wins.
+ * The session id and the pass live in memory only: never written, never in a URL, never in the queue. The addresses are the app's public ones. */
+const SID_RE = /^[A-Za-z0-9_-]{40,64}$/, APP_SID = 'freak_app_session', APP_MS = 30000;
+const APP_API = MODE==='test' ? 'https://script.google.com/macros/s/AKfycbxs0ebx-l1Z-kjWriJb8itLkUvTz1cbmhiqkxdEKMUe9cOTls_RAe-veNmB0QtWINl-Dw/exec' : MODE==='local' ? location.origin + '/app' : 'https://script.google.com/macros/s/AKfycbyFl51NOb7BCmngZGamwe4Hn7xkoJjQBn9dvkBPswMOZa3yrPazmSYye3BDLEV5Xa7icA/exec';
+const appSid = () => { try{ const s = JSON.parse(localStorage.getItem(APP_SID) || 'null'); return typeof s === 'string' && SID_RE.test(s) ? s : ''; }catch(e){ return ''; } };
+let PASSMODE = false, SID = '', PASS = '', PASS_EXP = 0, passAsk = null, passFailAt = 0, passFail = null, passDead = false, passStop = false;
+const dropPass = () => { PASS = ''; PASS_EXP = 0; };
+async function askApp(){
+  for (let i = 0; ; i++){
+    let js = null;
+    try{ const r = await fetchT(APP_API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ a:'pass', sid: SID, aud:'freak-suppliers' }) }, APP_MS); js = await r.json(); }catch(e){ return null; }
+    if (!(js && (js.error === 'GET_NOT_POST' || js.code === 'GET_NOT_POST')) || i >= 2) return js;
+  }
+}
+/** a usable pass { ok:true, pass } or { ok:false, code } (signed_out, not_active, not_allowed or retry) */
+function getPass(fresh){
+  if (!fresh && PASS && PASS_EXP - Date.now() > 60000) return Promise.resolve({ ok: true, pass: PASS });
+  if (passStop) return Promise.resolve({ ok: false, code: 'not_allowed' });                            // the app said this person has no role: nothing more is asked
+  if (passAsk) return passAsk;
+  if (!fresh && passFail && Date.now() - passFailAt < 20000) return Promise.resolve(passFail);          // a failed ask is not repeated every few seconds
+  passAsk = askApp().then(ans => {
+    passAsk = null;
+    if (ans && ans.ok === true && typeof ans.pass === 'string' && ans.pass){ PASS = ans.pass; PASS_EXP = Number(ans.exp) || 0; passFail = null; return { ok: true, pass: PASS }; }
+    const c = ans && typeof ans.code === 'string' ? ans.code : '';
+    if (c === 'not_allowed') passStop = true;
+    passFail = { ok: false, code: /^(signed_out|not_active|not_allowed)$/.test(c) ? c : 'retry' }; passFailAt = Date.now();
+    return passFail;
+  });
+  return passAsk;
+}
+/** a reply that says the PASS (not the network) is the problem: the gate with the reason; the unsent quantities stay in the queue.
+ *  'retry' (the app did not answer) is not a gate: false, and the caller tries again later */
+function passGate(js){
+  if (!PASSMODE || !js) return false;
+  if (js.error === 'NO_PASS'){
+    if (js.code === 'signed_out') showGate('היכנס קודם ל-FREAK צוות ואז פתח שוב את ההזמנה המשותפת.');
+    else if (js.code === 'not_active') showGate('המשתמש שלך ב-FREAK צוות לא פעיל.');
+    else if (js.code === 'not_allowed') showGate('אין לך הרשאה להזמנה המשותפת.');
+    else return false;
+    return true;
+  }
+  if (js.error === 'BAD_PASS'){ showGate('ההתחברות מה-FREAK צוות לא התקבלה. פתח שוב את הדף מהאפליקציה.'); return true; }
+  if (js.error === 'NOT_ALLOWED'){ showGate('אין לך הרשאה להזמנה המשותפת.'); return true; }
+  return false;
+}
 /* ================= QUEUE (localStorage; latest value per variant; in order; retries 1/2/5/15 s then every 30 s, for a day) ================= */
 function saveQ(){ saveLS(LS.queue, queue); badge(); }
 function badge(){ const b = $('queueBadge'); b.textContent = queue.length; b.classList.toggle('hide', !queue.length); }
@@ -482,6 +548,7 @@ async function sync(){
       }
       if (js && js.ok){ queue = queue.filter(j => j !== job); saveQ(); written(job, js); continue; }
       if (js && js.error === 'BAD_KEY'){ showGate('המפתח לא מתאים יותר. פתח שוב את הקישור שקיבלת.'); break; }
+      if (passGate(js)) break;   // jo1.7: the pass was refused or the app is signed out: the job stays in the queue (never dropped as hard)
       if (js && HARD.test(String(js.error||''))){ queue = queue.filter(j => j !== job); saveQ(); dropJob(job, js.error); continue; }
       // no connection, Google slow, the sheet busy (BUSY_LOCK), the catalog being re-pushed (BUSY_CATALOG): again in 1, 2, 5, 15 s, then every 30 s, for a day
       job.notBefore = Date.now() + (RETRY_MS[job.att - 1] != null ? RETRY_MS[job.att - 1] : RETRY_LATER_MS); saveQ();
@@ -516,7 +583,7 @@ function dropJob(job, err){
 }
 window.addEventListener('online', ()=>{ $('dot').classList.add('on'); sync(); load(false); });
 window.addEventListener('offline', ()=> $('dot').classList.remove('on'));
-setInterval(()=>{ if (queue.length && KEY) sync(); }, 5000);   // safety net: a retry timer that fired while a send was in flight is not lost
+setInterval(()=>{ if (queue.length && keyed()) sync(); }, 5000);   // safety net: a retry timer that fired while a send was in flight is not lost
 
 /* ================= LOAD (poll) ================= */
 async function load(full){
@@ -541,6 +608,8 @@ async function load(full){
       lastOk = Date.now(); $('dot').classList.add('on');
       if (person && people.length && !people.some(p => p.name === person)){ person = ''; try{ localStorage.removeItem(LS.person); }catch(e){} showNames(); }
     } else if (js && js.error === 'BAD_KEY') showGate('המפתח לא מתאים. פתח שוב את הקישור שקיבלת.');
+    else if (passGate(js)) { /* the gate is up */ }
+    else if (js && js.error === 'NO_PASS'){ netDown = true; $('dot').classList.remove('on'); }   // the app did not answer: like no connection, the poll asks again
     else if (js && js.error === 'NO_SHEET'){ sheetMissing = true; structural = true; }
     else if (!js){ netDown = true; $('dot').classList.remove('on'); }
     else toast('לא הצלחתי לקרוא את ההזמנה: ' + (js && js.error || '?'), 'err', 4000);
@@ -559,9 +628,9 @@ async function load(full){
 }
 /** people, state and the ledger as this phone has them, for the next open (drawn at once, before the first jo_load) */
 function saveMeta(){ saveLS(LS.meta, { people, state, nLines, lines: [...lines].map(([k, l]) => [k, { qty: l.qty, ord: l.ord, shop: l.shop, sku: l.sku || '', note: l.note || '', dev: l.dev || '', at: l.at || '' }]) }); }
-setInterval(()=>{ if (!document.hidden && KEY) load(false); }, POLL_MS);
-document.addEventListener('visibilitychange', ()=>{ if (!document.hidden && KEY){ load(false); sync(); } });
-window.addEventListener('focus', ()=>{ if (KEY && Date.now() - lastOk > 5000) load(false); });
+setInterval(()=>{ if (!document.hidden && keyed()) load(false); }, POLL_MS);
+document.addEventListener('visibilitychange', ()=>{ if (!document.hidden && keyed()){ load(false); sync(); } });
+window.addEventListener('focus', ()=>{ if (keyed() && Date.now() - lastOk > 5000) load(false); });
 
 /* ================= RENDER ================= */
 function renderTop(){
@@ -1043,7 +1112,7 @@ $('refreshBtn').onclick = () => { sortSnap = null; load(true); };
 $('meBtn').onclick = () => showNames();
 
 /* ================= START ================= */
-function showGate(msg){ KEY = ''; $('app').classList.add('hide'); $('names').classList.add('hide'); $('gate').classList.remove('hide'); $('gateMsg').textContent = msg || ''; }
+function showGate(msg){ KEY = ''; AK = ''; PASSMODE = false; $('app').classList.add('hide'); $('names').classList.add('hide'); $('gate').classList.remove('hide'); $('gateMsg').textContent = msg || ''; }
 function showNames(){
   mgrOpen = '';
   settleAll();   // a value still debounced belongs to the name that typed it
@@ -1065,7 +1134,8 @@ $('keyBtn').onclick = async ()=>{
 async function start(){
   takeKeyFromHash();
   KEY = rawLS(LS.key); AK = rawLS('fs_key').replace(/^"|"$/g, ''); if (!/^[\w\-]{8,100}$/.test(AK)) AK = '';
-  if (!KEY){ showGate(''); return; }
+  SID = KEY || AK ? '' : appSid(); PASSMODE = !!SID;   // jo1.7: a saved key always wins; no key and the app signed in = the pass
+  if (!keyed()){ showGate(''); return; }   // (a pass holder is keyed; a lone admin key still needs the joint key, as before)
   DEVICE = rawLS(LS.device); if (!/^[\w\-]{6,40}$/.test(DEVICE)){ DEVICE = 'p-' + uuid().replace(/-/g, '').slice(0, 12); try{ localStorage.setItem(LS.device, DEVICE); }catch(e){} }
   person = rawLS(LS.person); view = loadLS(LS.view, 'catalog'); if (!VIEWS.some(v => v[0] === view)) view = 'catalog';
   loadF();
@@ -1081,6 +1151,7 @@ async function start(){
   }
   const p = await ping();
   if (p && p.error === 'BAD_KEY'){ showGate('המפתח לא מתאים. פתח שוב את הקישור שקיבלת.'); return; }
+  if (passGate(p)) return;
   if (p && p.ok && p.sheet === false) sheetMissing = true;
   if (person && people.length) showApp(); else { showNames(); }
   await load(true);

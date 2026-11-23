@@ -435,7 +435,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.21';   // or1.21 (23/11/2026): a manager signed in to the app FREAK צוות opens every order page with the app's pass (no key on the phone); see PASSMODE below
+const BUILD = 'or1.22';   // or1.22: the picker lists Glassstaff's joint page for a pass holder; or1.21 (23/11/2026): a manager signed in to the app FREAK צוות opens every order page with the app's pass (no key on the phone); see PASSMODE below
 // or1.4 (B-BRN-8, part 2): every card of an item we carry gets ONE more grey line under its pace block — the brain's in-stock line
 // ("נמכר ~N בחודש כשיש במלאי (קצב להזמנה ~N) · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …", the brain's wording of 03/11), copied verbatim from the rates table (jo_load
 // `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
@@ -728,7 +728,7 @@ function storedKeys(){
  *  page reads fs_key as admin but still needs its jo_key to open: fix round 31/10, review minor); an order.html entry with the admin key, else
  *  with that supplier's own buyer key. The shape of a key only: one the backend has since refused still counts here (and is refused there) */
 function canOpen(e){
-  if (e.href) return e.href === 'joint-order.html' && KEY_RE.test(rawLS('jo_key'));
+  if (e.href) return e.href === 'joint-order.html' && (KEY_RE.test(rawLS('jo_key')) || PASSMODE);   // or1.22: a pass holder (a manager) opens Glassstaff's joint page too; the joint page asks the pass itself
   if (adminKey() || PASSMODE) return true;   // or1.21: a pass holder sees what the admin key sees (the manager mark is checked by the backend)
   return KEY_RE.test(rawLS('jo_key_' + e.id));
 }
