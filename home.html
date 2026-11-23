@@ -227,7 +227,7 @@ addEventListener('offline', () => $('dot').classList.remove('on'));
 function start(){
   KEY = (()=>{ try{ return localStorage.getItem(LS.key) || ''; }catch(e){ return ''; } })();
   if (!KEY && appSid()) VIA_APP = true;
-  if (!KEY && !VIA_APP){ showGate(''); return; }
+  if (!KEY && !VIA_APP){ showGate('כדי לראות את מסך הבית נכנסים פעם אחת ל-FREAK צוות עם חשבון הגוגל, ואז חוזרים לכאן.'); return; }
   $('gate').classList.add('hide'); $('app').classList.remove('hide');
   const cached = MODE === 'live' ? loadLS(LS.snap, null) : null;
   if (cached && cached.snap) render(cached);
