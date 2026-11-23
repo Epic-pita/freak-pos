@@ -435,7 +435,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'or1.20';
+const BUILD = 'or1.21';   // or1.21 (23/11/2026): a manager signed in to the app FREAK צוות opens every order page with the app's pass (no key on the phone); see PASSMODE below
 // or1.4 (B-BRN-8, part 2): every card of an item we carry gets ONE more grey line under its pace block — the brain's in-stock line
 // ("נמכר ~N בחודש כשיש במלאי (קצב להזמנה ~N) · אזל N פעמים · במלאי N מתוך N ימים · פעם אחרונה: …", the brain's wording of 03/11), copied verbatim from the rates table (jo_load
 // `rates`, the sheet's קצב tab, contract r1, keyed by item_id). Display only: no quantity, filter, sort, badge or text export changes, and
@@ -606,15 +606,79 @@ function toast(msg, cls='', ms=2600){
   clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', ms);
 }
 function fetchT(url, opts, ms){ const c=new AbortController(); const t=setTimeout(()=>c.abort(), ms); return fetch(url, {...opts, signal:c.signal}).finally(()=>clearTimeout(t)); }
-async function post(body, ms=45000){
+async function postOnce(auth, body, ms){
   // every call carries the supplier; Google sometimes turns the POST into a bare GET (doPost never runs; the backend answers GET_NOT_POST): the same request again
   for (let i = 0; ; i++){
     const r = await fetchT(API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({ k: KEY, ak: AK || undefined, env: ENV || undefined, sup: SUP, build: BUILD, ...body }) }, ms);
+      body: JSON.stringify({ ...auth, env: ENV || undefined, sup: SUP, build: BUILD, ...body }) }, ms);
     const js = await r.json();
     if (js && js.who){ who = js.who; brainGate(); }   // or1.8 (L17): the moment this phone learns it is not the manager, the brain's figures go
     if (!(js && js.error === 'GET_NOT_POST') || i >= 3) return js;
   }
+}
+async function post(body, ms=45000){
+  if (!PASSMODE) return postOnce({ k: KEY, ak: AK || undefined }, body, ms);
+  if (passDead) return { ok: false, error: 'BAD_PASS' };
+  // a backend that does not know passes answers BAD_KEY: that is a refused pass here, never "the saved key"
+  const send = async p => { const js = await postOnce({ p }, body, ms); return js && js.error === 'BAD_KEY' ? { ok: false, error: 'BAD_PASS' } : js; };
+  let a = await getPass(false);
+  if (!a.ok) return { ok: false, error: 'NO_PASS', code: a.code };
+  let js = await send(a.pass);
+  if (js && js.error === 'BAD_PASS'){            // one fresh pass, the same request once
+    dropPass(); a = await getPass(true);
+    if (!a.ok) return { ok: false, error: 'NO_PASS', code: a.code };
+    js = await send(a.pass);
+    if (js && js.error === 'BAD_PASS'){ passDead = true; dropPass(); }
+  }
+  return js;
+}
+/* ================= THE APP'S PASS (or1.21) =================
+ * PASSMODE = no key of any kind on this phone for this page AND the app FREAK צוות is signed in here (its session id sits in localStorage
+ * under the same name tasks.html reads). The page then asks the app's service for a short pass (5 min, audience freak-suppliers) and sends it as
+ * `p` instead of a key; the backend makes a pass with the manager mark an admin and records the pass's EMP code. A saved key always wins.
+ * The session id and the pass live in memory only: never written, never in a URL, never in the queue. The addresses are the app's public ones. */
+const SID_RE = /^[A-Za-z0-9_-]{40,64}$/, APP_SID = 'freak_app_session', APP_MS = 30000;
+const APP_API = MODE==='test' ? 'https://script.google.com/macros/s/AKfycbxs0ebx-l1Z-kjWriJb8itLkUvTz1cbmhiqkxdEKMUe9cOTls_RAe-veNmB0QtWINl-Dw/exec' : MODE==='local' ? location.origin + '/app' : 'https://script.google.com/macros/s/AKfycbyFl51NOb7BCmngZGamwe4Hn7xkoJjQBn9dvkBPswMOZa3yrPazmSYye3BDLEV5Xa7icA/exec';
+const appSid = () => { try{ const s = JSON.parse(localStorage.getItem(APP_SID) || 'null'); return typeof s === 'string' && SID_RE.test(s) ? s : ''; }catch(e){ return ''; } };
+let PASSMODE = false, SID = '', PASS = '', PASS_EXP = 0, passAsk = null, passFailAt = 0, passFail = null, passDead = false, passStop = false;
+const dropPass = () => { PASS = ''; PASS_EXP = 0; };
+async function askApp(){
+  for (let i = 0; ; i++){
+    let js = null;
+    try{ const r = await fetchT(APP_API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ a:'pass', sid: SID, aud:'freak-suppliers' }) }, APP_MS); js = await r.json(); }catch(e){ return null; }
+    if (!(js && (js.error === 'GET_NOT_POST' || js.code === 'GET_NOT_POST')) || i >= 2) return js;
+  }
+}
+/** a usable pass { ok:true, pass } or { ok:false, code } (signed_out, not_active, not_allowed or retry) */
+function getPass(fresh){
+  if (!fresh && PASS && PASS_EXP - Date.now() > 60000) return Promise.resolve({ ok: true, pass: PASS });
+  if (passStop) return Promise.resolve({ ok: false, code: 'not_allowed' });                            // the app said this person has no role: nothing more is asked
+  if (passAsk) return passAsk;
+  if (!fresh && passFail && Date.now() - passFailAt < 20000) return Promise.resolve(passFail);          // a failed ask is not repeated every few seconds
+  passAsk = askApp().then(ans => {
+    passAsk = null;
+    if (ans && ans.ok === true && typeof ans.pass === 'string' && ans.pass){ PASS = ans.pass; PASS_EXP = Number(ans.exp) || 0; passFail = null; return { ok: true, pass: PASS }; }
+    const c = ans && typeof ans.code === 'string' ? ans.code : '';
+    if (c === 'not_allowed') passStop = true;
+    passFail = { ok: false, code: /^(signed_out|not_active|not_allowed)$/.test(c) ? c : 'retry' }; passFailAt = Date.now();
+    return passFail;
+  });
+  return passAsk;
+}
+/** a reply that says the PASS (not the network) is the problem: the gate with the reason; the unsent quantities stay in the queue.
+ *  'retry' (the app did not answer) is not a gate: false, and the caller tries again later */
+function passGate(js){
+  if (!PASSMODE || !js) return false;
+  if (js.error === 'NO_PASS'){
+    if (js.code === 'signed_out') showGate('היכנס קודם ל-FREAK צוות ואז פתח שוב את דף ההזמנה.');
+    else if (js.code === 'not_active') showGate('המשתמש שלך ב-FREAK צוות לא פעיל.');
+    else if (js.code === 'not_allowed') showGate('אין לך הרשאה לדפי ההזמנה.');
+    else return false;
+    return true;
+  }
+  if (js.error === 'BAD_PASS'){ showGate('ההתחברות מה-FREAK צוות לא התקבלה. פתח שוב את הדף מהאפליקציה.'); return true; }
+  if (js.error === 'NOT_ALLOWED'){ showGate('אין לך הרשאה לדפי ההזמנה.'); return true; }
+  return false;
 }
 function saveLS(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 function loadLS(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
@@ -632,7 +696,7 @@ async function ping(){
   try{ return await post({ action:'jo_ping' }, 30000); }catch(e){ return { ok:false, error:'NET' }; }
 }
 /** or1.3: this page has a key to send — its buyer key, or the admin key alone (the backend makes `ak` admin on every supplier; k stays '') */
-const keyed = () => !!(KEY || AK);
+const keyed = () => !!(KEY || AK || PASSMODE);
 /** Chris's admin key as suppliers.html keeps it (fs_key; a JSON-quoted copy is read too), '' when absent or not a key's shape */
 function adminKey(){ const a = rawLS('fs_key').replace(/^"|"$/g, ''); return /^[\w\-]{8,100}$/.test(a) ? a : ''; }
 
@@ -665,7 +729,7 @@ function storedKeys(){
  *  with that supplier's own buyer key. The shape of a key only: one the backend has since refused still counts here (and is refused there) */
 function canOpen(e){
   if (e.href) return e.href === 'joint-order.html' && KEY_RE.test(rawLS('jo_key'));
-  if (adminKey()) return true;
+  if (adminKey() || PASSMODE) return true;   // or1.21: a pass holder sees what the admin key sees (the manager mark is checked by the backend)
   return KEY_RE.test(rawLS('jo_key_' + e.id));
 }
 /** the address of an entry: order.html?s=<id> (or the entry's own page) carrying only api= (test / local) — never a key, never the hash */
@@ -682,7 +746,7 @@ let SUPS = [], swDone = false;   // the entries this device can open, the curren
  *  list at all: no switch and no other supplier's name, on the screen or in its storage */
 async function initSwitch(){
   let mine = [];
-  if (adminKey() || storedKeys().n >= 2){
+  if (adminKey() || PASSMODE || storedKeys().n >= 2){
     mine = (await supList()).filter(canOpen);
     if (SUP && !mine.some(e => e.id === SUP)) mine.unshift({ id: SUP, he: '', href: '', names: [] });   // a supplier not in the file yet (on TEST): it heads the list
   }
@@ -754,7 +818,8 @@ window.addEventListener('storage', ev => { if (/^jo_queue_/.test(ev.key || '')){
 async function pickSupplier(){
   if (/[#&]a?k=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);   // a key in a link that names no supplier: off the address bar, not kept
   const ak = adminKey(), sk = storedKeys();
-  if (!ak && !sk.n){ $('nosup').classList.remove('hide'); return; }   // nothing to open: as before, the list is not even read
+  if (!ak && !sk.n && appSid()){ SID = appSid(); PASSMODE = true; }   // or1.21: no key on this phone and the app is signed in: the picker lists what an admin sees (each supplier page asks for its own pass)
+  if (!ak && !sk.n && !PASSMODE){ $('nosup').classList.remove('hide'); return; }   // nothing to open: as before, the list is not even read
   // fix round (review minor): one buyer key and no admin key (the installed icon on a buyer's phone): straight to its page, the list never
   // read — nothing of the other suppliers in this phone's storage; works offline on the icon's first open, and for a supplier not in the file yet
   if (!ak && sk.n === 1){ location.replace(supHref(sk.joint ? { id: '', href: 'joint-order.html' } : { id: sk.ids[0], href: '' })); return; }
@@ -1044,6 +1109,7 @@ async function rsync(){
         renderRecv(); continue;
       }
       if (js && js.error === 'BAD_KEY'){ showGate('המפתח לא מתאים יותר. פתח שוב את הקישור שקיבלת.'); break; }
+      if (passGate(js)) break;   // or1.21: as the order queue
       if (js && HARD.test(String(js.error||''))){ dropCount(job, HARD_MSG[js.error] || js.error); continue; }
       job.notBefore = Date.now() + (RETRY_MS[job.att - 1] != null ? RETRY_MS[job.att - 1] : RETRY_LATER_MS);
       saveRQ(); scheduleR(job.notBefore - Date.now()); break;
@@ -1370,6 +1436,7 @@ async function sync(){
       }
       if (js && js.ok){ queue = queue.filter(j => j !== job); saveQ(); written(job, js); continue; }
       if (js && js.error === 'BAD_KEY'){ showGate('המפתח לא מתאים יותר. פתח שוב את הקישור שקיבלת.'); break; }
+      if (passGate(js)) break;   // or1.21: the pass was refused or the app is signed out: the job stays in the queue (never dropped as hard)
       if (js && HARD.test(String(js.error||''))){ queue = queue.filter(j => j !== job); saveQ(); dropJob(job, js.error); continue; }
       // no connection, Google slow, the sheet busy (BUSY_LOCK), the catalog being re-pushed (BUSY_CATALOG): again in 1, 2, 5, 15 s, then every 30 s, for a day
       job.notBefore = Date.now() + (RETRY_MS[job.att - 1] != null ? RETRY_MS[job.att - 1] : RETRY_LATER_MS);
@@ -1473,6 +1540,8 @@ async function load(full){
       if (ME && people.some(p => p.name === ME) && person !== ME){ settleAll(); person = ME; try{ localStorage.setItem(LS.person, person); }catch(e){} seedMine(); structural = true; }
       if (person && people.length && !people.some(p => p.name === person)){ person = ''; try{ localStorage.removeItem(LS.person); }catch(e){} showNames(); }
     } else if (js && js.error === 'BAD_KEY') showGate('המפתח לא מתאים. פתח שוב את הקישור שקיבלת.');
+    else if (passGate(js)) { /* the gate is up */ }
+    else if (js && js.error === 'NO_PASS'){ netDown = true; $('dot').classList.remove('on'); }   // the app did not answer: like no connection, the poll asks again
     else if (js && js.error === 'NO_SHEET'){ sheetMissing = true; structural = true; }
     else if (!js){ netDown = true; $('dot').classList.remove('on'); }
     else toast('לא הצלחתי לקרוא את ההזמנה: ' + (js && js.error || '?'), 'err', 4000);
@@ -2549,7 +2618,7 @@ $('meBtn').onclick = () => showNames();
 
 /* ================= START ================= */
 // or1.3: AK is cleared too, so the polls stop until a key is pasted (start() reads fs_key again)
-function showGate(msg){ KEY = ''; AK = ''; closeSupMenu(); $('app').classList.add('hide'); $('names').classList.add('hide'); $('gate').classList.remove('hide'); $('gateTitle').textContent = S.title_he; $('gateMsg').textContent = msg || ''; }
+function showGate(msg){ KEY = ''; AK = ''; PASSMODE = false; closeSupMenu(); $('app').classList.add('hide'); $('names').classList.add('hide'); $('gate').classList.remove('hide'); $('gateTitle').textContent = S.title_he; $('gateMsg').textContent = msg || ''; }
 function showNames(){
   settleAll();   // a value still debounced belongs to the name that typed it
   // or1.5 (B-CAT-25): a key the backend says belongs to one person picks that name by itself — every other name on such a
@@ -2578,9 +2647,10 @@ async function start(){
   if (!SUP){ pickSupplier(); return; }   // or1.3: no supplier in the link: the only one this device opens, a picker, or "חסר ספק"; nothing is sent
   takeKeyFromHash();
   KEY = rawLS(LS.key); AK = adminKey();
+  SID = KEY || AK ? '' : appSid(); PASSMODE = !!SID;   // or1.21: a saved key always wins; no key and the app signed in = the pass
   const c = loadLS(LS.cat, null); if (c && c.rows) setCatalog(c);     // draws at once, with its settings; the poll brings a newer catalog only when the stamp changed
   try{ localStorage.removeItem(LS_RATES); }catch(e){}                 // or1.4: rates are never stored (review 02/11); a test build's copy goes; the first jo_load sends no rates stamp
-  if (!keyed()){ showGate(''); return; }   // or1.3: the admin key alone opens the page (as admin); a buyer key of another supplier is never read here
+  if (!keyed()){ showGate(''); return; }   // (or1.21: keyed() is true for a pass holder)   // or1.3: the admin key alone opens the page (as admin); a buyer key of another supplier is never read here
   initSwitch();                            // the "ספק" switch, when this device opens 2+ suppliers (the list is read in the background)
   DEVICE = rawLS(LS.device); if (!/^[\w\-]{6,40}$/.test(DEVICE)){ DEVICE = 'p-' + uuid().replace(/-/g, '').slice(0, 12); try{ localStorage.setItem(LS.device, DEVICE); }catch(e){} }
   person = rawLS(LS.person); view = loadLS(LS.view, 'catalog'); if (!VIEWS.some(v => v[0] === view)) view = 'catalog';
@@ -2596,6 +2666,7 @@ async function start(){
   }
   const p = await ping();
   if (p && p.error === 'BAD_KEY'){ showGate('המפתח לא מתאים. פתח שוב את הקישור שקיבלת.'); return; }
+  if (passGate(p)) return;
   if (p && p.error === 'bad sup'){ showGate('הקישור לא מתאים לספק הזה. פתח שוב את הקישור שקיבלת.'); return; }
   try{ localStorage.setItem(LS_LAST, SUP); }catch(e){}   // or1.3: the supplier this device opened last heads the picker
   if (p && p.ok && p.sheet === false) sheetMissing = true;
