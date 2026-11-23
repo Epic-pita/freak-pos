@@ -60,8 +60,8 @@
 
   function widgetHtml(w, links) {
     var door = doorOf(w, links);
-    if (!door) return '';                                   // not this person's system: not drawn
-    var tone = toneOf(w), href = esc(door.href);
+    if (!door && !(w && w.noDoor === true)) return '';      // not this person's system: not drawn (b0.4: unless the card says it has no door for anyone: drawn read-only, no links)
+    var tone = toneOf(w), href = door ? esc(door.href) : '';
     var cls = 'fb-card is-' + tone + (w.lead ? ' fb-lead' : '') + (w.stale ? ' is-stale' : '');
     var token = '', counted = w.count != null;
     if ((tone === 'urgent' || tone === 'calm') && counted) {
@@ -76,20 +76,21 @@
       if (items.length) {
         body = '<ol class="fb-items">' + items.map(function (it) {
           var own = it.door ? doorOf({ door: it.door }, links) : null;   // a row that leads into its own system
-          return '<li' + (it.late ? ' class="is-late"' : '') + '><a class="fb-row" href="' + (own ? esc(own.href) : href) + '"><span class="fb-it">' + txt(it.title) + '</span>' +
-            (it.meta ? '<span class="fb-meta">' + txt(it.meta) + '</span>' : '') + '</a></li>';
+          var rin = '<span class="fb-it">' + txt(it.title) + '</span>' + (it.meta ? '<span class="fb-meta">' + txt(it.meta) + '</span>' : '');
+          return '<li' + (it.late ? ' class="is-late"' : '') + '>' +
+            (own || door ? '<a class="fb-row" href="' + (own ? esc(own.href) : href) + '">' + rin + '</a>' : '<span class="fb-row">' + rin + '</span>') + '</li>';
         }).join('') + '</ol>';
       } else body = '<p class="fb-empty">' + txt(w.empty || '') + '</p>';
       if (w.note) body += '<p class="fb-note">' + txt(w.note) + '</p>';
     }
     var at = w.stale ? (w.staleText || '') : (w.at || '');
     return '<article class="' + cls + '" data-widget="' + idOf(w.id) + '">' +
-      '<header class="fb-head"><a class="fb-hl" href="' + href + '"><div class="fb-titles"><h2>' + txt(w.title) + '</h2>' +
-      (w.sub ? '<p class="fb-sub">' + txt(w.sub) + '</p>' : '') + '</div>' + token + '</a></header>' +
+      '<header class="fb-head">' + (door ? '<a class="fb-hl" href="' + href + '">' : '<div class="fb-hl">') + '<div class="fb-titles"><h2>' + txt(w.title) + '</h2>' +
+      (w.sub ? '<p class="fb-sub">' + txt(w.sub) + '</p>' : '') + '</div>' + token + (door ? '</a>' : '</div>') + '</header>' +
       (w.countLabel && counted && (tone === 'urgent' || tone === 'calm') ? '<p class="fb-count-label">' + txt(w.countLabel) + '</p>' : '') +
       body +
-      '<footer class="fb-foot"><a class="fb-door" href="' + href + '" data-door="' + idOf(w.door) + '">' +
-      txt(door.label) + '</a>' + (at ? '<span class="fb-at">' + txt(at) + '</span>' : '') + '</footer></article>';
+      (door || at ? '<footer class="fb-foot">' + (door ? '<a class="fb-door" href="' + href + '" data-door="' + idOf(w.door) + '">' + txt(door.label) + '</a>' : '') +
+      (at ? '<span class="fb-at">' + txt(at) + '</span>' : '') + '</footer>' : '') + '</article>';
   }
 
   /** the line of figures: every widget that has a count, as one link (the big picture first; a tap goes in) */
