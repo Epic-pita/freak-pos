@@ -74,7 +74,7 @@
 <script>
 'use strict';
 /* ================= CONFIG ================= */
-const BUILD = 'h1.1';
+const BUILD = 'h1.2';
 // The backend is the F-3 alarm's Apps Script with the L1 files (web app, doPost only). ?api=test is the TEST deployment
 // (the TEST copy), ?api=local only on this PC (the bench). LIVE_API stays empty until the release.
 const LIVE_API = 'https://script.google.com/macros/s/AKfycbxUnoCfolEzKVkRRD2X3iBxc1BKUc29vn-f_rfxCN3M0POOv_tY34iJFrXAHjLwFAWiuQ/exec';   // LIVE deployment @1 (20/10, L1 LIVE h1.0)
@@ -86,6 +86,20 @@ const TZ = 'Asia/Jerusalem';
 // one key per mode, so a wrong TEST key never removes the LIVE one
 const LS = { key: MODE === 'live' ? 'l1_key' : 'l1_key_' + MODE, snap: 'l1_snap_' + MODE };
 const POLL_MS = 5 * 60000, OLD_MS = 2 * 3600000;
+// h1.2 (Chris 23/11/2026: the Google sign-in in FREAK צוות is the key): no code saved here -> the app's session asks the app's
+// service for a 5-minute pass (the board's audience), sent with 'home' in the body of a POST and then forgotten
+const APP_API = MODE==='test' ? 'https://script.google.com/macros/s/AKfycbxs0ebx-l1Z-kjWriJb8itLkUvTz1cbmhiqkxdEKMUe9cOTls_RAe-veNmB0QtWINl-Dw/exec' : 'https://script.google.com/macros/s/AKfycbyFl51NOb7BCmngZGamwe4Hn7xkoJjQBn9dvkBPswMOZa3yrPazmSYye3BDLEV5Xa7icA/exec';
+const APP_PAGE = MODE==='test' ? 'https://epic-pita.github.io/freak-app/t1/' : 'https://epic-pita.github.io/freak-app/';
+const APP_SID = 'freak_app_session';
+function appSid(){ try{ const s = JSON.parse(localStorage.getItem(APP_SID) || 'null'); return typeof s === 'string' && /^[A-Za-z0-9_-]{40,64}$/.test(s) ? s : ''; }catch(e){ return ''; } }
+async function askPass(sid){
+  for (let i = 0; ; i++){
+    let js = null;
+    try{ const r = await fetchT(APP_API, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ a:'pass', sid: sid, aud:'freak-board' }) }, 30000); js = await r.json(); }catch(e){ return null; }
+    if (!(js && (js.error === 'GET_NOT_POST' || js.code === 'GET_NOT_POST')) || i >= 2) return js;
+  }
+}
+let VIA_APP = false;
 
 /* ================= UTIL ================= */
 const $ = id => document.getElementById(id);
@@ -149,6 +163,7 @@ async function load(){
   if (loading || !API) return;
   // h1.1: a tab that was opened before the code was saved has no code in memory. It never asks the server without one
   // (the answer is BAD_KEY, and that used to erase the code another tab had saved); it takes the saved code instead.
+  if (!KEY && VIA_APP) return loadViaApp();
   if (!KEY){ if (savedKey()) start(); return; }
   const sent = KEY;
   let again = false;
@@ -166,6 +181,25 @@ async function load(){
   }catch(e){ showBanner('אין חיבור. מוצג המצב האחרון שנשמר בטלפון.'); }
   finally{ loading = false; $('refresh').disabled = false; }
   if (again) start();
+}
+async function loadViaApp(){
+  const sid = appSid();
+  if (!sid){ VIA_APP = false; showGate('כדי לראות את מסך הבית נכנסים פעם אחת ל-FREAK צוות עם חשבון הגוגל, ואז חוזרים לכאן.'); return; }
+  loading = true; $('refresh').disabled = true;
+  try{
+    const ans = await askPass(sid);
+    if (!ans || ans.ok !== true || typeof ans.pass !== 'string'){
+      if (ans && (ans.code === 'signed_out' || ans.code === 'not_active')){ VIA_APP = false; showGate('כדי לראות את מסך הבית נכנסים פעם אחת ל-FREAK צוות עם חשבון הגוגל, ואז חוזרים לכאן.'); }
+      else if (ans && ans.code === 'not_allowed'){ VIA_APP = false; $('boxes').innerHTML = ''; showGate('מסך הבית עוד לא פתוח לך.'); }
+      else showBanner('אין תשובה מ-FREAK צוות. לנסות שוב בעוד דקה.');
+      return;
+    }
+    const js = await post({ p: ans.pass, action:'home' }, 30000, '');
+    if (js && js.ok){ last = js; render(js); }
+    else if (js && (js.error === 'BOARD_ONLY' || js.error === 'BAD_PASS' || js.error === 'BAD_KEY')){ VIA_APP = false; $('boxes').innerHTML = ''; showGate('מסך הבית עוד לא פתוח לך.'); }
+    else showBanner('אין תשובה מהשרת. לנסות שוב בעוד דקה.');
+  }catch(e){ showBanner('אין חיבור. לנסות שוב בעוד דקה.'); }
+  finally{ loading = false; $('refresh').disabled = false; }
 }
 function showBanner(t){ const b = $('banner'); b.className = 'warn'; b.textContent = t; }
 
@@ -192,7 +226,8 @@ addEventListener('offline', () => $('dot').classList.remove('on'));
 /* ================= START ================= */
 function start(){
   KEY = (()=>{ try{ return localStorage.getItem(LS.key) || ''; }catch(e){ return ''; } })();
-  if (!KEY){ showGate(''); return; }
+  if (!KEY && appSid()) VIA_APP = true;
+  if (!KEY && !VIA_APP){ showGate(''); return; }
   $('gate').classList.add('hide'); $('app').classList.remove('hide');
   const cached = MODE === 'live' ? loadLS(LS.snap, null) : null;
   if (cached && cached.snap) render(cached);
